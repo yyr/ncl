@@ -630,6 +630,7 @@ void g2GDSCEGrid
     int nlon, nlat;
     g2CETemplate *ce;
     double scale_factor;
+    double start_lat;
 	
     *lat = NULL;
     *n_dims_lat = 0;
@@ -733,9 +734,10 @@ void g2GDSCEGrid
     *n_dims_lon = 1;
     *lat = (float *) NclMalloc((unsigned)sizeof(float) * nlat);
     *lon = (float *) NclMalloc((unsigned)sizeof(float) * nlon);
+    start_lat = jdir == 1 ? MIN(la1,la2) : MAX(la1,la2);
 
     for (i = 0; i < *(*dimsizes_lat) ; i++)
-        (*lat)[i] = (float) (la1 + jdir * i * dj) ;
+        (*lat)[i] = (float) (start_lat + jdir * i * dj) ;
 
     for (i = 0; i < *(*dimsizes_lon) ; i++)
         (*lon)[i] = (float)(lo1 + idir * i * di) ;
@@ -12086,19 +12088,19 @@ void* storage;
 	long *grid_start;
 	long *grid_finish;
 	long *grid_stride;
-	ng_size_t n_other_dims = 0;
-	int current_index[5] = {0,0,0,0,0};
-	int dim_offsets[5] = {-1,-1,-1,-1,-1};
+	int n_other_dims = 0;
+	ng_size_t current_index[5] = {0,0,0,0,0};
+	ng_size_t dim_offsets[5] = {-1,-1,-1,-1,-1};
 	int i,j;
-	int offset;
+	ng_size_t offset;
 	int done = 0,inc_done =0;
-	int data_offset = 0;
+	ng_size_t data_offset = 0;
 	void *tmp;
 	void *missing;
 	NclScalar missingv;
 	FILE* fd;
 	ng_size_t grid_dim_sizes[3];
-	ng_size_t n_grid_dims;
+	int n_grid_dims;
 	NclMultiDValData tmp_md;
 	NclSelectionRecord  sel_ptr;
 	Grib2InternalVarList *vstep;
@@ -12655,10 +12657,7 @@ NclFormatFunctionRec Grib2Rec = {
 /* NclMapNclTypeToFormat   map_ncl_type_to_format; */	Grib2MapFromNcl,
 /* NclDelAttFunc           del_att; */			NULL,
 /* NclDelVarAttFunc        del_var_att; */		NULL,
-/* NclGetGrpNamesFunc      get_grp_names; */            NULL,
-/* NclGetGrpInfoFunc       get_grp_info; */             NULL,
-/* NclGetGrpAttNamesFunc   get_grp_att_names; */        NULL, 
-/* NclGetGrpAttInfoFunc    get_grp_att_info; */         NULL,
+#include "NclGrpFuncs.null"
 /* NclSetOptionFunc        set_option;  */              Grib2SetOption
 };
 

@@ -5556,10 +5556,14 @@ GribRecordInqRec *grib_rec;
 	int common_time_unit = 1;
 	int time_unit = 1;
 	double c_factor = 1.0;
+	int var_time_ind, rec_time_ind;
+        
+	var_time_ind = node->time_range_indicator == 10 ? 0 : node->time_range_indicator;
+	rec_time_ind = (int) grib_rec->pds[20] == 10 ? 0 : (int)grib_rec->pds[20];
 
-	if (!(node->time_range_indicator < 2 && (int)grib_rec->pds[20] < 2)) {
-		if (node->time_range_indicator != (int)grib_rec->pds[20]) {
-			return node->time_range_indicator - (int)grib_rec->pds[20];
+	if (var_time_ind < 2 && rec_time_ind < 2) {
+		if (var_time_ind != rec_time_ind) {
+			return var_time_ind - rec_time_ind;
 		}
 	}
 
@@ -6923,6 +6927,7 @@ int wr_status;
 					case 0:
 					case 1:
 					case 2:
+					case 10:
 						break;	
 					case 3:
 						grib_rec->time_period = (int)grib_rec->pds[19] - (int) grib_rec->pds[18];
@@ -7694,12 +7699,12 @@ void* storage;
 	long *grid_finish;
 	long *grid_stride;
 	int n_other_dims = 0;
-	int current_index[5] = {0,0,0,0,0};
-	int dim_offsets[5] = {-1,-1,-1,-1,-1};
+	ng_size_t current_index[5] = {0,0,0,0,0};
+	ng_size_t dim_offsets[5] = {-1,-1,-1,-1,-1};
 	int i,j;
-	int offset;
+	ng_size_t offset;
 	int done = 0,inc_done =0;
-	int data_offset = 0;
+	ng_size_t data_offset = 0;
 	void *tmp;
 	void *missing;
 	NclScalar missingv;
@@ -8309,9 +8314,6 @@ NclFormatFunctionRec GribRec = {
 /* NclMapNclTypeToFormat   map_ncl_type_to_format; */	GribMapFromNcl,
 /* NclDelAttFunc           del_att; */			NULL,
 /* NclDelVarAttFunc        del_var_att; */		NULL,
-/* NclGetGrpNamesFunc      get_grp_names; */            NULL,
-/* NclGetGrpInfoFunc       get_grp_info; */             NULL,
-/* NclGetGrpAttNamesFunc   get_grp_att_names; */        NULL,
-/* NclGetGrpAttInfoFunc    get_grp_att_info; */         NULL,
+#include "NclGrpFuncs.null"
 /* NclSetOptionFunc        set_option;  */              GribSetOption
 };

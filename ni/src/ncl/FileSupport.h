@@ -1,5 +1,5 @@
 /*
- *      $Id: FileSupport.h,v 1.14 2010-04-28 23:02:03 huangwei Exp $
+ *      $Id: FileSupport.h 13131 2012-01-30 17:11:01Z brownrig $
  */
 /************************************************************************
 *									*
@@ -22,6 +22,9 @@
 #ifndef _FileSupport_h
 #define _FileSupport_h
 
+#include "defs.h"
+#include "NclMultiDValData.h"
+#include "NclList.h"
 
 extern NhlErrorTypes  _NclBuildFileCoordRSelection(
 #if	NhlNeedProto
@@ -282,6 +285,21 @@ int	/* is_unlimited*/
 #endif
 );
 
+extern NhlErrorTypes _NclFileAddVlen(NclFile thefile, NclQuark vlen_name, NclQuark var_name,
+                                     NclQuark type, NclQuark dim_name);
+extern NhlErrorTypes _NclFileAddEnum(NclFile thefile, NclQuark vlen_name, NclQuark var_name,
+                                     NclQuark dim_name, NclQuark *mem_name, void *mem_value,
+                                     ng_size_t n_mems, NclBasicDataTypes val_type);
+extern NhlErrorTypes _NclFileAddOpaque(NclFile thefile, NclQuark vlen_name, NclQuark var_name,
+                                       int var_size, NclQuark dim_name);
+extern NhlErrorTypes _NclFileAddCompound(NclFile thefile, NclQuark compound_name, NclQuark var_name,
+                                         ng_size_t n_dims, NclQuark *dim_name, ng_size_t n_mems,
+                                         NclQuark *mem_name, NclQuark *mem_type, int *mem_size);
+extern NhlErrorTypes _NclFileWriteCompound(NclFile thefile, NclQuark compound_name, NclQuark var_name,
+                                           ng_size_t n_mems, NclQuark *mem_name, NclObj listobj);
+
+extern NhlErrorTypes _NclFileAddGrp(NclFile thefile, NclQuark grpname);
+
 extern NhlErrorTypes _NclFileAddChunkDim(
 #if	NhlNeedProto
 NclFile /* thefile */,
@@ -388,6 +406,15 @@ NclQuark option /* if NULL set defaults for all options */
 extern NclFile _NclCreateFile(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
                               unsigned int obj_type_mask, NclStatus status,
                               NclQuark path, int rw_status);
+extern NclGroup *_NclCreateGroup(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
+                                 unsigned int obj_type_mask, NclStatus status,
+                                 NclFile file_in, NclQuark group_name);
+extern NhlErrorTypes _NclPrintFileSummary(NclObj self, FILE *fp);
+extern NclQuark *_NclFileReadVarNames(NclFile thefile, int *num_vars);
+extern NclQuark *_NclFileReadGrpNames(NclFile thefile, int *num_grps);
+extern ng_size_t *_NclFileReadChunkSizes(NclFile thefile, int *nchunks);
+extern int _NclFileReadCompressionLevel(NclFile thefile);
+extern NclQuark _NclFileReadVersion(NclFile thefile);
 
 #endif /*_FileSupport_h */
 

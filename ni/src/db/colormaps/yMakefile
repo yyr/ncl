@@ -28,6 +28,7 @@ FILES		= \
 		WhViBlGrYeOrReWh.gp \
 		WhViBlGrYeOrReWh.rgb \
 		amwg.rgb \
+		amwg256.rgb \
 		cosam.rgb \
 		cosam12.rgb \
 		default.rgb \
@@ -108,7 +109,17 @@ FILES		= \
 		OceanLakeLandSnow.rgb \
 		WhiteBlue.rgb \
 		WhiteYellowOrangeRed.rgb \
-		WhiteGreen.rgb
+		WhiteGreen.rgb \
+		cmp_b2r.rgb \
+		cmp_flux.rgb \
+		cmp_haxby.rgb \
+		matlab_hot.rgb \
+		matlab_hsv.rgb \
+		matlab_jet.rgb \
+		matlab_lines.rgb \
+		seaice_1.rgb \
+		seaice_2.rgb \
+		GHRSST_anomaly.rgb
 
 
 CMPATH	= $(LIBNCARGPATH)/colormaps

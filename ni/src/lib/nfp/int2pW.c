@@ -39,7 +39,7 @@ NhlErrorTypes int2p_W( void )
 /*
  * Declare various variables for random purposes.
  */
-  int i, index_in, index_out;
+  ng_size_t i, index_in, index_out;
   ng_size_t npin, npout;
   int ier = 0, ret, inpin, inpout;
   int nmiss = 0, nmono = 0;
@@ -215,9 +215,15 @@ NhlErrorTypes int2p_W( void )
 
   size_xout   = size_leftmost * npout;
 
-  if(type_xin  != NCL_double && type_pin != NCL_double &&
-     type_pout != NCL_double) {
-
+/*
+ * Set type for return array.
+ *
+ * We used to check the types of xin, pin, and pout. Dennis asked
+ * that we change this in V6.1.0 so that it only checks xin. 
+ *
+ * See JIRA NCL-1201.
+ */
+  if(type_xin != NCL_double) {
     type_xout = NCL_float;
 
     xout     = (void*)calloc(size_xout,sizeof(float));
@@ -405,7 +411,7 @@ NhlErrorTypes int2p_n_W( void )
  */
   ng_size_t i, j, npin, npout;
   int ier = 0, ret, inpin, inpout;
-  int nrni, nrno, index_nri, index_nro, index_in, index_out;
+  ng_size_t nrni, nrno, index_nri, index_nro, index_in, index_out;
   int nmiss = 0, nmono = 0;
 /*
  * Retrieve parameters
@@ -611,10 +617,13 @@ NhlErrorTypes int2p_n_W( void )
 
 /*
  * Set type for return array.
+ *
+ * We used to check the types of xin, pin, and pout. Dennis asked
+ * that we change this in V6.1.0 so that it only checks xin. 
+ *
+ * See JIRA NCL-1201.
  */
-  if(type_xin  != NCL_double && type_pin != NCL_double &&
-     type_pout != NCL_double) {
-
+  if(type_xin != NCL_double) {
     type_xout = NCL_float;
 
     xout     = (void*)calloc(size_xout,sizeof(float));

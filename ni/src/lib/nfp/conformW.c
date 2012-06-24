@@ -56,12 +56,12 @@ NhlErrorTypes conform_W( void )
   ng_size_t dsizes_x[NCL_MAX_DIMENSIONS];
   ng_size_t dsizes_conform[NCL_MAX_DIMENSIONS];
   NclBasicDataTypes type_x;
+
 /*
  * Output array variables
  */
   void *conform;
   int ndims;
-  ng_size_t *dsizes;
 /*
  * various
  */
@@ -258,12 +258,12 @@ NhlErrorTypes conform_W( void )
  */
   if(tmp_md->multidval.missing_value.has_missing) {
     ret = NclReturnValue(conform,ndims,dsizes_x,
-			 &tmp_md->multidval.missing_value.value,
-			 tmp_md->multidval.data_type,0);
+                         &tmp_md->multidval.missing_value.value,
+                         tmp_md->multidval.data_type,0);
   }
   else {
     ret = NclReturnValue(conform,ndims,dsizes_x,NULL,
-			 tmp_md->multidval.data_type,0);
+                         tmp_md->multidval.data_type,0);
   }
   return(ret);
 }
@@ -495,13 +495,391 @@ NhlErrorTypes conform_dims_W( void )
  */
   if(tmp_md->multidval.missing_value.has_missing) {
     ret = NclReturnValue(conform,ndims,dsizes_x,
-			 &tmp_md->multidval.missing_value.value,
-			 tmp_md->multidval.data_type,0);
+                         &tmp_md->multidval.missing_value.value,
+                         tmp_md->multidval.data_type,0);
   }
   else {
     ret = NclReturnValue(conform,ndims,dsizes_x,NULL,
-			 tmp_md->multidval.data_type,0);
+                         tmp_md->multidval.data_type,0);
   }
   NclFree(dsizes_x);
+  return(ret);
+}
+
+/*   
+ * This function takes an input array and reshapes it to the given
+ * dimensions. A simple case would be reshaping an N x M array to 
+ * a 1D array of length N*M.  Or, reshaping a 10 x 10 x 20 array to
+ * a 100 x 20 array.
+ *
+ * Another case that was added later was to allow leftmost dimensions.
+ * That is, if x is 10 x 20 x 100, you can say:
+ * 
+ * y = reshape(x,(/10,10/))
+ *
+ * and y will be 10 x 20 x 10 x 10.
+ *
+ * Yet another case: if x is 3 x 4, you can do:
+ *
+ * y = reshape(x,(/5,6,12/))
+ *
+ * and y will be 5 x 6 x 12.
+ *
+ * The restriction is that the product of the input dimensions
+ * must equal the product of some subset of the rightmost 
+ * dimensions of x OR the product of the x dimensions must equal
+ * the product of some subset of the rightmost input dimensions.
+ */
+
+NhlErrorTypes reshape_W( void )
+{
+/*
+ * Input argument #1
+ */
+  NclMultiDValData tmp_md = NULL;
+  NclStackEntry data;
+
+/*
+ * Input argument #2
+ */
+  void *tmp_dsizes_reshape;
+  ng_size_t *dsizes_reshape;
+  ng_size_t dsizes_reshape_dsizes[1];
+  NclBasicDataTypes type_dsizes_reshape;
+
+/*
+ * Output array variable.
+ */
+  void *xreshape;
+  int ndims_xreshape;
+  ng_size_t *dsizes_xreshape;
+
+/*
+ * various
+ */
+  ng_size_t i, size_x, product_dimsizes, size_leftmost;
+  logical matched_x_sizes, matched_input_sizes;
+  int leftmost_index=-1, ret;
+/*
+ * Retrieve parameters
+ */
+
+  data = _NclGetArg(0,2,DONT_CARE);
+
+  switch(data.kind) {
+  case NclStk_VAR:
+    tmp_md = _NclVarValueRead(data.u.data_var,NULL,NULL);
+    break;
+  case NclStk_VAL:
+    tmp_md = (NclMultiDValData)data.u.data_obj;
+    break;
+  default:
+    break;
+  }
+
+  tmp_dsizes_reshape = (void*)NclGetArgValue(
+           1,
+           2,
+           NULL,
+           dsizes_reshape_dsizes,
+           NULL,
+           NULL,
+           &type_dsizes_reshape,
+           DONT_CARE);
+
+  dsizes_reshape = get_dimensions(tmp_dsizes_reshape,
+                                  dsizes_reshape_dsizes[0],
+                                  type_dsizes_reshape,"reshape");
+  if(dsizes_reshape == NULL) 
+    return(NhlFATAL);
+
+  product_dimsizes = 1;
+  for(i = 0; i < dsizes_reshape_dsizes[0]; i++) product_dimsizes *= 
+                                                  dsizes_reshape[i];
+
+/*
+ * Test if product of input dimension sizes matches product of
+ * rightmost dimensions of x.
+ */
+  matched_x_sizes = matched_input_sizes = False;
+  size_x = 1;
+  for( i=(tmp_md->multidval.n_dims-1); i >= 0; i--) {
+    size_x *= tmp_md->multidval.dim_sizes[i];
+    if(size_x == product_dimsizes) {
+      matched_x_sizes = True;
+      leftmost_index = i-1;
+    }
+  }
+
+/*
+ * Test if product of x dimension sizes matches product of
+ * rightmost input dimensions.
+ */
+  if(!matched_x_sizes) {
+    product_dimsizes = 1;
+    for(i=(dsizes_reshape_dsizes[0]-1); i >= 0; i--) {
+      product_dimsizes *= dsizes_reshape[i];
+      if(size_x == product_dimsizes) {
+        matched_input_sizes = True;
+        leftmost_index = i-1;
+      }
+    }
+  }
+
+  if(!matched_x_sizes && !matched_input_sizes) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"reshape: input dimension sizes cannot conform to dimensions of input array");
+    return(NhlFATAL);
+  }
+/*
+ * If matched_x_sizes is True, then the input dimension sizes are 
+ * a subset of the dimensions of the input x array. This means 
+ * we need to construct the new output dimension sizes.
+ */
+  size_leftmost = 1;
+  if(matched_x_sizes) {
+    ndims_xreshape  =  (leftmost_index+1) + dsizes_reshape_dsizes[0];
+    dsizes_xreshape = (ng_size_t*)calloc(ndims_xreshape,sizeof(ng_size_t));
+    for(i = 0; i <= leftmost_index; i++) {
+      dsizes_xreshape[i] = tmp_md->multidval.dim_sizes[i];
+    }
+    for(i = 0; i < dsizes_reshape_dsizes[0]; i++) {
+      dsizes_xreshape[leftmost_index+i+1] = dsizes_reshape[i];
+    }
+  }
+/*
+ * The x dimension sizes are a subset of the input dimension sizes.
+ * Even though we can use the input dimension sizes as the dimension
+ * sizes for the output array, go ahead and construct the output
+ * dimensions, to stay consistent with previous code.
+ */
+  else {
+    ndims_xreshape  = dsizes_reshape_dsizes[0];
+    dsizes_xreshape = (ng_size_t*)calloc(ndims_xreshape,sizeof(ng_size_t));
+    for(i = 0; i <= leftmost_index; i++) {
+      size_leftmost *= dsizes_reshape[i];
+    }
+    for(i = 0; i < ndims_xreshape; i++) {
+      dsizes_xreshape[i] = dsizes_reshape[i];
+    }
+  }
+/*
+ * Allocate space for output array. We want "size_leftmost" copies of
+ * the original array.
+ */
+  xreshape = (void*)malloc(tmp_md->multidval.totalsize * size_leftmost);
+  if( xreshape == NULL ) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"reshape: Unable to allocate memory for output array");
+    return(NhlFATAL);
+  }
+/*
+ * Copy values to new array.
+ */
+  if(matched_x_sizes) {
+    memcpy((void*)((char*)xreshape),
+           (void*)((char*)tmp_md->multidval.val),tmp_md->multidval.totalsize);
+  }
+  else {
+    for(i = 0; i < size_leftmost; i++) {
+      memcpy((void*)((char*)xreshape + i*tmp_md->multidval.totalsize),
+             (void*)((char*)tmp_md->multidval.val),tmp_md->multidval.totalsize);
+    }
+  }
+
+/*
+ * Return values.
+ */
+  if(tmp_md->multidval.missing_value.has_missing) {
+    ret = NclReturnValue(xreshape,ndims_xreshape,
+                         dsizes_xreshape,
+                         &tmp_md->multidval.missing_value.value,
+                         tmp_md->multidval.data_type,0);
+  }
+  else {
+    ret = NclReturnValue(xreshape,ndims_xreshape,dsizes_xreshape,
+                         NULL,tmp_md->multidval.data_type,0);
+  }
+  NclFree(dsizes_reshape);
+  NclFree(dsizes_xreshape);
+  return(ret);
+}
+
+
+NhlErrorTypes reshape_ind_W( void )
+{
+/*
+ * Input argument #0
+ */
+  void *x;
+  int ndims_x, has_missing_x;
+  NclScalar missing_x;
+  ng_size_t dsizes_x[NCL_MAX_DIMENSIONS];
+  NclBasicDataTypes type_x;
+  NclTypeClass typeclass_x;
+  int size_x_type;
+/*
+ * Input argument #1
+ */
+  void *tmp_indexes;
+  ng_size_t *indexes;
+  ng_size_t dsizes_indexes[1];
+  NclBasicDataTypes type_indexes;
+
+/*
+ * Input argument #2
+ */
+  void *tmp_reshape_dsizes;
+  ng_size_t *reshape_dsizes;
+  ng_size_t dsizes_reshape_dsizes[1];
+  NclBasicDataTypes type_reshape_dsizes;
+
+/*
+ * Output array variable.
+ */
+  void *xreshape;
+  ng_size_t *dsizes_xreshape;
+  int ndims_xreshape;
+  NclScalar missing_xreshape;
+
+/*
+ * various
+ */
+  ng_size_t total_leftmost, total_reshape, total_output;
+  ng_size_t i, j, nvals, invals, inreshape, index_x, index_xreshape;
+  int ret;
+
+  x = (void*)NclGetArgValue(
+           0,
+           3,
+           &ndims_x, 
+           dsizes_x,
+           &missing_x,
+           &has_missing_x,
+           &type_x,
+           DONT_CARE);
+
+  nvals = dsizes_x[ndims_x-1];
+
+  tmp_indexes = (void*)NclGetArgValue(
+           1,
+           3,
+           NULL,
+           dsizes_indexes,
+           NULL,
+           NULL,
+           &type_indexes,
+           DONT_CARE);
+
+  if(dsizes_indexes[0] != nvals) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"reshape_ind: the number of indexes must be the same as the rightmost dimension of x");
+    return(NhlFATAL);
+  }
+
+  indexes = get_dimensions(tmp_indexes,nvals,type_indexes,"reshape_ind");
+
+  if(indexes == NULL) 
+    return(NhlFATAL);
+
+  tmp_reshape_dsizes = (void*)NclGetArgValue(
+           2,
+           3,
+           NULL,
+           dsizes_reshape_dsizes,
+           NULL,
+           NULL,
+           &type_reshape_dsizes,
+           DONT_CARE);
+
+  reshape_dsizes = get_dimensions(tmp_reshape_dsizes,dsizes_reshape_dsizes[0],
+                                  type_reshape_dsizes,"reshape_ind");
+  if(reshape_dsizes == NULL) 
+    return(NhlFATAL);
+
+/*
+ * Get size and default missing value of x.
+ */
+  typeclass_x = (NclTypeClass)_NclNameToTypeClass(NrmStringToQuark(_NclBasicDataTypeToName(type_x)));
+  size_x_type = typeclass_x->type_class.size;
+
+/*
+ * Get input missing value, or default missing value for the input type.
+ */
+  if(has_missing_x) {
+    missing_xreshape = missing_x;
+  }
+  else {
+    missing_xreshape = typeclass_x->type_class.default_mis;
+  }
+
+/*
+ * Construct dimensions for output array
+ */
+  ndims_xreshape = (ndims_x-1) + dsizes_reshape_dsizes[0];
+  dsizes_xreshape = (ng_size_t*)malloc(ndims_xreshape*sizeof(ng_size_t));
+  
+  if(dsizes_xreshape == NULL) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"reshape_ind: unable to allocate space for output array dimension sizes");
+    return(NhlFATAL);
+  }
+
+/*
+ * Get total elements in leftmost dimensions. 
+ */
+  total_leftmost = 1;
+  for(i = 0; i < ndims_x-1; i++) {
+    total_leftmost *= dsizes_x[i];
+    dsizes_xreshape[i] = dsizes_x[i];
+  }
+/*
+ * Get total elements in reshape dimensions. 
+ */
+  total_reshape = 1;
+  for(i = 0; i < dsizes_reshape_dsizes[0]; i++) {
+    total_reshape *= reshape_dsizes[i];
+    dsizes_xreshape[(ndims_x-1)+i] = reshape_dsizes[i];
+  }
+
+/*
+ * Allocate space for output.
+ */
+  total_output = total_leftmost * total_reshape;
+  xreshape     = (void*)malloc(total_output*size_x_type);
+  
+  if(xreshape == NULL) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"reshape_ind: unable to allocate space for output array");
+    return(NhlFATAL);
+  }
+
+/*
+ * Initially set all values to missing.
+ */
+  for(i = 0; i < total_output; i++) {
+    memcpy((void*)((char*)xreshape + (i*size_x_type)),
+           (void*)((char*)&missing_xreshape),size_x_type);
+  }
+/*
+ * Copy values to new array.
+ */
+  for(i = 0; i < total_leftmost; i++) {
+    invals    = i*nvals;
+    inreshape = i*total_reshape;
+    for(j = 0; j < nvals; j++) {
+      index_xreshape = inreshape + indexes[j];
+      index_x        = invals + j;
+      memcpy((void*)((char*)xreshape + (index_xreshape*size_x_type)),
+             (void*)((char*)x+(index_x*size_x_type)),size_x_type);
+    }
+  }
+
+/*
+ * Return values.
+ */
+  ret = NclReturnValue(xreshape,ndims_xreshape,dsizes_xreshape,
+                       &missing_xreshape,type_x,0);
+/*
+ * Clean up
+ */
+  NclFree(dsizes_xreshape);
+  NclFree(reshape_dsizes);
+  NclFree(indexes);
   return(ret);
 }

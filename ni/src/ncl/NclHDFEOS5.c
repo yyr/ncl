@@ -28,12 +28,12 @@
 #endif
 #include "defs.h"
 #define HAVE_NETCDF
-#include <hdf/mfhdf.h>
 #include "NclDataDefs.h"
 #include "NclData.h"
 #include "NclFileInterfaces.h"
 #include <math.h>
 #include <ctype.h>
+#include <string.h>
 #include <HE5_HdfEosDef.h>
 
 #ifndef MAX_VAR_DIMS
@@ -130,6 +130,39 @@ static void getHDFEOS5ZonalAverageData(HDFEOS5FileRecord *the_file, NclQuark pat
 
 static NrmQuark Qmissing_val;
 static NrmQuark Qfill_val;
+
+static int MyHDFEOS5setOrigincode(double *upper_left, double *lower_right)
+{
+    int origincode = HE5_HDFE_GD_UL;
+
+  /*x-direction*/
+    if(lower_right[0] > upper_left[0])
+    {
+      /*y-direction*/
+        if(lower_right[1] > upper_left[1])
+        {
+             origincode = HE5_HDFE_GD_UL;
+        }
+        else
+        {
+             origincode = HE5_HDFE_GD_LL;
+        }
+    }
+    else
+    {
+      /*y-direction*/
+        if(lower_right[1] > upper_left[1])
+        {
+             origincode = HE5_HDFE_GD_UR;
+        }
+        else
+        {
+             origincode = HE5_HDFE_GD_LR;
+        }
+    }
+
+    return origincode;
+}
 
 int HDFEOS5unsigned(long typenumber)
 {
@@ -306,7 +339,7 @@ static char *_make_proper_string_end(const char *input_name)
 
     name = strdup(input_name);
     n = strlen(name);
-    i = strlen(name) - 1;
+    i = n - 1;
 
     while(i)
     {
@@ -1470,11 +1503,11 @@ NclQuark path;
     hsize_t *dimsizes;
     int max_ndims = MAX_NDIMS;
 
-    int projcode = 0;
-    int zonecode = 0;
-    int spherecode = 0;
-    int origincode = 0;
-    int pixregcode = 0;
+    int projcode = -1;
+    int zonecode = -1;
+    int spherecode = -1;
+    int origincode = -1;
+    int pixregcode = -1;
     double projparm[MAX_VAR];
     double upper_left[2],lower_right[2];
 
@@ -1572,7 +1605,7 @@ NclQuark path;
     HDFEOS5ParseName(buffer,gd_hdf_names,gd_ncl_names,ngd);
     for(i = 0; i < ngd; i++)
     {
-        intn status;
+        int status;
         int has_xdim_var = 0, has_ydim_var = 0;
         NrmQuark xdim_name = NrmNULLQUARK, ydim_name = NrmNULLQUARK;
         NrmQuark qproj_name = NrmNULLQUARK;
@@ -1979,22 +2012,50 @@ NclQuark path;
             }
         }
 
+      /*
+       *Some he5 files do not have GridOrigin, and PixelRegistration,
+       *which result HE5_GDorigininfo and HE5_GDpixreginfo failure.
+       *By default, as these two functions (actually all other eos5 functions)
+       *they print some diagnostic info.
+       *But some users do not want to see these, so we turn it off for these
+       *two functions.
+       *
+       *Wei Huang, 06/30/2011.
+       */
+        HE5_EHset_error_on(2, 0);
         status = HE5_GDorigininfo(HE5_GDid,&origincode);
-        if (status == SUCCEED)
-            status = HE5_GDpixreginfo(HE5_GDid,&pixregcode);
-        if (status == SUCCEED)
+        if(status == FAIL)
         {
-            status = HE5_GDgridinfo(HE5_GDid,&xdimsize,&ydimsize,upper_left,lower_right);
+            NHLPERROR((NhlINFO,NhlEUNKNOWN,
+                "NclHDFEOS GDorigininfo: origincode = %d\n", origincode));
+            /*origincode = HE5_HDFE_GD_UL;*/
         }
-        if (status == SUCCEED)
-            status = HE5_GDprojinfo(HE5_GDid,&projcode,&zonecode,&spherecode,projparm);
+
+        status = HE5_GDpixreginfo(HE5_GDid,&pixregcode);
+        if(status == FAIL)
+        {
+            NHLPERROR((NhlINFO,NhlEUNKNOWN,
+                "NclHDFEOS HE5_GDpixreginfo: pixregcode = %d\n", pixregcode));
+            pixregcode = HE5_HDFE_CENTER;
+        }
+      /*Turn error diagnose back on*/
+        HE5_EHset_error_on(1, 0);
+
+        status = HE5_GDgridinfo(HE5_GDid,&xdimsize,&ydimsize,upper_left,lower_right);
+        if(status == FAIL)
+        {
+            NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+                "NclHDFEOS HE5_GDgridinfo: xdimsize = %d, ydimsize = %d\n", xdimsize, ydimsize));
+        }
+
+        status = HE5_GDprojinfo(HE5_GDid,&projcode,&zonecode,&spherecode,projparm);
         if (status == FAIL)
         {
-            NhlPError(NhlWARNING,NhlEUNKNOWN, 
+            NHLPERROR((NhlWARNING,NhlEUNKNOWN, 
                   "NclHDFEOS5: Invalid projection information for GRID (%s); no coordinates will be provided",
-                  NrmQuarkToString(gd_hdf_names[i]));
+                  NrmQuarkToString(gd_hdf_names[i])));
         }
-        else
+      /*else*/
         {
             NrmQuark dim_names[2];
             hsize_t dim_sizes[2];
@@ -2008,9 +2069,11 @@ NclQuark path;
 
             dim_sizes[0] = ydimsize;
             dim_sizes[1] = xdimsize;
+
             if (projcode == HE5_GCTP_GEO) /* 1D coordinate */
             {
                 HDFEOS5VarInqRec *var = NULL;
+
                 if (! has_xdim_var)
                 {
                     the_file->n_vars++;
@@ -2105,6 +2168,11 @@ NclQuark path;
                 rows[2] = ydimsize - 1;
                 cols[3] = 0;
                 rows[3] = ydimsize - 1;
+
+                if(origincode < 0)
+                {
+                    origincode = MyHDFEOS5setOrigincode(upper_left, lower_right);
+                }
 
                 HE5_GDij2ll(projcode,zonecode,projparm,spherecode,xdimsize,ydimsize,
                     upper_left,lower_right,4,rows,cols,lon2d,lat2d,pixregcode,origincode);
@@ -3330,31 +3398,63 @@ NclQuark thevar;
 static int HE5_GDreadCoordVar
 (long HE5_GDid, HDFEOS5VarInqRec *var, hssize_t *start, hsize_t *stride, hsize_t *edge, void *storage)
 {
-	int origincode;
-	int projcode;
-	int zonecode;
-	int spherecode;
-	int pixregcode;
+	int origincode = -1;
+	int projcode = -1;
+	int zonecode = -1;
+	int spherecode = -1;
+	int pixregcode = -1;
 	long xdimsize,ydimsize;
-	float64 upper_left[2],lower_right[2];
-	float64 projparm[15];
+	double upper_left[2],lower_right[2];
+	double projparm[15];
 	long *cols, *rows;
 	int i, j;
 	int total;
 	double *latitude, *longitude;
-	intn status;
+	int status;
 	int islon;
 
-	status = HE5_GDorigininfo(HE5_GDid,&origincode);
-	if (status == SUCCEED)
-		status = HE5_GDpixreginfo(HE5_GDid,&pixregcode);
-	if (status == SUCCEED)
-		status = HE5_GDgridinfo(HE5_GDid,&xdimsize,&ydimsize,upper_left,lower_right);
-	if (status == SUCCEED)
-		status = HE5_GDprojinfo(HE5_GDid,&projcode,&zonecode,&spherecode,projparm);
-	if (status == FAIL) {
-		return -1;
-	}
+      /*
+       *Some he5 files do not have GridOrigin, and PixelRegistration,
+       *which result HE5_GDorigininfo and HE5_GDpixreginfo failure.
+       *By default, as these two functions (actually all other eos5 functions)
+       *they print some diagnostic info.
+       *But some users do not want to see these, so we turn it off for these
+       *two functions.
+       *
+       *Wei Huang, 06/30/2011.
+       */
+        HE5_EHset_error_on(2, 0);
+        status = HE5_GDorigininfo(HE5_GDid,&origincode);
+        if(status == FAIL)
+        {
+            NHLPERROR((NhlINFO,NhlEUNKNOWN,
+                "NclHDFEOS GDorigininfo: origincode = %d\n", origincode));
+            /*origincode = HE5_HDFE_GD_UL;*/
+        }   
+
+        status = HE5_GDpixreginfo(HE5_GDid,&pixregcode);
+        if(status == FAIL)
+        {
+            NHLPERROR((NhlINFO,NhlEUNKNOWN,
+                "NclHDFEOS HE5_GDpixreginfo: pixregcode = %d\n", pixregcode));
+            pixregcode = HE5_HDFE_CENTER;
+        }
+      /*Turn error diagnose back on*/
+        HE5_EHset_error_on(1, 0);
+
+        status = HE5_GDgridinfo(HE5_GDid,&xdimsize,&ydimsize,upper_left,lower_right);
+        if(status == FAIL)
+        {
+            NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+                "NclHDFEOS HE5_GDgridinfo: xdimsize = %d, ydimsize = %d\n", xdimsize, ydimsize));
+        }
+
+        status = HE5_GDprojinfo(HE5_GDid,&projcode,&zonecode,&spherecode,projparm);
+        if (status == FAIL)
+        {
+            NHLPERROR((NhlWARNING,NhlEUNKNOWN, 
+                  "NclHDFEOS5: Invalid projection information.\n"));
+        }
 
 	if (var->hdf_name == NrmStringToQuark("lon")) {
 		islon = 1;
@@ -3406,9 +3506,13 @@ static int HE5_GDreadCoordVar
 		latitude = (double *) storage;
 	}
 
+        if(origincode < 0)
+        {
+            origincode = MyHDFEOS5setOrigincode(upper_left, lower_right);
+        }
+
 	HE5_GDij2ll(projcode,zonecode,projparm,spherecode,xdimsize,ydimsize,
 		upper_left,lower_right,total,rows,cols,longitude,latitude,pixregcode,origincode);
-
 				
 	if (islon)
 		NclFree(latitude);
@@ -3542,7 +3646,9 @@ void* storage;
 						for(j = 0; j < total_size; j++)
 						{
 							quark_ptr[j] = NrmStringToQuark(datbuf[j]);
+							NclFree(datbuf[j]);
 						}
+						NclFree(datbuf);
 					}
 					else
 					{
@@ -3559,10 +3665,95 @@ void* storage;
 				}
 				break;
 			case POINT:
+				NHLPERROR((NhlFATAL,NhlEUNKNOWN,"NclHDFEOS5 can not hanlde POINT data yet."));
 				return(NULL);
 				break;
 			case ZA:
-				return(NULL);
+				fid = HE5_ZAopen(NrmQuarkToString(thefile->file_path_q),H5F_ACC_RDONLY);
+				did = HE5_ZAattach(fid,NrmQuarkToString(thelist->var_inq->var_class_name));
+				for(j = 0; j < thelist->var_inq->n_dims; j++)
+				{
+					starti[j] = (hssize_t)start[j] ;
+					stridei[j] = (hsize_t)stride[j];
+					tmpf = stridei[j];
+	                                edgei[j] =(hsize_t)(fabs(((double)(finish[j] - start[j]))) /tmpf) + 1;
+	                                total_size *= edgei[j];
+	                                total_size *= edgei[j];
+				}
+
+				if (thelist->var_inq->index_dim != NrmNULLQUARK)
+				{
+					long dimsize = (long) HE5_ZAdiminfo(did,NrmQuarkToString(thelist->var_inq->index_dim));
+					if (edgei[0] == dimsize)
+					{
+#if 1
+						NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+							"NclHDFEOS5: Error ocurred while reading ZA data."));
+#else
+Wei, 11/9/2011.
+This part of code is from Swath, but did not find coresponding ZA code.
+H. Joe Lee case worked.
+We will come back if someone hit it.
+						 HE5_ZAidxmapinfo(did,NrmQuarkToString(thelist->var_inq->index_dim),
+							      NrmQuarkToString(thelist->var_inq->hdf_name),storage);
+#endif
+					}
+					else
+					{
+#if 1
+						NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+							"NclHDFEOS5: Error ocurred while reading ZA data."));
+#else
+Wei, 11/9/2011.
+This part of code is from Swath, but did not find coresponding ZA code.
+H. Joe Lee case worked.
+We will come back if someone hit it.
+						long* tmpout;
+						tmpout = NclMalloc(sizeof(long) * dimsize);
+						HE5_ZAidxmapinfo(did,NrmQuarkToString(thelist->var_inq->index_dim),
+							     NrmQuarkToString(thelist->var_inq->hdf_name),tmpout);
+						for (j = 0; j < edgei[0]; j++) {
+							*(((int*)storage) + j) = (int) (*(tmpout + (long)starti[0] + (long)(stridei[0] * j)));
+						}
+						NclFree(tmpout);
+#endif
+					}
+				}
+				else
+				{
+					if(thelist->var_inq->typenumber == HE5T_CHARSTRING)
+					{
+        					char **datbuf;
+        					NrmQuark *quark_ptr;
+        					datbuf = (char **)NclMalloc(total_size * sizeof(char *));
+						for(j = 0; j < total_size; j++)
+						{
+							datbuf[j] = (char *)NclMalloc(HDFEOS5_BUF_SIZE * sizeof(char));
+						}
+						out = HE5_ZAread(did,NrmQuarkToString(thelist->var_inq->hdf_name),starti,stridei,edgei,datbuf);
+						quark_ptr = (NrmQuark *) storage;
+						for(j = 0; j < total_size; j++)
+						{
+							quark_ptr[j] = NrmStringToQuark(datbuf[j]);
+							NclFree(datbuf[j]);
+						}
+						NclFree(datbuf);
+					}
+					else
+					{
+						out = HE5_ZAread(did,NrmQuarkToString(thelist->var_inq->hdf_name),starti,stridei,edgei,storage);
+					}
+				}
+
+				if(out == 0) {
+					HE5_ZAdetach(did);
+					HE5_ZAclose(fid);
+					return(storage);
+				} else {
+					NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+						"NclHDFEOS5: Error ocurred while reading ZA data."));
+					return(NULL);
+				}
 				break;
 			}
 			

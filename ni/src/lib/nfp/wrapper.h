@@ -45,7 +45,12 @@ extern void coerce_output_float_only(void *,double *,ng_size_t, ng_size_t);
 extern void coerce_output_int_only(void *,double *,ng_size_t, ng_size_t);
 
 extern void coerce_output_float_or_double(void *,double *,
-					   NclBasicDataTypes,ng_size_t,ng_size_t);
+					   NclBasicDataTypes,ng_size_t,
+					  ng_size_t);
+
+extern void coerce_output_float_or_double_ind(void *,double *,
+					      NclBasicDataTypes,ng_size_t,
+					      ng_size_t,ng_size_t*);
 
 extern void coerce_output_float_or_double_step(void *,double *,
 					       NclBasicDataTypes,ng_size_t,ng_size_t,ng_size_t);
@@ -81,6 +86,9 @@ extern void print_minmax(void *,ng_size_t,NclBasicDataTypes);
 
 extern NclDimRec *get_dim_info(int, int);
 
-extern ng_size_t *get_dimensions(void *tmp_dimensions,ng_size_t n_dimensions,
+extern ng_size_t *get_dimensions(void *tmp_dimensions,int n_dimensions,
 				 NclBasicDataTypes type_dimensions,
 				 const char *);
+
+extern int *get_dims_for_n_funcs(int arg_num,  int num_args, NclStackEntry tmpdata,
+				  const char *name, int *ndims);

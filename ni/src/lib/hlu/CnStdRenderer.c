@@ -1,5 +1,5 @@
 /*
- *      $Id: CnStdRenderer.c,v 1.15 2009-09-11 19:25:39 dbrown Exp $
+ *      $Id: CnStdRenderer.c,v 1.15.4.1 2010-03-17 20:47:07 brownrig Exp $
  */
 /************************************************************************
 *									*
@@ -122,6 +122,44 @@ static void   load_hlucp_routines(
 #endif
 );
 
+extern void (_NHLCALLF(cpscae,CPSCAE))(
+	int		*icra,
+	int		*ica1,
+	int		*icam,
+	int		*ican,
+	float		*xcpf,
+	float		*ycpf,
+	float		*xcqf,
+	float		*ycqf,
+	int		*ind1,
+	int		*ind2,
+	int		*icaf,
+	int		*iaid
+);
+
+extern void (_NHLCALLF(cpchcl,CPCHCL))(
+	int *iflg
+);
+
+extern void (_NHLCALLF(dprset,DPRSET))(
+	void
+);
+
+extern void (_NHLCALLF(cpchhl,CPCHHL))(
+	int *iflg
+);
+
+extern void (_NHLCALLF(cpchll,CPCHLL))(
+	int *iflg
+);
+
+extern void (_NHLCALLF(cpmpxy,CPMPXY))(
+	int *imap,
+	float *xinp,
+	float *yinp,
+	float *xotp,
+	float *yotp
+);
 
 NhlCnStdRendererClassRec NhlcnStdRendererClassRec = {
 	{
@@ -1860,13 +1898,14 @@ int (_NHLCALLF(hlucpfill,HLUCPFILL))
 				default:
 					return 0;
 				}
-				col_ix = reg_attrs->fill_color;
+				col_ix = reg_attrs->gks_fcolor;
 				pat_ix = reg_attrs->fill_pat;
 				fscale = reg_attrs->fill_scale;
 			}
 			NhlVASetValues(Cnl->base.wkptr->base.id,
 				       _NhlNwkFillIndex, pat_ix,
 				       _NhlNwkFillColor, col_ix,
+				       _NhlNwkFillOpacityF, Cnp->fill_opacity,
 				       _NhlNwkFillScaleFactorF,fscale,
 				       _NhlNwkFillBackground,
 				       Cnp->fill_background_color,

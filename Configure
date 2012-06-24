@@ -147,7 +147,7 @@ set buildtriangle=`$makecmd TRIANGLESTUFF`
 echo -n "..."
 # set buildpng=`$makecmd PNGSTUFF`
 # echo -n "..."
-set buildcairo=`$makecmd CAIROSTUFF`
+set buildnc4support=`$makecmd NC4STUFF`
 echo -n "..."
 set buildgdal=`$makecmd GDALSTUFF`
 echo -n "..."
@@ -411,6 +411,34 @@ if ($?verbose_option) then
 endif
 
 #
+# NetCDF 4 support.
+#
+if ($?verbose_option) then
+  cat <<"EOF"
+======================================================================
+
+	If you want access to some new NetCDF 4 features.
+	This is experimental for now,
+	so unless you know what you're doing,
+	answer "n" to this question.
+
+======================================================================
+"EOF"
+endif
+
+echo ""
+echo "Build NetCDF4 feature support (optional)? ($buildnc4support)"
+echo "Requires the NetCDF version 4.1.2 or later."
+echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+if (("$answer" != "") && ("$answer" != "$buildnc4support")) then
+	set buildnc4support = $answer
+	set newbuildnc4support
+    set altered
+endif
+
+#
 # Don't ask about PNG support here, because PNG support is now
 # part of cairo.
 #
@@ -443,36 +471,6 @@ endif
 # 	set newbuildpng
 #     set altered
 # endif
-
-#
-# Cairo.
-#
-if ($?verbose_option) then
-  cat <<"EOF"
-======================================================================
-
-	If you want access to the cairo workstations, which will
-	give you PNG and smaller PDF files, then you'll need to
-	download several packages along with cairo. This is
-	experimental for now, so unless you know what you're doing,
-	answer "n" to this question.
-
-======================================================================
-"EOF"
-endif
-
-echo ""
-echo "Build cairo support (optional) into GKS library? ($buildcairo)"
-echo "(Requires the cairo and other external libraries available from"
-echo "http://cairographics.org/) "
-echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
-set answer="$<"
-if ("$answer" == "q") goto cleanup
-if (("$answer" != "") && ("$answer" != "$buildcairo")) then
-	set buildcairo = $answer
-	set newbuildcairo
-    set altered
-endif
 
 #
 # HDF4 is now optional for NCL. Nevertheless because it is also an option 
@@ -1288,8 +1286,8 @@ endif
 # 	endif
 # endif
 
-if ($?newbuildcairo  && "$buildcairo" == "y") then
-	echo "#define BuildCAIRO 1" >> Site.local
+if ($?newbuildnc4support  && "$buildnc4support" == "y") then
+	echo "#define UseNetCDF4Features 1" >> Site.local
 endif
 
 if ($?newbuildnetcdf4) then

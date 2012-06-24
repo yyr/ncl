@@ -984,6 +984,14 @@ end
 ;          max_index:logical                                            ;
 ;                res:logical                                            ;
 ;                                                                       ;
+;***********************************************************************;
+; In Version 6.1.0, gsnSpreadColors is basically deprecated, and        ;
+; replaced with cnSpanFillPalette, vcSpanFillPalette, etc, which are    ;
+; True by default. If the user sets gsnSpreadColorStart and/or          ;
+; gsnSpreadColorEnd to something other than their default values (2 and ;
+; -1), then the spread_colors algorithm will kick in.                   ;
+;***********************************************************************;
+;                                                                       ;
 ; By default, all of the plotting routines use the first n colors from  ;
 ; a color map, where "n" is the number of contour or vector levels.     ;
 ; If "gsnSpreadColors" is set to  True, then the colors are spanned     ;
@@ -995,16 +1003,27 @@ end
 ; If after adjusting for negative index color(s), and                   ;
 ; max_index < min_index, then the colors are reversed.                  ;
 ;                                                                       ;
-; The "res" is just to check if cnFillColors or vcLevelColors are       ;
-; already being set, and to issue a warning message (spread_colors will ;
-; take precedence over cnFillColors.)                                   ;
+; In NCL versions 6.0.0 and earlier, if you had both xxYYYYColors set   ;
+; and gsnSpreadColors was set to True, then the xxYYYYColors resource   ;
+; would be ignored, and gsnSpreadColors took precedence.                ;
+;                                                                       ;
+; In versions 6.1.0 and later, the opposite is True. gsnSpreadColors    ;
+; is now True by default, but if you set xxYYYYColors, then this will   ;
+; take precedence, and no message will be printed.                      ;
 ;***********************************************************************;
 undef("spread_colors")
 function spread_colors(wks:graphic,plot:graphic,min_index:integer,\
                         max_index:integer,res:logical)
 local ncols, lcount, fcols, icols, minix, maxix, nc, fmin, fmax, class,\
-levelcountres
+levelcountres, cmap
 begin
+  if(.not.isvar("GSN_SPREAD_COLOR_DEBUG")) then
+    GSN_SPREAD_COLOR_DEBUG = False
+  end if
+  if(GSN_SPREAD_COLOR_DEBUG) then
+    print("spread_colors: at the top of this function")
+  end if
+
   class = NhlClassName(plot)
   if(.not.any(class.eq.(/"contourPlotClass","logLinPlotClass",\
                          "irregularPlotClass","vectorPlotClass", \
@@ -1013,38 +1032,30 @@ begin
     return(ispan(2,255,1))
   end if
 
+
   if (class.eq."contourPlotClass".or.class.eq."logLinPlotClass".or.\
       class.eq."irregularPlotClass")
-    if(isatt(res,"cnFillColors")) then
-       print("spread_colors: warning: you are setting both cnFillColors and")
-       print("               gsnSpreadColors. Your cnFillColors resource will")
-       print("               be ignored. If this is not desired, delete the")
-       print("               setting of gsnSpreadColors or set it to False.")
-    end if
     levelcountres = "cnLevelCount"
   else
     if (class.eq."vectorPlotClass") then
       levelcountres = "vcLevelCount"
-      if(isatt(res,"vcLevelolors")) then
-         print("spread_colors: warning: you are setting both vcLevelColors and")
-         print("               gsnSpreadColors. Your vcLevelColors resource will")
-         print("               be ignored. If this is not desired, delete the")
-         print("               setting of gsnSpreadColors or set it to False.")
-      end if
     else
       levelcountres = "stLevelCount"
-      if(isatt(res,"stLevelColors")) then
-         print("spread_colors: warning: you are setting both stLevelColors and")
-         print("               gsnSpreadColors. Your stLevelColors resource will")
-         print("               be ignored. If this is not desired, delete the")
-         print("               setting of gsnSpreadColors or set it to False.")
-      end if
     end if
   end if
 
+;**********************************************************************
+; This code has to be replaced with the proper way to retrieve colors
+; once 6.1.0
+;**********************************************************************
   getvalues wks
-    "wkColorMapLen" : ncols
+    "wkColorMap" : cmap
   end getvalues
+  ncols = dimsizes(cmap(:,0))
+
+  if(GSN_SPREAD_COLOR_DEBUG) then
+    print("spread_colors: size of current color map is " + ncols)
+  end if
 
   if (class.eq."contourPlotClass".or.class.eq."vectorPlotClass".or. \
       class.eq."streamlinePlotClass")
@@ -1091,6 +1102,10 @@ begin
     minix   = itmp
   end if
 
+  if(GSN_SPREAD_COLOR_DEBUG) then
+    print("spread_colors: minix/maxix = " + minix + "/" + maxix)
+  end if
+
   fmin = new(1,float)
   fmax = new(1,float)
 
@@ -1103,6 +1118,14 @@ begin
     icols = tointeger(fcols(::-1) + 0.5)
   end if
 
+  if(GSN_SPREAD_COLOR_DEBUG) then
+    print("spread_colors: icols = " + icols)
+  end if
+
+;
+; There may be some cases where you want to return the indexes
+; here, for compatibility with NCL Version 6.0.0 and earlier.
+;
   return(icols)
 end
 
@@ -1756,17 +1779,42 @@ end
 ; This function is for gsn_panel, to help it determine which plot info  ;
 ; to use to construct a labelbar.                                       ;
 ;                                                                       ;
+; In NCL V6.1.0, we made the PlotManager the default labelbar, so we    ;
+; added some checks to this code for pmLabelBarDisplayMode being equal  ;
+; to 1 ("Always").                                                      ; 
 ;***********************************************************************;
 undef("get_plot_labelbar")
 function get_plot_labelbar(plot:graphic)
-local found, id_class, i, ids, nids
+local found, id_class, i, ids, nids, class_name
 begin
   new_plot = new(1,graphic)
 
+;
+; If new_plot contains a "labelbar" attribute, it likely came
+; from one of the vector_scalar functions, in which the
+; labelbar could either be from filled contours, or colored
+; vectors.
+;
   if(isatt(plot,"labelbar").and.isatt(plot,"labelbar_type")) then
     new_plot           = plot@labelbar
     new_plot@plot_type = plot@labelbar_type
     return(new_plot)
+  end if
+;
+; This part was added in NCL V6.1.0, to test for a PlotManager
+; labelbar. If it's there, then return this.
+;
+  class_name = NhlClassName(plot)
+  if(any(class_name.eq.(/"ContourPlot","VectorPlot","StreamlinePlot"/))) then
+    getvalues plot
+      "pmLabelBarDisplayMode" : lbar_mode
+    end getvalues
+;---lbar_mode.eq.1 --> "Always"
+    if(lbar_mode.eq.1) then
+      new_plot = plot
+      new_plot@PlotManagerLabelBar = True
+      return(new_plot)
+    end if
   end if
 ;
 ; This code was added after V5.1.1. It is better to use the
@@ -1788,9 +1836,10 @@ begin
     id_class = NhlClassName(ids(i))
     if(id_class.eq."contourPlotClass") then
       getvalues ids(i)
-        "cnFillOn" : cn_fillon
+        "cnFillOn"              : cn_fillon
+        "pmLabelBarDisplayMode" : lbar_mode
       end getvalues 
-      if(cn_fillon) then
+      if(lbar_mode.eq.1.or.cn_fillon) then
         found = True
         new_plot = ids(i)
         new_plot@plot_type = "contour"
@@ -1806,8 +1855,10 @@ begin
         "vcMonoFillArrowFillColor" : vc_monofillarrowfillcolor
         "vcMonoLineArrowColor"     : vc_monolinearrowcolor
         "vcMonoWindBarbColor"      : vc_monowindbarbcolor
+        "pmLabelBarDisplayMode"    : lbar_mode
       end getvalues
-      if( (vc_glyphstyle.eq.0.and..not.vc_monolinearrowcolor) .or.\
+      if( (lbar_mode.eq.1) .or.\
+          (vc_glyphstyle.eq.0.and..not.vc_monolinearrowcolor) .or.\
           (vc_glyphstyle.eq.1.and..not.vc_monofillarrowcolor) .or. \
           (vc_glyphstyle.eq.2.and..not.vc_monowindbarbcolor)  .or. \
           (vc_glyphstyle.eq.3.and..not.vc_monolinearrowcolor)) then
@@ -1818,9 +1869,10 @@ begin
     end if
     if(id_class.eq."streamlinePlotClass") then
       getvalues ids(i)
-        "stMonoLineColor"     : st_monolinecolor
+        "stMonoLineColor"       : st_monolinecolor
+        "pmLabelBarDisplayMode" : lbar_mode
       end getvalues
-      if(st_monolinecolor) then
+      if(lbar_mode.eq.1.or..not.st_monolinecolor) then
         found = True
         new_plot = ids(i)
         new_plot@plot_type = "streamline"
@@ -2210,9 +2262,9 @@ begin
   end if
   write_lines("", lines, nlines)
   write_lines(";", lines, nlines)
-  write_lines("; Open X11 file.", lines, nlines)
+  write_lines("; Open PNG file.", lines, nlines)
   write_lines(";", lines, nlines)
-  write_lines("  wks = gsn_open_wks(" + q + "x11" + q + ", " + q + debug_file + q + ")", lines, nlines)
+  write_lines("  wks = gsn_open_wks(" + q + "png" + q + ", " + q + debug_file + q + ")", lines, nlines)
 ;
 ; Set colormap, if one inputted by user.
 ;
@@ -3256,12 +3308,14 @@ function gsn_open_x11(name[1]:string)
 local window
 begin
     if(isatt(name,"wkColorMap"))
-      window = create name + "_x11" xWorkstationClass defaultapp
+      window = create name + "_x11" windowWorkstationClass defaultapp
+        "wkFormat": "x11"
         "wkPause" : True
         "wkColorMap" : name@wkColorMap
       end create
     else
-      window = create name + "_x11" xWorkstationClass defaultapp
+      window = create name + "_x11" windowWorkstationClass defaultapp
+        "wkFormat": "x11"
         "wkPause" : True
       end create
     end if
@@ -3368,8 +3422,8 @@ function is_cairo_ps(wtype)
 local lwtype, cpsenv
 begin
   lwtype = lower_case(wtype)
-  cpsenv = getenv("NCARG_CAIRO_PS")
-  if(lwtype.eq."newps".or.(lwtype.eq."ps".and..not.ismissing(cpsenv))) then
+  cpsenv = getenv("NCARG_OLD_PS")
+  if(lwtype.eq."newps".or.(lwtype.eq."ps".and.ismissing(cpsenv))) then
     return(True)
   else
     return(False)
@@ -3384,8 +3438,8 @@ function is_cairo_pdf(wtype)
 local lwtype, cpdfenv
 begin
   lwtype  = lower_case(wtype)
-  cpdfenv = getenv("NCARG_CAIRO_PDF")
-  if(lwtype.eq."newpdf".or.(lwtype.eq."pdf".and..not.ismissing(cpdfenv))) then
+  cpdfenv = getenv("NCARG_OLD_PDF")
+  if(lwtype.eq."newpdf".or.(lwtype.eq."pdf".and.ismissing(cpdfenv))) then
     return(True)
   else
     return(False)
@@ -3621,9 +3675,9 @@ begin
         paperW = get_res_value(wkresnew,"wkPaperWidthF", -1.)
         paperH = get_res_value(wkresnew,"wkPaperHeightF", -1.)
         if(is_cairo_ps(type)) then
-          newtype = "newps"    ; Can't use "ps" for cairo PS yet
+          newtype = "ps"    ; may be either "ps" or "newps"
         else
-          newtype = "newpdf"   ; Can't use "pdf" for cairo PDF yet
+          newtype = "pdf"   ; may be either "pdf" or "newpdf"
         end if
 
         cairo = create res_file documentWorkstationClass defaultapp
@@ -3723,7 +3777,7 @@ end
 ;***********************************************************************;
 undef("gsn_open_wks")
 function gsn_open_wks(type[1]:string,name[1]:string)
-local i, wks, appusrdir, name_char, not_found, res_file, res_dir
+local i, wks, appusrdir, name_char, not_found, res_file, res_dir, type2, realtype, suffix
 begin
     type2   = type          ; Make copy of type and its resources
     type2  = lower_case(type)
@@ -3774,11 +3828,17 @@ begin
       valid_type = True
     end if
 
-    if (type2.eq."ps".or.type2.eq."eps".or. \
-        type2.eq."epsi") then
-      ps_file = get_res_value(type2,"wkPSFileName",res_file + "." + type2)
+    if (type2.eq."oldps".or.type2.eq."eps".or. \
+        type2.eq."epsi".or.(type2.eq."ps".and..not.ismissing(getenv("NCARG_OLD_PS")))) then
+      realtype = type2   ; copy value and attributes
+      suffix = type2
+      if (realtype.eq."oldps") then
+        realtype = "ps"
+        suffix = "ps"
+      end if
+      ps_file = get_res_value(realtype,"wkPSFileName",res_file + "." + suffix)
       ps_file@res_file = res_file
-      wks = gsn_open_ps(type2,res_dir+ps_file)
+      wks = gsn_open_ps(realtype,res_dir+ps_file)
       valid_type = True
     end if
 
@@ -3793,11 +3853,15 @@ begin
       valid_type = True
     end if
 
-    if (type2.eq."pdf") then
-      pdf_file = get_res_value(type2,"wkPDFFileName", \
-                               res_file + "." + type2)
+    if (type2.eq."oldpdf".or.(type2.eq."pdf".and..not.ismissing(getenv("NCARG_OLD_PDF")))) then
+      realtype = type2  ; copy value and attributes
+      if (realtype.eq."oldpdf") then
+          realtype = "pdf"
+      end if
+      pdf_file = get_res_value(realtype,"wkPDFFileName", \
+                               res_file + "." + "pdf")
       pdf_file@res_file = res_file
-      wks = gsn_open_pdf(type2, res_dir+pdf_file)
+      wks = gsn_open_pdf(realtype, res_dir+pdf_file)
       valid_type = True
     end if
 
@@ -4497,6 +4561,229 @@ begin
   end if
 end
 
+;***********************************************************************;
+; Function : gsn_add_shapefile_polylines                                ;
+;                   wks: workstation object                             ;
+;                plotid: plot object                                    ;
+;                 fname: Name of shapefile ("xxxx.shp")                 ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function attaches shapefile polylines to the plot "plotid".      ;
+;***********************************************************************;
+undef("gsn_add_shapefile_polylines")
+function gsn_add_shapefile_polylines(wks,plot,fname:string,lnres)
+local f, segments, geometry, segsDims, geomDims, geom_segIndex, \
+geom_numSegs, segs_xyzIndex, segs_numPnts, numFeatures, i, lat, lon, \
+startSegment, numSegments, seg, startPT, endPT, npoly, npl
+begin
+;---Open the shapefile
+  f = addfile(fname,"r")
+
+;---Error checking
+  if(ismissing(f)) then
+    print("Error: gsn_add_shapefile_polylines: Can't open shapefile '" + \
+           fname + "'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;---We can't use this routine to plot point data
+  if(.not.any(f@geometry_type.eq.(/"polygon","polyline"/))) then
+    print("Error: gsn_add_shapefile_polylines: geometry_type attribute must be 'polygon' or 'polyline'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;---Read data off the shapefile
+  segments = f->segments
+  geometry = f->geometry
+  segsDims = dimsizes(segments)
+  geomDims = dimsizes(geometry)
+
+;---Read global attributes  
+  geom_segIndex = f@geom_segIndex
+  geom_numSegs  = f@geom_numSegs
+  segs_xyzIndex = f@segs_xyzIndex
+  segs_numPnts  = f@segs_numPnts
+  numFeatures   = geomDims(0)
+
+;---Create array to hold all polylines
+  npoly = sum(geometry(:,geom_numSegs)) 
+  poly  = new(npoly,graphic)
+
+;---Section to attach polylines to plot.
+  lon = f->x
+  lat = f->y
+  npl = 0     ; polyline counter
+  do i=0, numFeatures-1  
+     startSegment = geometry(i, geom_segIndex)
+     numSegments  = geometry(i, geom_numSegs)
+     do seg=startSegment, startSegment+numSegments-1
+        startPT = segments(seg, segs_xyzIndex)
+        endPT   = startPT + segments(seg, segs_numPnts) - 1
+
+;---Attach the line segment
+        poly(npl) = gsn_add_polyline(wks, plot, lon(startPT:endPT),  \
+                                     lat(startPT:endPT), lnres)
+        npl = npl + 1
+     end do
+  end do
+  return(poly)
+end
+
+;***********************************************************************;
+; Function : gsn_add_shapefile_polygons                                 ;
+;                   wks: workstation object                             ;
+;                plotid: plot object                                    ;
+;                 fname: Name of shapefile ("xxxx.shp")                 ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function attaches shapefile polygons to the plot "plotid".       ;
+;***********************************************************************;
+undef("gsn_add_shapefile_polygons")
+function gsn_add_shapefile_polygons(wks,plot,fname:string,gnres)
+local f, segments, geometry, segsDims, geomDims, geom_segIndex, \
+geom_numSegs, segs_xyzIndex, segs_numPnts, numFeatures, i, lat, lon, \
+startSegment, numSegments, seg, startPT, endPT, npoly, npl
+begin
+;---Open the shapefile
+  f = addfile(fname,"r")
+
+;---Error checking
+  if(ismissing(f)) then
+    print("Error: gsn_add_shapefile_polygons: Can't open shapefile '" + \
+           fname + "'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;---We can't use this routine to plot point data
+  if(f@geometry_type.ne."polygon") then
+    print("Error: gsn_add_shapefile_polygon: geometry_type attribute must be 'polygon'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;---Get the number of colors
+  if(.not.gnres.or..not.isatt(gnres,"gsFillColor")) then
+    set_fill_color = True
+    getvalues wks
+      "wkColorMapLen"  : cmap_len
+    end getvalues
+  else
+    set_fill_color = False
+  end if
+
+;---Read data off the shapefile
+  segments = f->segments
+  geometry = f->geometry
+  segsDims = dimsizes(segments)
+  geomDims = dimsizes(geometry)
+
+;---Read global attributes  
+  geom_segIndex = f@geom_segIndex
+  geom_numSegs  = f@geom_numSegs
+  segs_xyzIndex = f@segs_xyzIndex
+  segs_numPnts  = f@segs_numPnts
+  numFeatures   = geomDims(0)
+
+;---Create array to hold all polylines
+  npoly = sum(geometry(:,geom_numSegs)) 
+  poly  = new(npoly,graphic)
+
+;---Section to attach polygons to plot.
+  lon = f->x
+  lat = f->y
+  npl = 0     ; polyline counter
+  do i=0, numFeatures-1  
+     startSegment = geometry(i, geom_segIndex)
+     numSegments  = geometry(i, geom_numSegs)
+     do seg=startSegment, startSegment+numSegments-1
+        startPT = segments(seg, segs_xyzIndex)
+        endPT   = startPT + segments(seg, segs_numPnts) - 1
+
+;---Attach the line segment
+        if(set_fill_color) then
+;---Pick a random color 
+          gnres@gsFillColor = toint(random_uniform(2,cmap_len-2,1))
+        end if
+        poly(npl) = gsn_add_polygon(wks, plot, lon(startPT:endPT),  \
+                                    lat(startPT:endPT), gnres)
+        npl = npl + 1
+     end do
+  end do
+  return(poly)
+end
+
+;***********************************************************************;
+; Function : gsn_add_shapefile_polymarkers                              ;
+;                   wks: workstation object                             ;
+;                plotid: plot object                                    ;
+;                 fname: Name of shapefile ("xxxx.shp")                 ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function attaches shapefile point data to the plot "plotid".     ;
+;***********************************************************************;
+undef("gsn_add_shapefile_polymarkers")
+function gsn_add_shapefile_polymarkers(wks,plot,fname:string,mkres)
+local f, segments, geometry, segsDims, geomDims, geom_segIndex, \
+geom_numSegs, segs_xyzIndex, segs_numPnts, numFeatures, i, lat, lon, \
+startSegment, numSegments, seg, startPT, endPT, npoly, npl
+begin
+;---Open the shapefile
+  f = addfile(fname,"r")
+
+;---Error checking
+  if(ismissing(f)) then
+    print("Error: gsn_add_shapefile_polymarkers: Can't open shapefile '" + \
+           fname + "'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;---We can't use this routine to plot point data
+  if(f@geometry_type.ne."point") then
+    print("Error: gsn_add_shapefile_polymarkers: geometry_type attribute must be 'point'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;---Read data off the shapefile
+  segments = f->segments
+  geometry = f->geometry
+  segsDims = dimsizes(segments)
+  geomDims = dimsizes(geometry)
+
+;---Read global attributes  
+  geom_segIndex = f@geom_segIndex
+  geom_numSegs  = f@geom_numSegs
+  segs_xyzIndex = f@segs_xyzIndex
+  segs_numPnts  = f@segs_numPnts
+  numFeatures   = geomDims(0)
+
+;---Create array to hold all polymarkers
+  npoly = sum(geometry(:,geom_numSegs)) 
+  poly  = new(npoly,graphic)
+
+;---Section to attach polymarkers to plot.
+  lon = f->x
+  lat = f->y
+  npl = 0     ; polyline counter
+  do i=0, numFeatures-1  
+     startSegment = geometry(i, geom_segIndex)
+     numSegments  = geometry(i, geom_numSegs)
+     do seg=startSegment, startSegment+numSegments-1
+        startPT = segments(seg, segs_xyzIndex)
+        endPT   = startPT + segments(seg, segs_numPnts) - 1
+
+;---Attach the line segment
+        poly(npl) = gsn_add_polymarker(wks, plot, lon(startPT:endPT),  \
+                                       lat(startPT:endPT), mkres)
+        npl = npl + 1
+     end do
+  end do
+  return(poly)
+end
 
 ;***********************************************************************;
 ; Procedure : gsn_polymarker_ndc                                        ;
@@ -5224,6 +5511,326 @@ begin
       frame(wks)
     end if
   end do
+end
+
+;***********************************************************************;
+; This procedure draws or attaches markers or lines on the given plot
+; at locations associated with the input data array. For the markers,
+; you can have the markers colored according to where the data values
+; are missing.
+; 
+; By default, the plot is drawn, the markers or lines are drawn on the
+; plot, and the frame is advanced. Nothing is attached to the plot.
+;
+; If, however, gsnDrawCoordsAttach is set to True, then the markers or
+; lines are attached, and the plot is not drawn and the frame is not
+; advanced, unless gsnDraw and/or gsnFrame are set to True.
+;
+; If res@xcoord and res@ycoord are set, these will be used for the X
+; and Y coordinate points.  Otherwise, this function will try to get
+; the 1D coordinate information from the input data variable, or look
+; for the special "lat2d", "lon2d" attributes.
+; 
+; Note that this function requires the X and Y coordinates to be set the
+; same way. You can't set one via, say, an attribute, and the other via
+; a coordinate array.
+;
+; Special coordinates recognized by this routine:
+;
+;    "xcoord" and "ycoord" - The X and Y coordinates to plot.
+;       You only need to set these if the input data array 
+;       doesn't have 1D coordinate arrays attached, or doesn't
+;       have the special "lat2d", "lon2d" attributes.
+;
+;    "gsnDrawCoordsAttach" - if True, then the markers will be
+;       attached via gsn_add_polymarker, instead of just 
+;       drawn with gsn_polymarker. Note that gsnDraw and Frame will
+;       both be set to False in this case.
+;
+;    "gsnDrawCoordsAsLines" - [not implemented yet] if True, 
+;      coordinates will be drawn as lines rather than markers.
+;      This only works for 2D coordinate arrays.
+;
+;    "gsnDrawCoordsMissingColor"
+;    "gsnDrawCoordsNonMissingColor" - If either one of these are set,
+;       then at locations where the data is or isn't missing, they
+;       will be drawn in the given color
+;
+;***********************************************************************;
+undef("gsn_draw_coordinates")
+procedure gsn_draw_coordinates(wks[1]:graphic,plot[1]:graphic, \
+                               data:numeric,res[1]:logical)
+local type_xcoord, type_ycoord, pres, res2, pres, dims, ndims, \
+  dims_xcoord, dims_ycoord, xcoord_1d, ycoord_1d, xcoord_2d, ycoord_2d, \
+  xdim, ydim, calldraw, callframe, maxbb, defclr, nonmsgclr, msgclr, \
+  draw_lines, draw_non_msg, attach_coords, is_msgclr_trans, 
+  is_nonmsgclr_trans, is_defclr_trans, tmpstr, i, imsg
+begin
+  res2 = res     ; Make copy so we can modify it
+  imsg = new(1,integer)
+
+;---Check for special resources
+  maxbb         = get_bb_res(res2)
+  defclr        = get_res_value(res2,"gsMarkerColor",1)
+  defmrk        = get_res_value(res2,"gsMarkerIndex",16)
+  msgclr        = get_res_value(res2,"gsnDrawCoordsMissingColor",imsg)
+  nonmsgclr     = get_res_value(res2,"gsnDrawCoordsNonMissingColor",imsg)
+  attach_coords = get_res_value(res2,"gsnDrawCoordsAttach",False)
+  draw_lines    = get_res_value(res2,"gsnDrawCoordsAsLines",False)
+
+;---Check if color is transparent.
+  is_defclr_trans    = ((typeof(defclr).eq."string".and. \
+                         str_lower(defclr).eq."transparent").or. \
+                        (typeof(defclr).eq."integer".and.defclr.eq.-1))
+  is_msgclr_trans    = ((typeof(msgclr).eq."string".and. \
+                         str_lower(msgclr).eq."transparent").or. \
+                        (typeof(msgclr).eq."integer".and.msgclr.eq.-1))
+  is_nonmsgclr_trans = ((typeof(nonmsgclr).eq."string".and. \
+                         str_lower(nonmsgclr).eq."transparent").or. \
+                        (typeof(nonmsgclr).eq."integer".and.nonmsgclr.eq.-1))
+
+  if(attach_coords) then
+    calldraw  = get_res_value(res2,"gsnDraw", False)
+    callframe = get_res_value(res2,"gsnFrame",False)
+  else
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+  end if
+;
+; Figure out what kind of X and Y coordinates we have.
+; Valid kinds include:
+;    xcoord or ycoord attributes attached to res ("res_coord").
+;    1D coord array attached to data ("data_coord").
+;    2D lat2d/lon2d attributes attached to data ("data_att")
+; 
+  type_xcoord = ""
+  type_ycoord = ""
+  dims        = dimsizes(data)
+  ndims       = dimsizes(dims)
+
+;----------------------------------------------------------------------
+; This section gets the X,Y coordinate arrays and converts them
+; to 1D for markers, and 2D for lines.
+;----------------------------------------------------------------------
+
+;---Get the X,Y coords from "res2" attribute?
+  if(res2.and.isatt(res2,"xcoord")) then
+    type_xcoord = "res_coord"
+    if(draw_lines) then
+      xcoord_2d = res2@xcoord
+    else
+      xcoord_1d = ndtooned(res2@xcoord)
+    end if
+  end if
+  if(res2.and.isatt(res2,"ycoord")) then
+    type_ycoord = "res_coord"
+    if(draw_lines) then
+      ycoord_2d = res2@ycoord
+    else
+      ycoord_1d = ndtooned(res2@ycoord)
+    end if
+    is_ycoord_2d = dimsizes(dimsizes(res2@ycoord)).eq.2
+  end if
+
+;---Does "data" contain 1D coordinate arrays?
+  if(ndims.ge.2) then
+    xdim = ndims-1
+    ydim = ndims-2
+    if(type_xcoord.eq."".and.(isdimnamed(data,xdim).and. \
+                            iscoord(data,data!xdim))) then
+      type_xcoord = "data_coord"
+      if(draw_lines) then
+        xcoord_2d = conform(data,data&$data!xdim$,xdim)
+      else
+        xcoord_1d = ndtooned(conform(data,data&$data!xdim$,xdim))
+      end if
+    end if
+    if(type_ycoord.eq."".and.(isdimnamed(data,ydim).and. \
+                            iscoord(data,data!ydim))) then
+      type_ycoord = "data_coord"
+      if(draw_lines) then
+        ycoord_2d = conform(data,data&$data!ydim$,ydim)
+      else
+        ycoord_1d = ndtooned(conform(data,data&$data!ydim$,ydim))
+      end if
+      is_ycoord_2d = False
+    end if
+  end if
+
+;---Does "data" contain "lat2d", "lon2d" attributes?
+  if(type_xcoord.eq."".and.isatt(data,"lon2d")) then
+    type_xcoord = "data_att"
+    if(draw_lines) then
+      xcoord_2d = data@lon2d
+    else
+      xcoord_1d = ndtooned(data@lon2d)
+    end if
+  end if
+  if(type_ycoord.eq."".and.isatt(data,"lat2d")) then
+    type_ycoord = "data_att"
+    if(draw_lines) then
+      ycoord_2d = data@lat2d
+    else
+      ycoord_1d = ndtooned(data@lat2d)
+    end if
+  end if
+
+;---Error checking
+  if(type_xcoord.eq."".or.type_ycoord.eq."") then
+    print("gsn_draw_coordinates: no valid X and/or Y coordinate values provided.")
+    return
+  end if
+  if(type_xcoord.ne.type_ycoord) then
+    print("gsn_draw_coordinates: conflicting X/Y coordinate values provided.")
+    return
+  end if
+
+  if(draw_lines) then
+    dims_xcoord = dimsizes(xcoord_2d)
+    dims_ycoord = dimsizes(ycoord_2d)
+    rank_xcoord = dimsizes(dims_xcoord)
+    rank_ycoord = dimsizes(dims_ycoord)
+    if(rank_xcoord.ne.2.or.rank_xcoord.ne.rank_ycoord) then
+      print("gsn_draw_coordinates: can't draw coordinates as lines if they")
+      print("                      are not 2D arrays of the same size.")
+      return
+    end if
+    ny = dims_xcoord(0)
+    nx = dims_xcoord(1)
+    if(dims_ycoord(0).ne.ny.and.dims_ycoord(1).ne.nx) then
+      print("gsn_draw_coordinates: coordinates must have the same")
+      print("                      dimensionality")
+      return
+    end if
+  else
+    dims_xcoord = dimsizes(xcoord_1d)
+    dims_ycoord = dimsizes(ycoord_1d)
+    if(dims_xcoord.ne.dims_ycoord) then
+      print("gsn_draw_coordinates: coordinates must have the same")
+      print("                      dimensionality")
+      return
+    end if
+  end if
+
+;---Copy over resources if True
+  if(res2) then
+    pres = res2
+  else
+    pres = True
+  end if
+
+  if(.not.attach_coords.and.calldraw) then
+    draw_and_frame(wks,plot,calldraw,False,False,maxbb)
+  end if
+
+;----------------------------------------------------------------------
+; There are three ways the markers can get drawn:
+;    - the markers in missing data locations
+;    - the markers in non-missing data locations
+;    - the markers at all locations.
+;
+; If a color is specified as -1 or "transparent", then don't
+; waste time drawing the markers.
+;
+; If drawing lines, then you get all of them.
+;----------------------------------------------------------------------
+  if(draw_lines) then
+    if(attach_coords) then
+      do i=0,ny-1
+        tmpstr = unique_string("xlines")
+        plot@$tmpstr$ = gsn_add_polyline(wks,plot,xcoord_2d(i,:),\
+                                                  ycoord_2d(i,:),pres)
+      end do
+      do i=0,nx-1
+        tmpstr = unique_string("ylines")
+        plot@$tmpstr$ = gsn_add_polyline(wks,plot,xcoord_2d(:,i),\
+                                                  ycoord_2d(:,i),pres)
+      end do
+    else
+      do i=0,ny-1
+        gsn_polyline(wks,plot,xcoord_2d(i,:),\
+                              ycoord_2d(i,:),pres)
+      end do
+      do i=0,nx-1
+        gsn_polyline(wks,plot,xcoord_2d(:,i),\
+                              ycoord_2d(:,i),pres)
+      end do
+    end if
+  else
+    if(.not.ismissing(msgclr).and..not.is_msgclr_trans) then
+      pres@gsMarkerColor = msgclr
+      pres@gsMarkerIndex = defmrk
+      ii = ind(ismissing(ndtooned(data)))
+      if(.not.all(ismissing(ii))) then
+        if(attach_coords) then
+          tmpstr = unique_string("markers_msg")
+          plot@$tmpstr$ = gsn_add_polymarker(wks,plot,xcoord_1d(ii),\
+                                             ycoord_1d(ii),pres)
+        else
+          gsn_polymarker(wks,plot,xcoord_1d(ii),ycoord_1d(ii),pres)
+        end if
+      end if
+      delete(ii)
+    end if
+    draw_non_msg = False
+;
+; Somewhat complicated logic to determine whether we want to
+; draw the markers at non-missing locations.
+;
+    if(.not.ismissing(msgclr).or..not.ismissing(nonmsgclr)) then
+      if(.not.is_nonmsgclr_trans) then
+        if(isatt(pres,"gsMarkerColor")) then
+          delete(pres@gsMarkerColor)
+        end if
+        pres@gsMarkerColor = nonmsgclr
+        pres@gsMarkerIndex = defmrk
+        draw_non_msg       = True
+      else
+        if(ismissing(nonmsgclr).and..not.is_defclr_trans) then
+          if(isatt(pres,"gsMarkerColor")) then
+            delete(pres@gsMarkerColor)
+          end if
+          pres@gsMarkerColor = defclr
+          pres@gsMarkerIndex = defmrk
+          draw_non_msg       = True
+        end if
+      end if
+      if(draw_non_msg) then
+        ii = ind(.not.ismissing(ndtooned(data)))
+        if(.not.all(ismissing(ii))) then
+          if(attach_coords) then
+            tmpstr = unique_string("markers_nonmsg")
+            plot@$tmpstr$ = gsn_add_polymarker(wks,plot,xcoord_1d(ii),\
+                                               ycoord_1d(ii),pres)
+          else
+            gsn_polymarker(wks,plot,xcoord_1d(ii),ycoord_1d(ii),pres)
+         end if
+       end if
+        delete(ii)
+      end if
+     end if
+
+    if(ismissing(msgclr).and.ismissing(nonmsgclr).and. \
+       .not.is_defclr_trans) then
+      pres@gsMarkerColor = defclr
+      pres@gsMarkerIndex = defmrk
+      if(attach_coords) then
+        tmpstr = unique_string("markers_all")
+        plot@$tmpstr$ = gsn_add_polymarker(wks,plot,xcoord_1d,\
+                                           ycoord_1d,pres)
+      else
+        gsn_polymarker(wks,plot,xcoord_1d,ycoord_1d,pres)
+      end if
+    end if
+
+  end if  ; draw_lines
+  if(attach_coords) then
+    draw_and_frame(wks,plot,calldraw,callframe,False,maxbb)
+  else
+    if(callframe) then
+      frame(wks)
+    end if
+  end if
 end
 
 ;***********************************************************************;
@@ -6280,6 +6887,14 @@ begin
   plots = oldplots
   nplots= dimsizes(plots)
 
+  res1@gsnMaximize = get_res_value(res1,"gsnMaximize",True)
+
+;---Check for maximization
+  maxbb = get_bb_res(res1)
+  if(.not.maxbb) then
+    maxbb = get_bb_res(res2)
+  end if
+
   attach_y = .not.get_res_value(res1,"gsnAttachPlotsXAxis",False)
   attach_y = .not.get_res_value(res2,"gsnAttachPlotsXAxis",.not.attach_y)
   border_on = get_res_value(res1,"gsnAttachBorderOn",True)
@@ -6294,7 +6909,7 @@ begin
 ; Here's the list of "regular" plot types:
 ;
   plot_types = (/"contourPlotClass","xyPlotClass","vectorPlotClass",\
-                 "streamlinePlotClass"/)
+                 "streamlinePlotClass","mapPlotClass"/)
 
 ;
 ; First check the base plot for "regular plotness".
@@ -6334,6 +6949,13 @@ begin
   if(.not.found_base) then
     print("Warning: gsn_attach_plots: the base plot is an unrecognized plot type; may get unexpected results.")
     new_base = base
+  end if
+  getvalues new_base
+    "trGridType" : grid_type
+  end getvalues
+  if(grid_type.ge.3) then
+    print("Warning: gsn_attach_plots: the base plot is either spherical or triangular, so can't fix the tickmarks")
+    found_base = False
   end if
 ;
 ; Now test the plots to be attached, and see if they are "regular" plots.
@@ -6610,28 +7232,32 @@ begin
     end getvalues 
   end do
 
-  if(attach_y) then
-    total_height1 = top1 - bot1
-    total_heights = tops - bots
-    total_width1  = (vpx1+vpw1) - lft1
-    total_widths  = vpws
-    total_widths(nplots-1) = rgts(nplots-1) - vpxs(nplots-1)
-
-    scale_widths  = 1. / (1.01 * (scale1*total_width1 + sum(scales*total_widths)))
-    scale_height1 = 1. / (1.01 * scale1*total_height1)
-    scale_heights = 1. / (1.01 * scales*total_heights)
-    scale = min((/scale_height1,min(scale_heights),min(scale_widths)/))
+  if(maxbb) then
+    if(attach_y) then
+      total_height1 = top1 - bot1
+      total_heights = tops - bots
+      total_width1  = (vpx1+vpw1) - lft1
+      total_widths  = vpws
+      total_widths(nplots-1) = rgts(nplots-1) - vpxs(nplots-1)
+  
+      scale_widths  = 1. / (1.01 * (scale1*total_width1 + sum(scales*total_widths)))
+      scale_height1 = 1. / (1.01 * scale1*total_height1)
+      scale_heights = 1. / (1.01 * scales*total_heights)
+      scale = min((/scale_height1,min(scale_heights),min(scale_widths)/))
+    else
+      total_width1  = rgt1 - lft1
+      total_widths  = rgts - lfts
+      total_height1 = vph1 + (top1 - vpy1)
+      total_heights = vphs
+      total_heights(nplots-1) = vpys(nplots-1)-bots(nplots-1)
+  
+      scale_heights = 1. / (1.01 * (scale1*total_height1 + sum(scales*total_heights)))
+      scale_width1  = 1. / (1.01 * scale1*total_width1)
+      scale_widths  = 1. / (1.01 * scales*total_widths)
+      scale = min((/scale_width1,min(scale_heights),min(scale_widths)/))
+    end if
   else
-    total_width1  = rgt1 - lft1
-    total_widths  = rgts - lfts
-    total_height1 = vph1 + (top1 - vpy1)
-    total_heights = vphs
-    total_heights(nplots-1) = vpys(nplots-1)-bots(nplots-1)
-
-    scale_heights = 1. / (1.01 * (scale1*total_height1 + sum(scales*total_heights)))
-    scale_width1  = 1. / (1.01 * scale1*total_width1)
-    scale_widths  = 1. / (1.01 * scales*total_widths)
-    scale = min((/scale_width1,min(scale_heights),min(scale_widths)/))
+    scale = 1.0
   end if
 
 ;
@@ -6641,27 +7267,33 @@ begin
   new_scale1 = scale * scale1
   new_scales = scale * scales
 
-  new_mj_length = (new_scale1*mj_length1 + sum(new_scales*mj_lengths))/(nplots+1)
-  new_mjo_length = (new_scale1*mjo_length1 + sum(new_scales*mjo_lengths))/(nplots+1)
-  new_mn_length = (new_scale1*mn_length1 + sum(new_scales*mn_lengths))/(nplots+1)
-  new_mno_length = (new_scale1*mno_length1 + sum(new_scales*mno_lengths))/(nplots+1)
-  new_font_height = (new_scale1*font_height1 + sum(new_scales*font_heights))/(nplots+1)
+  if(found_base) then
+    new_mj_length = (new_scale1*mj_length1 + sum(new_scales*mj_lengths))/(nplots+1)
+    new_mjo_length = (new_scale1*mjo_length1 + sum(new_scales*mjo_lengths))/(nplots+1)
+    new_mn_length = (new_scale1*mn_length1 + sum(new_scales*mn_lengths))/(nplots+1)
+    new_mno_length = (new_scale1*mno_length1 + sum(new_scales*mno_lengths))/(nplots+1)
+    new_font_height = (new_scale1*font_height1 + sum(new_scales*font_heights))/(nplots+1)
+  else
+    new_font_height = sum(new_scales*font_heights)/nplots
+  end if
   new_main_font_height = new_scale1*main_font_height1
 
-  if(attach_y) then
-    mj_length  =  get_res_value(res1,"tmXBMajorLengthF",new_mj_length)
-    mjo_length =  get_res_value(res1,"tmXBMajorOutwardLengthF",\
-                                new_mjo_length)
-    mn_length  =  get_res_value(res1,"tmXBMinorLengthF",new_mn_length)
-    mno_length =  get_res_value(res1,"tmXBMinorOutwardLengthF",\
+  if(found_base) then
+    if(attach_y) then
+      mj_length  =  get_res_value(res1,"tmXBMajorLengthF",new_mj_length)
+      mjo_length =  get_res_value(res1,"tmXBMajorOutwardLengthF",\
+                                  new_mjo_length)
+      mn_length  =  get_res_value(res1,"tmXBMinorLengthF",new_mn_length)
+      mno_length =  get_res_value(res1,"tmXBMinorOutwardLengthF",\
+                                  new_mno_length)
+    else
+      mj_length  =  get_res_value(res1,"tmYLMajorLengthF",new_mj_length)
+      mjo_length =  get_res_value(res1,"tmYLMajorOutwardLengthF",\
+                                  new_mjo_length)
+      mn_length  =  get_res_value(res1,"tmYLMinorLengthF",new_mn_length)
+      mno_length =  get_res_value(res1,"tmYLMinorOutwardLengthF",\
                                 new_mno_length)
-  else
-    mj_length  =  get_res_value(res1,"tmYLMajorLengthF",new_mj_length)
-    mjo_length =  get_res_value(res1,"tmYLMajorOutwardLengthF",\
-                                new_mjo_length)
-    mn_length  =  get_res_value(res1,"tmYLMinorLengthF",new_mn_length)
-    mno_length =  get_res_value(res1,"tmYLMinorOutwardLengthF",\
-                              new_mno_length)
+    end if
   end if
 
   font_heightxl = get_res_value(res1,"tmXBFontHeightF",new_font_height)
@@ -6707,20 +7339,22 @@ begin
     end setvalues
   end if
 
-  if(attach_y) then
-    mj_length  =  get_res_value(res2,"tmXBMajorLengthF",new_mj_length)
-    mjo_length =  get_res_value(res2,"tmXBMajorOutwardLengthF",\
-                                new_mjo_length)
-    mn_length  =  get_res_value(res2,"tmXBMinorLengthF",new_mn_length)
-    mno_length =  get_res_value(res2,"tmXBMinorOutwardLengthF",\
-                                new_mno_length)
-  else
-    mj_length  =  get_res_value(res2,"tmYLMajorLengthF",new_mj_length)
-    mjo_length =  get_res_value(res2,"tmYLMajorOutwardLengthF",\
-                                new_mjo_length)
-    mn_length  =  get_res_value(res2,"tmYLMinorLengthF",new_mn_length)
-    mno_length =  get_res_value(res2,"tmYLMinorOutwardLengthF",\
-                                new_mno_length)
+  if(found_base) then
+    if(attach_y) then
+      mj_length  =  get_res_value(res2,"tmXBMajorLengthF",new_mj_length)
+      mjo_length =  get_res_value(res2,"tmXBMajorOutwardLengthF",\
+                                  new_mjo_length)
+      mn_length  =  get_res_value(res2,"tmXBMinorLengthF",new_mn_length)
+      mno_length =  get_res_value(res2,"tmXBMinorOutwardLengthF",\
+                                  new_mno_length)
+    else
+      mj_length  =  get_res_value(res2,"tmYLMajorLengthF",new_mj_length)
+      mjo_length =  get_res_value(res2,"tmYLMajorOutwardLengthF",\
+                                  new_mjo_length)
+      mn_length  =  get_res_value(res2,"tmYLMinorLengthF",new_mn_length)
+      mno_length =  get_res_value(res2,"tmYLMinorOutwardLengthF",\
+                                  new_mno_length)
+    end if
   end if
 
   font_heightxl = get_res_value(res2,"tmXBFontHeightF",new_font_height)
@@ -6741,30 +7375,33 @@ begin
         "tiXAxisFontHeightF"      : font_heightx
         "tiYAxisFontHeightF"      : font_heighty
         "tiMainFontHeightF"       : main_font_height
-  
-        "tmYRMajorLengthF"        : mj_length
-        "tmYRMajorOutwardLengthF" : mjo_length
-        "tmYRMinorLengthF"        : mn_length
-        "tmYRMinorOutwardLengthF" : mno_length
-  
-        "tmYLMajorLengthF"        : mj_length
-        "tmYLMajorOutwardLengthF" : mjo_length
-        "tmYLMinorLengthF"        : mn_length
-        "tmYLMinorOutwardLengthF" : mno_length
-  
-        "tmXBMajorLengthF"        : mj_length
-        "tmXBMajorOutwardLengthF" : mjo_length
-        "tmXBMinorLengthF"        : mn_length
-        "tmXBMinorOutwardLengthF" : mno_length
-  
-        "tmXTMajorLengthF"        : mj_length
-        "tmXTMajorOutwardLengthF" : mjo_length
-        "tmXTMinorLengthF"        : mn_length
-        "tmXTMinorOutwardLengthF" : mno_length
-  
-        "tmXBLabelFontHeightF"    : font_heightxl
-        "tmYLLabelFontHeightF"    : font_heightyl
       end setvalues
+      if(found_base) then
+        setvalues new_plots(i)
+          "tmYRMajorLengthF"        : mj_length
+          "tmYRMajorOutwardLengthF" : mjo_length
+          "tmYRMinorLengthF"        : mn_length
+          "tmYRMinorOutwardLengthF" : mno_length
+  
+          "tmYLMajorLengthF"        : mj_length
+          "tmYLMajorOutwardLengthF" : mjo_length
+          "tmYLMinorLengthF"        : mn_length
+          "tmYLMinorOutwardLengthF" : mno_length
+  
+          "tmXBMajorLengthF"        : mj_length
+          "tmXBMajorOutwardLengthF" : mjo_length
+          "tmXBMinorLengthF"        : mn_length
+          "tmXBMinorOutwardLengthF" : mno_length
+  
+          "tmXTMajorLengthF"        : mj_length
+          "tmXTMajorOutwardLengthF" : mjo_length
+          "tmXTMinorLengthF"        : mn_length
+          "tmXTMinorOutwardLengthF" : mno_length
+  
+          "tmXBLabelFontHeightF"    : font_heightxl
+          "tmYLLabelFontHeightF"    : font_heightyl
+        end setvalues
+      end if
     end if
   end do
 ;
@@ -6865,15 +7502,9 @@ begin
       "amOrthogonalPosF": orth
     end setvalues
   end do
-;
-; Check for maximization. The plot does not get drawn in this
-; function!
-;
+
+;---The plot does not get drawn in this function!
   wks   = NhlGetParentWorkstation(base)
-  maxbb = get_bb_res(res1)
-  if(.not.maxbb) then
-    maxbb = get_bb_res(res2)
-  end if
   draw_and_frame(wks,base,False,False,0,maxbb)
 
   return(annos)
@@ -8466,7 +9097,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -8476,7 +9109,8 @@ function gsn_contour(wks:graphic, data:numeric, resources:logical )
 local i, data_object, plot_object, res, sf_res_index, \
 datares, cnres, llres, cn_res_index, ll_res_index, calldraw, callframe, \
 force_x_linear, force_y_linear, force_x_log, force_y_log, \
-trxmin, trxmax, trymin, trymax, res2, scale, shape, sprdcols
+trxmin, trxmax, trymin, trymax, res2, scale, shape, sprdcols, \
+is_lb_mode, lb_mode
 begin
 ;
 ; Make sure input data is 1D or 2D
@@ -8522,21 +9156,48 @@ begin
 ; Temporarily (I hope), I need to check if trGridType is being set.
 ; If so, it needs to be set during the create call, or otherwise it
 ; will cause the tickmarks to possibly not appear.
+; pmLabelBarDisplayMode is another resource that can only be set at
+; create time. Too bad it has to be so clunky.
 ;
-    if(res2.and.isatt(res2,"trGridType")) then
-      plot_object = create wksname + "_contour" contourPlotClass wks
+    is_lb_mode = isatt(res2,"pmLabelBarDisplayMode")
+    if(is_lb_mode) then
+      lb_mode = get_display_mode(res2,"pmLabelBarDisplayMode","NoCreate")
+      delete(res2@pmLabelBarDisplayMode)
+    end if
+    if (is_lb_mode) then
+      if(res2.and.isatt(res2,"trGridType")) then
+        plot_object = create wksname + "_contour" contourPlotClass wks
+        "cnScalarFieldData" : data_object
+        "pmLabelBarDisplayMode" : lb_mode
+        "trXTensionF"       : xtension
+        "trYTensionF"       : ytension
+        "trGridType"        : res2@trGridType
+        end create
+        delete(res2@trGridType)
+      else
+        plot_object = create wksname + "_contour" contourPlotClass wks
+        "cnScalarFieldData" : data_object
+        "pmLabelBarDisplayMode" : lb_mode
+        "trXTensionF"       : xtension
+        "trYTensionF"       : ytension
+        end create
+      end if
+    else
+      if(res2.and.isatt(res2,"trGridType")) then
+        plot_object = create wksname + "_contour" contourPlotClass wks
         "cnScalarFieldData" : data_object
         "trXTensionF"       : xtension
         "trYTensionF"       : ytension
         "trGridType"        : res2@trGridType
-      end create
-      delete(res2@trGridType)
-    else
-      plot_object = create wksname + "_contour" contourPlotClass wks
+        end create
+        delete(res2@trGridType)
+      else
+        plot_object = create wksname + "_contour" contourPlotClass wks
         "cnScalarFieldData" : data_object
         "trXTensionF"       : xtension
         "trYTensionF"       : ytension
-      end create
+        end create
+      end if
     end if
 
 ; Check for existence of data@long_name and use it in a title it
@@ -8551,9 +9212,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"cnSpanFillPalette")) then
+        res2@cnSpanFillPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     if(res2.and.isatt(res2,"gsnContourZeroLineThicknessF")) then
       zthickness = res2@gsnContourZeroLineThicknessF
@@ -8596,10 +9265,45 @@ begin
 ; going to overlay this plot later, because you might get an error
 ; message about warning:PlotManagerSetValues: TickMark annotation 
 ; cannot be added after NhlCreate.
+; Also any tr[X/Y][Max/Min]F resources that go outside the data boundaries
+; must be temporarily removed because they are not permitted when using the
+; irregular transformation. However, do not remove them if they are inside
+; the boundaries or there will be an error later when the data boundaries 
+; are checked
 ;
     if(force_x_linear.or.force_x_log.or.force_y_linear.or.force_y_log) then
+      getvalues plot_object
+      "trXMinF"    : trxmin
+      "trXMaxF"    : trxmax
+      "trYMinF"    : trymin
+      "trYMaxF"    : trymax
+      end getvalues
       if(isatt(cnres,"pmTickMarkDisplayMode")) then
         delete(cnres@pmTickMarkDisplayMode)
+      end if
+      if (force_x_linear .or. force_x_log) then
+        if(isatt(cnres,"trXMinF")) then
+          if (cnres@trXMinF .lt. trxmin) then
+            delete(cnres@trXMinF)
+          end if
+        end if
+        if(isatt(cnres,"trXMaxF")) then
+          if (cnres@trXMaxF .gt. trxmax) then
+            delete(cnres@trXMaxF)
+          end if
+        end if
+      end if
+      if (force_y_linear .or. force_y_log) then
+        if(isatt(cnres,"trYMinF")) then
+          if (cnres@trYMinF .lt. trymin) then
+            delete(cnres@trYMinF)
+          end if
+        end if
+        if(isatt(cnres,"trYMaxF")) then
+          if (cnres@trYMaxF .gt. trymax) then
+            delete(cnres@trYMaxF)
+          end if
+        end if
       end if
       llres = get_res_eq(res2,(/"pm","tr","vp"/))
     end if
@@ -8620,7 +9324,7 @@ begin
       plot_object = set_pos_neg_line_pattern(plot_object,ppattern,npattern)
     end if
 
-    if(sprdcols)
+    if(sprdcols.and..not.isatt(res2,"cnFillColors")) then
       cnres2 = True
       set_attr(cnres2,"cnFillColors",\
                spread_colors(wks,plot_object,min_index,max_index,res2))
@@ -8680,7 +9384,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -8736,16 +9442,24 @@ begin
     maxbb     = get_bb_res(res2)
     scale     = get_res_value(res2,"gsnScale",False)
     shape     = get_res_value(res2,"gsnShape",scale)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"cnSpanFillPalette")) then
+        res2@cnSpanFillPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     mpres = get_res_eq(res2,(/"mp","vp","pmA","pmO","pmT","tm"/))
     cnres = get_res_ne(res2,(/"mp","sf","vp"/))
 
     attsetvalues_check(map_object,mpres)
     attsetvalues_check(contour_object,cnres)
-    if(sprdcols)
+    if(sprdcols.and..not.isatt(res2,"cnFillColors")) then
       cnres2 = True
       set_attr(cnres2,"cnFillColors",\
                spread_colors(wks,contour_object,min_index,max_index,res2))
@@ -8867,7 +9581,7 @@ undef("gsn_streamline")
 function gsn_streamline(wks:graphic,u[*][*]:numeric,v[*][*]:numeric,\
                         resources:logical)
 local i, data_object,plot_object,res,vf_res_index,st_res_index, \
-force_x_linear, force_y_linear, force_x_log, force_y_log, \
+force_x_linear, force_y_linear, force_x_log, force_y_log, stres2, \
 trxmin, trxmax, trymin, trymax, ll_res_index, llres, res2, scale, shape
 begin
     llres = False
@@ -8905,6 +9619,18 @@ begin
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
 
+    min_index = get_res_value(res2,"gsnSpreadColorStart",2)
+    max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"stSpanLevelPalette")) then
+        res2@stSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
+
     check_for_irreg2loglin(res2,force_x_linear,force_y_linear,\
                                 force_x_log,force_y_log)
     check_for_tickmarks_off(res2)
@@ -8913,6 +9639,13 @@ begin
     stres = get_res_ne(res2,"vf")
     attsetvalues_check(data_object,vfres)
     attsetvalues_check(plot_object,stres)
+
+    if(sprdcols.and..not.isatt(res2,"stLevelColors")) then
+      stres2 = True
+      set_attr(stres2,"stLevelColors",\
+               spread_colors(wks,plot_object,min_index,max_index,res2))
+      attsetvalues(plot_object,stres2)
+    end if
 
     if(force_x_linear.or.force_x_log.or.force_y_linear.or.force_y_log)
         llres = get_res_eq(res2,(/"tr","vp"/))
@@ -8980,7 +9713,7 @@ undef("gsn_streamline_map")
 function gsn_streamline_map(wks:graphic,u[*][*]:numeric,\
                             v[*][*]:numeric,resources:logical)
 local i, data_object, contour_object, res, vf_res_index, \
-st_res_index, mp_res_index, map_object, res2
+st_res_index, mp_res_index, map_object, res2, stres2
 begin
     res2 = get_resources(resources)
 
@@ -9015,6 +9748,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
+    min_index = get_res_value(res2,"gsnSpreadColorStart",2)
+    max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"stSpanLevelPalette")) then
+        res2@stSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     vfres = get_res_eq(res2,"vf")
     mpres = get_res_eq(res2,(/"mp","vp","pmA","pmO","pmT","tm"/))
@@ -9023,6 +9767,13 @@ begin
     attsetvalues_check(data_object,vfres)
     attsetvalues_check(stream_object,stres)
     attsetvalues_check(map_object,mpres)
+
+    if(.not.isatt(res2,"stLevelColors")) then
+      stres2 = True
+      set_attr(stres2,"stLevelColors",\
+               spread_colors(wks,stream_object,min_index,max_index,res2))
+      attsetvalues(stream_object,stres2)
+    end if
 
     overlay(map_object,stream_object)
 
@@ -9358,7 +10109,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -9403,9 +10156,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"vcSpanLevelPalette")) then
+        res2@vcSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     check_for_irreg2loglin(res2,force_x_linear,force_y_linear,\
                                 force_x_log,force_y_log)
@@ -9419,7 +10180,7 @@ begin
 
     attsetvalues_check(data_object,vfres)
     attsetvalues_check(plot_object,vcres)
-    if(sprdcols)
+    if(sprdcols.and..not.isatt(res2,"vcLevelColors")) then
       vcres2 = True
       set_attr(vcres2,"vcLevelColors",\
                spread_colors(wks,plot_object,min_index,max_index,res2))
@@ -9483,7 +10244,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -9537,10 +10300,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
-
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"cnSpanFillPalette")) then
+        res2@cnSpanFillPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     if(res2.and.isatt(res2,"gsnContourZeroLineThicknessF")) then
       zthickness = res2@gsnContourZeroLineThicknessF
@@ -9574,9 +10344,17 @@ begin
 
     vfres = get_res_eq(res2,"vf")
     sfres = get_res_eq(res2,"sf")
-    cnres = get_res_eq(res2,(/"cn","tf"/))
-    vcres = get_res_ne(res2,(/"vf","sf","cn"/))
-
+;
+; Make sure that the labelbar resources get passed to the
+; correct object.
+;
+    if(res2.and.isatt(res2,"cnFillOn").and.res2@cnFillOn) then
+      cnres = get_res_eq(res2,(/"cn","tf","lb","pmLabel"/))
+      vcres = get_res_ne(res2,(/"vf","sf","cn","lb","pmLabel"/))
+    else
+      cnres = get_res_eq(res2,(/"cn","tf"/))
+      vcres = get_res_ne(res2,(/"vf","sf","cn"/))
+    end if
     attsetvalues_check(vfdata_object,vfres)
     attsetvalues_check(sfdata_object,sfres)
     attsetvalues_check(contour_object,cnres)
@@ -9598,16 +10376,18 @@ begin
     end if
 
     if(sprdcols)
-      cnres2 = True
-      vcres2 = True
-
-      set_attr(cnres2,"cnFillColors",\
-               spread_colors(wks,contour_object,min_index,max_index,res2))
-      set_attr(vcres2,"vcLevelColors",\
-               spread_colors(wks,vector_object,min_index,max_index,res2))
-
-      attsetvalues(contour_object,cnres2)
-      attsetvalues(vector_object,vcres2)
+      if(.not.isatt(res2,"cnFillColors")) then
+        cnres2 = True
+        set_attr(cnres2,"cnFillColors",\
+                 spread_colors(wks,contour_object,min_index,max_index,res2))
+        attsetvalues(contour_object,cnres2)
+      end if
+      if(.not.isatt(res2,"vcLevelColors")) then
+        vcres2 = True
+        set_attr(vcres2,"vcLevelColors",\
+                 spread_colors(wks,vector_object,min_index,max_index,res2))
+        attsetvalues(vector_object,vcres2)
+      end if
     end if
 
     overlay(vector_object,contour_object)
@@ -9659,7 +10439,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -9718,9 +10500,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"cnSpanFillPalette")) then
+        res2@cnSpanFillPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     if(res2.and.isatt(res2,"gsnContourZeroLineThicknessF")) then
       zthickness = res2@gsnContourZeroLineThicknessF
@@ -9777,7 +10567,7 @@ begin
                                                 ppattern,npattern)
     end if
 
-    if(sprdcols)
+     if(.not.isatt(res2,"cnFillColors")) then
       cnres2 = True
 
       set_attr(cnres2,"cnFillColors",\
@@ -9827,7 +10617,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -9885,10 +10677,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
-
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"cnSpanFillPalette")) then
+        res2@cnSpanFillPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     if(res2.and.isatt(res2,"gsnContourZeroLineThicknessF")) then
       zthickness = res2@gsnContourZeroLineThicknessF
@@ -9947,17 +10746,21 @@ begin
                                                 ppattern,npattern)
     end if
 
-    if(sprdcols)
-      cnres2 = True
-      vcres2 = True
+    if(sprdcols) then
+     if(.not.isatt(res2,"cnFillColors")) then
+        cnres2 = True
+        set_attr(cnres2,"cnFillColors",\
+                 spread_colors(wks,contour_object,min_index,max_index,res2))
+        attsetvalues(contour_object,cnres2)
+     end if
+     if(.not.isatt(res2,"vcLevelColors")) then
+        vcres2 = True
 
-      set_attr(cnres2,"cnFillColors",\
-               spread_colors(wks,contour_object,min_index,max_index,res2))
-      set_attr(vcres2,"vcLevelColors",\
-               spread_colors(wks,vector_object,min_index,max_index,res2))
+        set_attr(vcres2,"vcLevelColors",\
+                 spread_colors(wks,vector_object,min_index,max_index,res2))
 
-      attsetvalues(contour_object,cnres2)
-      attsetvalues(vector_object,vcres2)
+        attsetvalues(vector_object,vcres2)
+      end if
     end if
 
     overlay(map_object,vector_object)
@@ -10001,7 +10804,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -10044,9 +10849,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"vcSpanLevelPalette")) then
+        res2@vcSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     vfres = get_res_eq(res2,"vf")
     mpres = get_res_eq(res2,(/"mp","vp","pmA","pmO","pmT","tm"/))
@@ -10056,7 +10869,7 @@ begin
     attsetvalues_check(map_object,mpres)
     attsetvalues_check(vector_object,vcres)
 
-    if(sprdcols)
+    if(.not.isatt(res2,"vcLevelColors")) then
       vcres2 = True
       set_attr(vcres2,"vcLevelColors",\
                spread_colors(wks,vector_object,min_index,max_index,res2))
@@ -10101,7 +10914,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -10159,9 +10974,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"vcSpanLevelPalette")) then
+        res2@vcSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     check_for_irreg2loglin(res2,force_x_linear,force_y_linear,\
                                 force_x_log,force_y_log)
@@ -10178,7 +11001,7 @@ begin
     attsetvalues_check(vfdata_object,vfres)
     attsetvalues_check(sfdata_object,sfres)
     attsetvalues_check(plot_object,vcres)
-    if(sprdcols)
+    if(sprdcols.and..not.isatt(res2,"vcLevelColors")) then
       vcres2 = True
       set_attr(vcres2,"vcLevelColors",\
                spread_colors(wks,plot_object,min_index,max_index,res2))
@@ -10242,7 +11065,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -10300,9 +11125,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"stSpanLevelPalette")) then
+        res2@stSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     check_for_irreg2loglin(res2,force_x_linear,force_y_linear,\
                                 force_x_log,force_y_log)
@@ -10319,7 +11152,7 @@ begin
     attsetvalues_check(vfdata_object,vfres)
     attsetvalues_check(sfdata_object,sfres)
     attsetvalues_check(plot_object,stres)
-    if(sprdcols)
+    if(sprdcols.and..not.isatt(res2,"stLevelColors")) then
       stres2 = True
       set_attr(stres2,"stLevelColors",\
                spread_colors(wks,plot_object,min_index,max_index,res2))
@@ -10384,7 +11217,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -10441,9 +11276,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"vcSpanLevelPalette")) then
+        res2@vcSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     vfres = get_res_eq(res2,"vf")
     sfres = get_res_eq(res2,"sf")
@@ -10455,7 +11298,7 @@ begin
     attsetvalues_check(map_object,mpres)
     attsetvalues_check(vector_object,vcres)
 
-    if(sprdcols)
+    if(sprdcols.and..not.isatt(res2,"vcLevelColors")) then
       vcres2 = True
       set_attr(vcres2,"vcLevelColors",\
                spread_colors(wks,vector_object,min_index,max_index,res2))
@@ -10503,7 +11346,9 @@ end
 ;   gsnFrame                                                            ;
 ;   gsnShape                                                            ;
 ;   gsnScale                                                            ;
-;   gsnSpreadColors                                                     ;
+;   gsnSpreadColors - deprecated as of NCL V6.1.0. Only used if         ;
+;     gsnSpreadColorStart and/or gsnSpreadColorEnd are set to something ;
+;     other than 2 and -1.                                              ;
 ;   gsnSpreadColorStart                                                 ;
 ;   gsnSpreadColorEnd                                                   ;
 ;                                                                       ;
@@ -10560,9 +11405,17 @@ begin
     maxbb     = get_bb_res(res2)
     shape     = get_res_value(res2,"gsnShape",False)
     scale     = get_res_value(res2,"gsnScale",shape)
-    sprdcols  = get_res_value(res2,"gsnSpreadColors",False)
     min_index = get_res_value(res2,"gsnSpreadColorStart",2)
     max_index = get_res_value(res2,"gsnSpreadColorEnd",-1)
+    if(min_index.ne.2.or.max_index.ne.-1.) then
+      sprdcols = get_res_value(res2,"gsnSpreadColors",True)
+    else
+      if(check_attr(res2,"gsnSpreadColors",False,True).and..not.\
+        isatt(res2,"stSpanLevelPalette")) then
+        res2@stSpanLevelPalette = False
+      end if
+      sprdcols = get_res_value(res2,"gsnSpreadColors",False)
+    end if
 
     vfres = get_res_eq(res2,"vf")
     sfres = get_res_eq(res2,"sf")
@@ -10574,7 +11427,7 @@ begin
     attsetvalues_check(map_object,mpres)
     attsetvalues_check(streamline_object,stres)
 
-    if(sprdcols)
+    if(sprdcols.and..not.isatt(res2,"stLevelColors")) then
       stres2 = True
       set_attr(stres2,"stLevelColors",\
                spread_colors(wks,streamline_object,min_index,max_index,res2))
@@ -11349,5 +12202,174 @@ begin
       end do
     end do
   end if
+end
+
+;***********************************************************************;
+; Function : read_colormap_file                                         ;
+;               colorMapName : either the name of an NCL-standard       ;
+;                              colormap, or the filename of a           ;
+;                              user-supplied colormap.                  ;
+;                                                                       ;
+; This function either reads an NCL-standard colormap, given is name,   ;
+; or expects to read a colormap from a given file.  It supports reading ;
+; either RGB-tuples or RGBA-tuples (or a mixture); it always returns a  ;
+; colormap comprised of RGBA-tuples.                                    ;
+;***********************************************************************;
+undef("read_colormap_file")
+function read_colormap_file(colorMapName:string)
+local pathname, lines, tokens, cmap, tmpCmap, i, numColors, \
+      red, green, blue, alpha, maxValue, MAXCOLORS
+begin
+
+  MAXCOLORS = 256     ; symbolic constant, used below
+
+  ; ----------------------------------------------------------
+  ; Inner convenience function to test string as suitable for 
+  ; conversion to numeric.
+  function isNumerical(s:string)
+  local seenDecimal, charS, len, i
+  begin
+    seenDecimal = False
+    charS = stringtocharacter(s)
+    len = strlen(s)
+    do i=0, len-1
+      if (charS(i).eq.".") then
+        if (seenDecimal) then
+          return False
+        else
+          seenDecimal = True
+        end if
+      else
+        if (charS(i).lt."0" .or. charS(i).gt."9") then
+          return False
+        end if
+      end if
+    end do
+    return True
+  end
+
+  ; ------------------------------------------------------------
+  ; Inner convenience function to find appropriate pathname for 
+  ; the given filename.
+  function getFilePath(colorMapName:string)
+  local suffixes, paths, path1, path2, i, j, tmp
+  begin
+
+    ; Is this one of our standard named colormaps? There are several well-defined
+    ; locations and suffixes to try...
+    tmp = getenv("NCARG_COLORMAPS")
+    if (.not.ismissing(tmp)) then
+        paths = str_split(tmp, ":")
+    else 
+        paths = (/ ncargpath("ncarg") + "/colormaps" /)
+    end if
+
+    suffixes = (/ ".rgb", ".gp", ".ncmap" /)
+
+    ; loop over the product of possible paths and possible suffixes...
+    do i=0, dimsizes(paths)-1
+        path1 = paths(i) + "/" + colorMapName
+        do j=0, dimsizes(suffixes)-1
+            path2 = path1 + suffixes(j)
+            if (isfilepresent(path2)) then
+              return path2
+            end if
+          end do
+    end do
+
+    ; if still here, just return colorMapName literally; presumably is a 
+    ; filename for a user-managed colormap...
+    return colorMapName
+  end
+
+  ; get an appropriate pathname for the given colortable name and load it..
+  pathname = getFilePath(colorMapName)
+  lines = asciiread(pathname, -1, "string")
+  lines = str_squeeze(lines)
+
+  ; parse upto MAXCOLORS rgba tuples from the file just read...
+  tmpCmap = new((/ MAXCOLORS, 4 /), "float")
+  numColors = 0
+  maxValue = -1.0
+  i = 0
+  do while (i.lt.dimsizes(lines) .and. numColors.lt.MAXCOLORS)
+      if (strlen(lines(i)).eq.0) then  
+          lines(i) = "#"  ; zero-lengthed lines cause us grief...
+      end if 
+      tokens = str_split(lines(i), " ")
+      if (dimsizes(tokens).ge.3) then
+          red = -1.0
+          green = -1.0
+          blue = -1.0
+          if (isNumerical(tokens(0))) then
+              red = stringtofloat(tokens(0))
+          end if
+          if (isNumerical(tokens(1))) then
+              green = stringtofloat(tokens(1))
+          end if
+          if (isNumerical(tokens(2))) then
+              blue = stringtofloat(tokens(2))
+          end if
+          if (dimsizes(tokens).gt.3 .and. isNumerical(tokens(3))) then
+              alpha = stringtofloat(tokens(3))
+          else
+              alpha = -1.0  ; used a marker, replaced appropriately below...
+          end if
+
+          ; were we able to get a rgba-tuple?
+          ;
+          if (red.ge.0 .and. green.ge.0 .and. blue.ge.0) then
+              ; yes, add it to our colormap...
+              tmpCmap(numColors,0) = red
+              tmpCmap(numColors,1) = green
+              tmpCmap(numColors,2) = blue
+              tmpCmap(numColors,3) = alpha
+              numColors = numColors + 1
+              ; keep track of the magnitude of these values; used to rescale below...
+              if (red.gt.maxValue) then
+                  maxValue = red
+              end if
+              if (green.gt.maxValue) then
+                  maxValue = green
+              end if
+              if (blue.gt.maxValue) then
+                  maxValue = blue
+              end if
+          end if
+      end if
+      i = i + 1
+      delete(tokens)
+  end do
+
+  ; copy tmpCmap into appropriately sized array
+  cmap = new((/numColors, 4/), float)
+  cmap = tmpCmap(0:numColors-1,:)
+
+  ; normalize the values...(oh for true if-elseif!)
+  ; this logical taken directly from HLU code in "Palette.c"
+  if (maxValue.lt.256) then
+      cmap(:,3) = where(cmap(:,3).lt.0, 255., cmap(:,3))
+      cmap = cmap / 255.
+  else 
+      if (maxValue.eq.256) then
+          cmap(:,3) = where(cmap(:,3).lt.0, 256., cmap(:,3))
+          cmap = cmap / 256.
+      else 
+          if (maxValue.eq.65536) then
+              cmap(:,3) = where(cmap(:,3).lt.0, 65535., cmap(:,3))
+              cmap = cmap / 65535. 
+          else 
+              if (maxValue.eq.65536) then
+                  cmap(:,3) = where(cmap(:,3).lt.0, 65536., cmap(:,3))
+                  cmap = cmap / 65536.
+              else
+                  cmap(:,3) = where(cmap(:,3).lt.0, maxValue, cmap(:,3))
+                  cmap = cmap / maxValue
+              end if
+          end if 
+      end if
+  end if
+        
+  return cmap
 end
 

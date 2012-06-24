@@ -58,7 +58,8 @@ NclObjClassRec nclObjClassRec = {
 		(NclInitClassFunction)InitializeObjClass,
 		(NclAddParentFunction)NULL,
 		(NclDelParentFunction)NULL,
-/* NclPrintFunction      print; 	*/ 	NULL,
+/* NclPrintSummaryFunction print_summary */ NULL,
+/* NclPrintFunction      print; 	*/  NULL,
 /* NclCallBackList* create_callback*/   NULL,
 /* NclCallBackList* delete_callback*/   NULL,
 /* NclCallBackList* modify_callback*/   NULL,
@@ -565,11 +566,11 @@ NclStatus status;
 	theinst->obj.obj_type = obj_type;
 	theinst->obj.obj_type_mask = (Ncl_Obj | obj_type_mask);
 	theinst->obj.status = status;
-	theinst->obj.id = _NclRegisterObj(theinst);
 	theinst->obj.is_constant = -1;
 	theinst->obj.parents = NULL;
 	theinst->obj.ref_count = 0;
 	theinst->obj.cblist =  NULL;
+	theinst->obj.id = _NclRegisterObj(theinst);
 	return(theinst);
 }
 
@@ -593,6 +594,7 @@ NclStatus requested;
 	}
 }
 
+int debug_obj_table = 0;
 static int current_id = 0;
 #define  OBJ_LIST_START_SIZE 8192
 static struct _NclObjList objs[OBJ_LIST_START_SIZE];
@@ -625,6 +627,16 @@ NclObj self;
 	int tmp;
 	NclObjList *step,*temp;
 
+#if 0
+        if (self->obj.id + 1 == self->obj.is_constant) {
+		printf("not unregistering constant object of type %d\n", (int) self->obj.obj_type);
+		/*return*/;
+	}
+#endif
+#if 0
+	if (debug_obj_table) 
+		printf("%d obj unregistered: obj_type %d status %d ref_count %d\n",self->obj.id,(int) self->obj.obj_type,(int)self->obj.status,self->obj.ref_count);
+#endif
 	tmp = self->obj.id % current_size;
 	if(objs[tmp].id == -1) {
 		return;
@@ -903,6 +915,10 @@ NclObj self;
 	ptr->obj_type = self->obj.obj_type;
 	ptr->obj_type_mask = self->obj.obj_type_mask;
 	ptr->theobj = self;
+#if 0
+	if (debug_obj_table) 
+		printf("%d obj registered: obj_type %d status %d ref_count %d\n",current_id,(int) self->obj.obj_type,(int)self->obj.status,self->obj.ref_count);
+#endif
 	current_id++;
 	if (current_id == MAX_ID) {
 		recycled = 1;

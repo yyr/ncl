@@ -337,7 +337,8 @@ typedef enum {
 	Ncl_DEFAULT_NCEP_PTABLE,
 	Ncl_PRINT_RECORD_INFO,
 	Ncl_SINGLE_ELEMENT_DIMENSIONS,
-	Ncl_TIME_PERIOD_SUFFIX
+	Ncl_TIME_PERIOD_SUFFIX,
+	Ncl_USE_NEW_HLFS
 } NclFileOptionValues;
 
 typedef struct _NclFileClassPart {
@@ -489,12 +490,15 @@ typedef struct _FileCallBackRec {
 
 NclFile _NclFileCreate(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
                         unsigned int obj_type_mask, NclStatus status,
-                        NclQuark path, int rw_status);
+                        NclQuark path, int rw_status,
+			NclQuark file_ext_q,
+			NclQuark fname_q, NhlBoolean is_http, 
+			char *end_of_name, int len_path);
 extern void ReverseIt(void *val,void* swap_space,int ndims,int *compare_sel,
 			ng_size_t *dim_sizes,int el_size);
 void _NclReallocFilePart(NclFilePart *file,
                                 int n_grps, int n_vars,
                                 int n_file_dims, int n_file_atts);
-NhlErrorTypes FilePrintSummary(NclObj self, FILE *fp);
+NhlErrorTypes _NclFilePrintSummary(NclObj self, FILE *fp);
 
 #endif /* NclFile_h */

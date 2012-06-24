@@ -271,100 +271,173 @@ begin
         end if
   end if
 end
+
 ;************************************************************
 ; M. Haley
-; Copy the coordinate variables from one variable to another,
-;    except for the indicated dimension(s).  
-; Note that this makes the assumption that var_from has "dims"
-;     more dimensions than var_to.
-; If you want to copy var coords and skip a dimension, use
-;     copy_VarCoords_not_n.
+; Return a list of dimension indexes that correspond with
+;  the dimension names.
 ;
-; Used internally, based on copy_VarCoords_1
+; Used internally.
 
-undef ("copy_VarCoords_n")
-procedure copy_VarCoords_n(var_from,var_to,dims[*]:integer)  
-local dimt, dimf, rfrom, rto, i, dName, ndims
-begin                      
+undef("dimnames_to_indexes")
+function dimnames_to_indexes(var_from,dim_args[*])
+local vdims_from, ndims, dims, i, imsg
+begin
+  ndims = dimsizes(dim_args)
+  imsg = new(ndims,"integer")
 
-  dimf  = dimsizes(var_from)            
-  dimt  = dimsizes(var_to)
-  rfrom = dimsizes(dimf)      ; rank of var_from
-  rto   = dimsizes(dimt)      ; rank of var_to
-  ndims = dimsizes(dims)
-
-  dName = getvardims(var_from)               ; Oct 18, 2005
-
-  if (.not.all(ismissing(dName))) then
-       ;if (rto.eq.(rfrom-1)) then
-                do i = 0,dims(0)-1            ; don't use dims' dimensions
-                   if (.not.ismissing(dName(i)).and.dimf(i).eq.dimt(i)) then  
-                        var_to!i = var_from!i
-                        if(iscoord(var_from,var_from!i))
-                                var_to&$var_to!i$ = var_from&$var_from!i$
-                        end if
-                   end if
-                end  do
-                do i = dims(ndims-1)+1,rfrom-1  ; don't use dims' dimensions
-                   i1 = i-ndims
-                   if (.not.ismissing(dName(i)).and.dimf(i).eq.dimt(i1)) then  
-                        var_to!i1 = var_from!i
-                        if(iscoord(var_from,var_from!i))
-                                var_to&$var_to!i1$ = var_from&$var_from!i$
-                        end if
-                   end if
-                end  do
-       ;else
-       ;        print("ERROR: copy_VarCoords_n: rank problem")
-       ;end if
+  if(.not.any(typeof(dim_args).eq.(/"string","integer"/))) then
+    print("dimnames_to_indexes: error: invalid type for last argument")
+    return(imsg)
   end if
+
+  if(typeof(dim_args).eq."string") then
+    vdims_from = getvardims(var_from)
+    dims = new(ndims,integer)
+    do i=0,dimsizes(dim_args)-1
+      ii = ind(dim_args(i).eq.vdims_from)
+      if(.not.any(ismissing(ii))) then
+        dims(i) = ii(0)
+      else
+        print("dimnames_to_indexes: error: invalid dimension name")
+        return(imsg)
+      end if
+      delete(ii)
+    end do
+  else
+    dims = dim_args
+  end if
+  return(dims)
 end
+
 ;************************************************************
 ; M. Haley
-; Copy the coordinate variables from one variable to another,
-;    skipping the indicated dimension(s).  
-; Note that this makes the assumption that var_from and
-;    var_to have the same dimensionality, except for the
-;    dimensions to skip.
 ;
-; Used internally, based on copy_VarCoords_n
-; Added Oct 25, 2009
-
-undef ("copy_VarCoords_not_n")
-procedure copy_VarCoords_not_n(var_from,var_to,dims[*]:integer)  
-local dimt, dimf, rfrom, rto, i, dName, ndims
+; Dec 30 2001
+; Copy the coordinate arrays of the given dimensions from
+;    one array to another.  
+;
+; This function makes the assumption that the "dims"
+;     dimensions represent dimensions in the "var_from"
+;     array. They do not have to be monotonic.
+;
+; Note: in the special case where the rank of the two arrays are
+;  the same, then the assumption that the dimensions to copy are
+;  in the same dimension locations in both arrays. Otherwise,
+;  coordinates are copied to the "var_to" variable starting
+;  with the leftmost dimension and going to the next one, etc.
+;
+undef ("copy_VarCoords_n")
+procedure copy_VarCoords_n(var_from,var_to,dims_to_copy)
+local dimt, dimf, rfrom, rto, ifrom, ito, dName, ndims
 begin                      
-
   dimf  = dimsizes(var_from)            
   dimt  = dimsizes(var_to)
   rfrom = dimsizes(dimf)      ; rank of var_from
   rto   = dimsizes(dimt)      ; rank of var_to
-  ndims = dimsizes(dims)
+  ndims = dimsizes(dims_to_copy)
 
-  if(rfrom.ne.rto)
-    print("copy_VarCoords_not_n: var_from and var_to must be the same rank.")
+;---Error checking for "dims_to_copy"
+  if(any(dims_to_copy.lt.0.or.dims_to_copy.gt.dimsizes(dimf))) then
+    print("Error: copy_VarCoords_n: invalid dimensions to copy from")
+    return
+  end if
+
+;---Error checking for rank
+  if(rto.gt.rfrom) then
+    print("Error: copy_VarCoords_n: arrays must be same rank, or second array must be subset in size of first array.")
     return
   end if
 
   dName = getvardims(var_from)
 
+  ito = 0     ; leftmost dimension of var_to array
   if (.not.all(ismissing(dName))) then
-                do i = 0,dims(0)-1            ; don't use dims' dimensions
-                   if (.not.ismissing(dName(i)).and.dimf(i).eq.dimt(i)) then  
-                        var_to!i = var_from!i
-                        if(iscoord(var_from,var_from!i))
-                                var_to&$var_to!i$ = var_from&$var_from!i$
-                        end if
-                   end if
-                end  do
-                do i = dims(ndims-1)+1,rfrom-1  ; don't use dims' dimensions
-                   if (.not.ismissing(dName(i)).and.dimf(i).eq.dimt(i)) then  
-                        var_to!i = var_from!i
-                        if(iscoord(var_from,var_from!i))
-                                var_to&$var_to!i$ = var_from&$var_from!i$
-                        end if
-                   end if
-                end  do
+    do i = 0,rfrom-1
+      if(any(i.eq.dims_to_copy)) then
+        ifrom = i
+        if (.not.ismissing(dName(ifrom)).and.dimf(ifrom).eq.dimt(ito)) then  
+          var_to!ito = var_from!ifrom
+          if(iscoord(var_from,var_from!ifrom))
+            var_to&$var_to!ito$ = var_from&$var_from!ifrom$
+          end if
+        end if
+        ito = ito + 1
+      else
+        if(rfrom.eq.rto) then
+          ito = ito + 1
+        end if
+      end if
+    end  do
+  end if
+end
+
+;************************************************************
+; M. Haley
+; Copy all but indicated coordinate variables from two arrays
+;    of the same size, or from a larger array to a smaller 
+;    array that is a subset in size. 
+;
+; Dec 30 2001:
+;    This function used to be two different functions: 
+;    "copy_VarCoords_n" and "copy_VarCoords_not_n". I
+;    decided to combine them into one function called 
+;    "copy_VarCoords_not_n".
+;
+; This function *used* to make the  assumption that the
+;    "dims_to_skip" dimensions were consecutive and 
+;    increasing. This is no longer necessary.  The 
+;    "dims_to_copy" must represent valid dimensions in 
+;    the "var_from" array.
+;
+; Note: in the special case where the rank of the two arrays are
+;  the same, then the assumption that the dimensions to skip are
+;  in the same dimension locations in both arrays. Otherwise,
+;  coordinates are copied to the "var_to" variable starting
+;  with the leftmost dimension and going to the next one, etc.
+;
+undef ("copy_VarCoords_not_n")
+procedure copy_VarCoords_not_n(var_from,var_to,dims_to_skip)
+local dimt, dimf, rfrom, rto, i, ifrom, ito, dName, ndims, dims
+begin                      
+  dimf  = dimsizes(var_from)            
+  dimt  = dimsizes(var_to)
+  rfrom = dimsizes(dimf)      ; rank of var_from
+  rto   = dimsizes(dimt)      ; rank of var_to
+  ndims = dimsizes(dims_to_skip)
+
+;---Error checking for "dims_to_skip"
+  if(any(dims_to_skip.lt.0.or.dims_to_skip.gt.dimsizes(dimf))) then
+    print("Error: copy_VarCoords_not_n: invalid dimensions to skip")
+    return
+  end if
+
+;---Error checking for rank
+  if((rfrom-ndims).gt.rto) then
+    print("Error: copy_VarCoords_not_n: you are not skipping enough dimensions.")
+    return
+  end if
+
+  dName = getvardims(var_from)
+
+  ito = 0     ; leftmost dimension of var_to array
+  if (.not.all(ismissing(dName))) then
+    do i = 0,rfrom-1
+      if(.not.any(i.eq.dims_to_skip)) then
+        ifrom = i
+        if (.not.ismissing(dName(ifrom)).and.dimf(ifrom).eq.dimt(ito)) then  
+          var_to!ito = var_from!ifrom
+          if(iscoord(var_from,var_from!ifrom))
+            var_to&$var_to!ito$ = var_from&$var_from!ifrom$
+          end if
+        end if
+        ito = ito + 1
+      else
+        if(rfrom.eq.rto) then
+          ito = ito + 1
+        end if
+      end if
+    end  do
   end if
 end
 ;==============================
@@ -498,6 +571,31 @@ begin
        end if                ; if (sameType .or. ....
     end if                   ; if(.not.all(ismissing(att_names))) 
 end
+
+;======================================================================
+; This is the modified version of copy_VarAtts originaly developed by
+; Dennis Shea.
+;
+; Jan 12, 2012
+; This function was originally developed for use in the ESMF software,
+; and moved to contributed.ncl.
+;======================================================================
+undef("copy_VarAtts_except")
+procedure copy_VarAtts_except(var_from,var_to, Except [*]:string)    
+local att_names, i
+begin                                       
+    att_names = getvaratts(var_from);
+    if(.not.all(ismissing(att_names)))
+        do i = 0,dimsizes(att_names)-1
+            if (.not.any(att_names(i).eq.Except)) then
+                if (isatt(var_to,att_names(i))) then
+                    delete(var_to@$att_names(i)$)  ; var_from att may be diff size/type
+                end if
+                var_to@$att_names(i)$ = var_from@$att_names(i)$
+            end if
+        end do
+    end if
+end     ; of copy_VarAtts_except
 
 ;***********************************************
 ; D. Shea
@@ -782,8 +880,6 @@ begin
   end if
 end ; END extractAsciiRows
 
-
-
 ;***************************************************************
 ; D. Shea   
 ; There is no NCL built-in function to get the dimension names
@@ -965,7 +1061,7 @@ end
 
 ; *****************************************************************
 ; D. Shea
-; Generate longitudes for a Fixed-OfGSUNset global grid
+; Generate longitudes for a Fixed-Offset global grid
 ; Example: lon = lonGlobeFo (72, "lon", "longitude", "degrees_east")
 ;          lon will run from -> 2.5 to 357.5 in the above example
 ;
@@ -1173,6 +1269,129 @@ begin
   end if
   
   return (x)
+end
+; *****************************************************************
+; Calculate meteorological wind direction
+; *****************************************************************
+undef ("wind_direction")
+function wind_direction(u:numeric, v:numeric, opt:integer)
+; meteorological wind direction. 
+; This is over-kill. Only need: wdir=atan2(u,v)*radi + 180
+local wdir, radi, con, wcrit, wmsg, zero, dimu
+begin
+  if (.not.(typeof(u).eq."double" .or. \
+            typeof(u).eq."float"  .or. \
+            typeof(u).eq."integer" )) then
+      print("wind_direction: illegal numeric type: "+typeof(u))
+      exit
+  end if
+
+  dimu = dimsizes(u)
+
+  if (typeof(u).eq."double") then
+      zero = 0.0d
+      wmsg = 1d20
+      con  = 180.0d
+      wcrit= 360d0-0.00002d0
+      radi = 1.0d0/0.0174532925199433d0
+      wdir = new (dimu, typeof(u), wmsg) 
+  else
+      zero = 0.0
+      wmsg = 1e20
+      con  = 180.0
+      wcrit= 360-0.00002
+      radi = 1.0/0.01745329
+      wdir = new (dimu, "float", wmsg) 
+  end if
+
+  wdir = (/ atan2(u,v)*radi + con  /)
+  wdir = where(wdir.ge.wcrit, zero, wdir)  ; force 360 "north winds" to 0
+                          
+  if (typeof(opt).eq."integer" .and. opt.eq.0) then 
+      cdir = zero                          ; calm 0.0->_FillValue
+      wdir = where (u.eq.zero .and. v.eq.zero, cdir, wdir)
+  end if
+                          
+  if (typeof(opt).eq."integer" .and. opt.eq.1) then 
+      cdir = wdir@_FillValue               ; calm 0.0->_FillValue
+      wdir = where (u.eq.zero .and. v.eq.zero, cdir, wdir)
+  end if
+
+  if (typeof(opt).eq."float" .or. typeof(opt).eq."double") then  
+                                           ; calm 0.0->user_value
+      wdir = where (u.eq.zero .and. v.eq.zero, opt, wdir)
+  end if
+  
+  wdir@long_name = "wind direction (meteorological)"
+  if (isatt(wdir,"units")) then
+      delete(wdir@units)
+  end if
+  return(wdir)
+end
+; *****************************************************************
+; Calculate meteorological wind components
+; *****************************************************************
+undef ("wind_component")
+function wind_component(wspd:numeric, wdir:numeric, opt:integer)
+local wdir, rad , ivmsg, uveps, uvzero, dimw, rankw, dimuv, uv
+begin
+  if (typeof(wspd).eq."double" .or. typeof(wspd).eq."double") then
+      rad   = 0.0174532925199433d0
+      uvmsg = 1d20
+      uveps = 1.0d-5
+      uvzero= 0.0d0
+  else
+      rad   = 0.01745329
+      uvmsg = 1e20
+      uveps = 1.0e-5
+      uvzero= 0.0
+  end if
+
+  dimw = dimsizes(wspd)
+  rankw= dimsizes(dimw)
+
+  dimuv= new ( rankw+1, "integer", "No_FillValue")
+  dimuv(0)  = 2
+  dimuv(1:) = dimw
+  uv        = new (dimuv, typeof(wspd), uvmsg) 
+
+  if (rankw.eq.1 .and. dimw(0).eq.1) then
+      uv(0) = -wspd*sin(wdir*rad)
+      uv(1) = -wspd*cos(wdir*rad)
+      copy_VarMeta(wspd, uv)
+  else if (rankw.eq.1) then
+      uv(0,:) = -wspd*sin(wdir*rad)
+      uv(1,:) = -wspd*cos(wdir*rad)
+      copy_VarMeta(wspd, uv(0,:))
+  else if (rankw.eq.2) then
+      uv(0,:,:) = -wspd*sin(wdir*rad)
+      uv(1,:,:) = -wspd*cos(wdir*rad)
+      copy_VarMeta(wspd, uv(0,:,:))
+  else if (rankw.eq.3) then
+      uv(0,:,:,:) = -wspd*sin(wdir*rad)
+      uv(1,:,:,:) = -wspd*cos(wdir*rad)
+      copy_VarMeta(wspd, uv(0,:,:,:))
+  else if (rankw.eq.4) then
+      uv(0,:,:,:,:) = -wspd*sin(wdir*rad)
+      uv(1,:,:,:,:) = -wspd*cos(wdir*rad)
+      copy_VarMeta(wspd, uv(0,:,:,:,:))
+  else if (rankw.eq.5) then
+      uv(0,:,:,:,:,:) = -wspd*sin(wdir*rad)
+      uv(1,:,:,:,:,:) = -wspd*cos(wdir*rad)
+      copy_VarMeta(wspd, uv(0,:,:,:,:,:))
+  end if           ; 5
+  end if           ; 4
+  end if           ; 3
+  end if           ; 2
+  end if           ; 1
+  end if           ; scalar
+
+  uv   = where(abs(uv).le.uveps, uvzero, uv) ; make near zero => 0
+
+  uv!0 = "uv"
+  uv@long_name = "zonal and meridional wind components"
+
+  return(uv)
 end
 
 ; *******************************************************************
@@ -1616,31 +1835,48 @@ begin
      return(xS)
  end if
 
- if (typeof(xS).ne."short") then
+ if (.not.(typeof(xS).eq."short" .or. typeof(xS).eq."ushort")) then
      if (isatt(xS,"long_name")) then
-         print("short2flt: input variable is not type short: "+xS@long_name)
+         print("short2flt: input variable is not type short or ushort: "+xS@long_name)
      else
-         print("short2flt: input variable is not type short")
+         print("short2flt: input variable is not type short or ushort")
      end if
      exit
  end if
 
 ;xF = new ( dimsizes(xS), float)
  xF = new ( dimsizes(xS), float, 1.e20)  ; 20 Nov 2002
- 
- copy_VarAtts   (xS, xF)
- copy_VarCoords (xS, xF)
                                      ; added 19 Dec 2002
                                      ; the type stuff added Sept 2003
  if (isatt(xS,"missing_value") .and. .not.isatt(xS,"_FillValue")) then
      type_missing_value = typeof(xS@missing_value)
-     if (type_missing_value.eq."short") then
-         xS@_FillValue = xS@missing_value
+     if (typeof(xS).eq."short") then
+         if (type_missing_value.eq."short") then
+             xS@_FillValue = xS@missing_value
+         end if
+         if (type_missing_value.eq."ushort") then
+             xS@_FillValue = toshort(xS@missing_value)
+         end if
+         if (type_missing_value.eq."integer") then
+             xS@_FillValue = toshort(xS@missing_value)
+         end if
      end if
-     if (type_missing_value.eq."integer") then
-         xS@_FillValue = integertoshort(xS@missing_value)
+
+     if (typeof(xS).eq."ushort") then
+         if (type_missing_value.eq."ushort") then
+             xS@_FillValue = xS@missing_value
+         end if
+         if (type_missing_value.eq."short") then
+             xS@_FillValue = toushort(xS@missing_value)
+         end if
+         if (type_missing_value.eq."integer") then
+             xS@_FillValue = toushort(xS@missing_value)
+         end if
      end if
- end if
+ end if   ; end of assigning _FillValue
+ 
+ copy_VarAtts   (xS, xF)
+ copy_VarCoords (xS, xF)
 
           ; should data be 'scaled' and/or 'offset' ?
 
@@ -1721,7 +1957,7 @@ end
 ; This follows these conventions.
 
 undef("byte2flt")
-function byte2flt (xB:byte)
+function byte2flt (xB)
 local xF, oNames, sNames, offset, scale, xAtts, nAtts, n
 begin
  xF = new ( dimsizes(xB), float)
@@ -1733,7 +1969,7 @@ begin
 
           ; names to check
  oNames = (/"add_offset", "offset", "OFFSET", "Offset", "_offset" \
-           ,"Intercept", "intercept"/)
+           ,"Intercept", "intercept", "add_off", "ADD_OFF"/)
  sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor" , "factor" \
            ,"Scale_factor", "Slope" , "slope", "ScaleFactor", "Scale_Factor" /)
 
@@ -1784,7 +2020,9 @@ begin
      xF = xB*scale + offset 
  end if
 
- if (isatt(xB,"valid_range") .and. typeof(xB@valid_range).eq."byte") then
+ if (isatt(xB,"valid_range") .and. \
+    (typeof(xB@valid_range).eq."byte" .or. \
+     typeof(xB@valid_range).eq."ubyte")    ) then
      vrB = xB@valid_range
      vrF = new ( dimsizes(vrB), float)
      vrF = vrB*scale + offset 
@@ -2160,15 +2398,17 @@ end
 ; dims - dimension(s) to do average across
 
 undef ("dim_avg_n_Wrap")
-function dim_avg_n_Wrap (x:numeric,dims[*]:integer)
-local xave
+function dim_avg_n_Wrap (x:numeric,dim_args[*])
+local xave, dims
 begin
 
+ dims = dimnames_to_indexes(x,dim_args)
  xave = dim_avg_n(x,dims)   ; arithmetic ave [no meta data]
  
  copy_VarAtts (x, xave)     ; copy attributes
                             ; copy dim names and coord variables
- copy_VarCoords_n (x, xave, dims)
+
+ copy_VarCoords_not_n (x, xave, dims)
                                        ; add an extra attribute
  xave@average_op_ncl = dimWrapString("dim_avg_n",x,dims)
 
@@ -2218,7 +2458,7 @@ begin
  
  copy_VarAtts (x, xave)     ; copy attributes
                             ; copy dim  names and coord  variables
- copy_VarCoords_n (x, xave, dims)
+ copy_VarCoords_not_n (x, xave, dims)
                                        ; add an extra attribute
  xave@average_op_ncl = dimWrapString("dim_avg_wgt_n",x,dims)
 
@@ -2267,7 +2507,7 @@ begin
  
  copy_VarAtts (x, xvar)     ; copy attributes
                             ; copy dim  names and coord  variables
- copy_VarCoords_n (x, xvar, dims)
+ copy_VarCoords_not_n (x, xvar, dims)
                                        ; add an extra attribute
  xvar@variance_op_ncl = dimWrapString("dim_variance_n",x,dims)
 
@@ -2316,7 +2556,7 @@ begin
  
  copy_VarAtts (x, xstd)     ; copy attributes
                             ; copy dim  names and coord  variables
- copy_VarCoords_n (x, xstd, dims) 
+ copy_VarCoords_not_n (x, xstd, dims) 
                                   ; add an extra attribute
  xstd@stddev_op_ncl = dimWrapString("dim_stddev_n",x,dims)
  
@@ -2365,11 +2605,59 @@ begin
  
  copy_VarAtts (x, xsum)     ; copy attributes
                             ; copy dim names and coord variables
- copy_VarCoords_n (x, xsum, dims)
+ copy_VarCoords_not_n (x, xsum, dims)
                                        ; add an extra attribute
  xsum@sum_op_ncl = dimWrapString("dim_sum_n",x,dims)
 
  return (xsum)
+end
+
+; *******************************************************************
+; M. Haley
+; Compute a dimension min of "x" [x may have many dimensions]
+; return with one less dimension. There is no dim_min_Wrap.
+; Copies over all the attributes and coordinate variables
+; x    - multidimensional variable 
+; dims - dimension(s) to do min across
+
+undef ("dim_min_n_Wrap")
+function dim_min_n_Wrap (x:numeric,dims[*]:integer)
+local xmin
+begin
+
+ xmin = dim_min_n(x,dims)   ; min of data [no meta data]
+ 
+ copy_VarAtts (x, xmin)     ; copy attributes
+                            ; copy dim names and coord variables
+ copy_VarCoords_not_n (x, xmin, dims)
+                                       ; add an extra attribute
+ xmin@min_op_ncl = dimWrapString("dim_min_n",x,dims)
+
+ return (xmin)
+end
+
+; *******************************************************************
+; M. Haley
+; Compute a dimension max of "x" [x may have many dimensions]
+; return with one less dimension. There is no dim_max_Wrap.
+; Copies over all the attributes and coordinate variables
+; x    - multidimensional variable 
+; dims - dimension(s) to do max across
+
+undef ("dim_max_n_Wrap")
+function dim_max_n_Wrap (x:numeric,dims[*]:integer)
+local xmax
+begin
+
+ xmax = dim_max_n(x,dims)   ; max of data [no meta data]
+ 
+ copy_VarAtts (x, xmax)     ; copy attributes
+                            ; copy dim names and coord variables
+ copy_VarCoords_not_n (x, xmax, dims)
+                                       ; add an extra attribute
+ xmax@max_op_ncl = dimWrapString("dim_max_n",x,dims)
+
+ return (xmax)
 end
 
 ; *******************************************************************
@@ -2416,7 +2704,7 @@ begin
  
  copy_VarAtts (x, xsum)     ; copy attributes
                             ; copy dim  names and coord  variables
- copy_VarCoords_n (x, xsum, dims) 
+ copy_VarCoords_not_n (x, xsum, dims) 
                                        ; add an extra attribute
  xsum@sum_op_ncl = dimWrapString("dim_sum_wgt_n",x,dims)
  
@@ -2624,7 +2912,7 @@ begin
          xrmsd@long_name = "RMSD: "+getLongName(x)
      end if
                                 ; copy dim  names and coord  variables
-     copy_VarCoords_n (x, xrmsd, dims)
+     copy_VarCoords_not_n (x, xrmsd, dims)
                                            ; add an extra attribute
      xrmsd@rmsd_op_ncl = dimWrapString("dim_rmsd_n",x,dims)
 
@@ -3335,9 +3623,7 @@ begin
   do yr=0,ntim-1,nmos
      xAnom(yr:yr+nmos-1) = (/ x(yr:yr+nmos-1)- aveMonth /)
   end do
-  xAnom@long_name  = x@long_name + ": Anomalies"
-  xAnom@anomaly_op_ncl = "function rmAnnCyc1D "
-
+  xAnom@anomaly_op_ncl  = "Annual Cycle Removed: rmAnnCycle1D: contributed.ncl" 
   return (xAnom)
 end
 ; ******************************************************************
@@ -3817,13 +4103,21 @@ begin
 
    clmDay= new((/ndys,nlat,mlon/),typeof(x), getFillValue(x) ) ; daily climatology
 ;
-; Compute averages for each sequebtial day of the year. 
+; Compute averages for each sequential day of the year. 
 ; This uses dimension swapping.
 ;
    do ndy=0,ndys-2                                 ; ndy=0->364 ==> day of year 1->365       
-      indx = ind( days.eq.(ndy+1) )       
-     ;clmDay(ndy,:,:) = dim_avg(x(lat|:,lon|:,time|indx))
-      clmDay(ndy,:,:) = dim_avg_n(x(indx,:,:), 0)  ; 5 Nov 2009
+      indx = ind( days.eq.(ndy+1) )                ; indx:indx Mar 2012, handle 1 element
+      if (.not.ismissing(indx(0))) then
+          nindx = dimsizes(indx)
+        if (nindx.eq.1) then                       ; force 3rd dimension
+         ;clmDay(ndy,:,:) = dim_avg(x(lat|:,lon|:,time|indx:indx))
+          clmDay(ndy,:,:) = dim_avg_n(x(indx:indx,:,:), 0) ; 5 Nov 2009 => dim_avg_n
+        else
+         ;clmDay(ndy,:,:) = dim_avg(x(lat|:,lon|:,time|indx))
+          clmDay(ndy,:,:) = dim_avg_n(x(indx,:,:), 0)  ; 5 Nov 2009 => dim_avg_n
+        end if
+      end if
       delete(indx)                  
    end do
                                                    ; nominal day 366 
@@ -3904,12 +4198,19 @@ begin
 
    clmDay= new((/ndys,klev,nlat,mlon/),typeof(x), getFillValue(x) ) ; daily climatology
 ;
-; Compute averages for each sequebtial day of the year. 
+; Compute averages for each sequential day of the year. 
 ; This uses dimension swapping.
 ;
    do ndy=0,ndys-2                                 ; ndy=0->364 ==> day of year 1->365       
-      indx = ind( days.eq.(ndy+1) )       
-      clmDay(ndy,:,:,:) = dim_avg_n(x(indx,:,:,:), 0)
+      indx = ind( days.eq.(ndy+1) )                ; indx:indx Mar 2012, handle 1 element
+      if (.not.ismissing(indx(0))) then
+          nindx = dimsizes(indx)
+        if (nindx.eq.1) then                       ; force 3rd dimension
+            clmDay(ndy,:,:,:) = dim_avg_n(x(indx:indx,:,:,:), 0)
+        else
+            clmDay(ndy,:,:,:) = dim_avg_n(x(indx,:,:,:), 0)
+        end if
+      end if
       delete(indx)                  
    end do
                                                    ; nominal day 366 
@@ -7445,7 +7746,7 @@ begin
   sec     = new( N ,"float")
   sec     = 0.0
 
-  time    = (/ ut_inv_calendar(year,month,day,hour,min,sec,tunits, 0) /)
+  time    = (/ cd_inv_calendar(year,month,day,hour,min,sec,tunits, 0) /)
 
   time&time       =  time        ; make coordinate variable
 
@@ -10399,6 +10700,32 @@ begin
 end
 
 ; **********************************************************************
+; This is identical to ut_convert, except it uses cd_calendar.
+;***********************************************************************
+undef("cd_convert")
+function cd_convert( dateFrom:numeric, unitsTo:string )
+local retVal, tempDate, utcDate
+begin
+ if(.not.isatt(dateFrom,"units")) then
+   print("cd_convert: 'dateFrom' contains no 'units' attribute.")
+   print("            Will return all missing values.")
+  
+   retVal = new(dimsizes(dateFrom),double)
+   return(retVal)
+ end if
+
+ tempDate       = dateFrom
+ tempDate@units = dateFrom@units
+
+ utcDate = cd_calendar( tempDate, -5 )
+
+ retVal = cd_inv_calendar( utcDate(:,0), utcDate(:,1), utcDate(:,2), \\
+                           utcDate(:,3), utcDate(:,4), utcDate(:,5), \\
+                           unitsTo, 0 )
+ return( retVal )
+end
+
+; **********************************************************************
 ; D. Shea
 ; wrapper for NCL function "triple2grid"  that copies attributes and coordinate
 ; vars.  It adds the longitude and latitude coordinates.
@@ -10514,6 +10841,8 @@ begin
 end
 ;***********************************************
 ; binning consistent with the "pdfxy" function
+; Feb 2012: replaced NCL loop with fortran loop
+; in pdfx_bin. This is much faster.
 ;
 undef("pdfx")
 function pdfx(x:numeric, nbin[1]:integer, opt:logical)
@@ -10580,13 +10909,19 @@ begin
 
   pdf         = new( nbins, "double", getFillValue(x))
   pdf         = 0.0d
+  
+;;---- the following replaces the ;; NCL loop below ---
+  popt          = True
+  popt@fraction = True ; True mean total count (**DO NOT CHANGE**)
+  pdf = pdfx_bin(x, binBound, popt) ; fortran
 
-  do nb=0,nbins-1      
-     pdf(nb) = num( x.ge.binBound(nb) .and. x.lt.binBound(nb+1) )
-     if (nb.eq.(nbins-1)) then                 ; last bin 
-         pdf(nb) = pdf(nb) + num( x.eq.binBound(nb+1) )   ; include last bound
-     end if
-  end do
+;;do nb=0,nbins-1      
+;;   pdf(nb) = num( x.ge.binBound(nb) .and. x.lt.binBound(nb+1) )
+;;   if (nb.eq.(nbins-1)) then                 ; last bin 
+;;       pdf(nb) = pdf(nb) + num( x.eq.binBound(nb+1) )   ; include last bound
+;;   end if
+;;end do
+;;----
 
   pdf!0    = "x"
   pdf&x    = binCenter
@@ -11419,16 +11754,19 @@ begin
   return(zGrid)
 end
 ;----------------------------------------------------------------------------
-; Calculate a 'bunch' of dispersion statistics (25)
+; Calculate a 'bunch' of dispersion statistics 
+; This can be slow for big 'x'
 ; 
 undef("stat_dispersion")
 function stat_dispersion (x:numeric, opt[1]:logical )
 ; Robust dispersion statistics
 ; 
-local nStat, nx, sFillV, nFill, one, statx, work, nwork, x1d, ivalid
+local nStat, nx, sFillV, nFill, one, statx, work, nwork, x1d, ivalid, allFill
 begin
-   nx = product( dimsizes(x) )
-   nFill = 0
+   nx      = product( dimsizes(x) )
+   nFill   = 0
+   nStat   = 30
+   allFill = False 
   
    if (isatt(x,"_FillValue")) then  
        sFillV = x@_FillValue
@@ -11436,7 +11774,12 @@ begin
        if (nFill.gt.0) then
            x1d    = ndtooned(x) 
            ivalid = ind(.not.ismissing(x1d))
-           work   = x1d(ivalid)
+           if (.not.ismissing(ivalid(0))) then
+               work   = x1d(ivalid)
+           else
+               allFill= True
+               work   = new ( 1, typeof(sFillV), sFillV)
+           end if
            delete(x1d)
        else
            work = ndtooned(x) 
@@ -11456,42 +11799,45 @@ begin
        one    = 1.0
    end if
 
-   nwork    = dimsizes(work)  
-
-   nStat    = 30
    statx    = new ( nStat, typeof(sFillV), sFillV) 
-   statx(0) = avg(x)                ; mean
-   statx(1) = stddev(x)             ; std. deviation
-   if (nwork.ge.10) then 
-       qsort( work )                    ; sort into ascending order
-       statx(2) = min ( work )
-                                        ; -1 ... NCL zero based 
-       statx(3) = work( nwork/10-1 )    ; lower dectile
-       statx(4) = work( nwork/8 -1 )    ; lower octtile
-       statx(5) = work( nwork/6 -1 )    ; lower sextile
-       statx(6) = work( nwork/4 -1 )    ; lower quartile
-       statx(7) = work( nwork/3 -1 )    ; lower 3tile
-       if (nwork%2 .eq.0) then          ; median even
-           statx(8) = (work(nwork/2-1)+work(nwork/2))*0.5  
-       else
-           statx(8) = work( nwork/2   ) ; median odd  
-       end if
-       statx(9) = work((nwork*2)/3 -1)  ; upper 3tile
-       statx(10)= work((nwork*3)/4 -1)  ; upper quartile
-       statx(11)= work((nwork*5)/6 -1)  ; upper sextile
-       statx(12)= work((nwork*7)/8 -1)  ; upper octtile
-       statx(13)= work((nwork*9)/10-1)  ; upper dectile
-       statx(14)= max ( work )      
-       statx(15)= statx(14)-statx(2)    ; range
-       if (statx(1).gt.0) then
-           statx(16)= statx(15)/statx(1); a measure of dispersion
-       end if
-       statx(17)= sqrt(sum((work-statx(0))^2)/nwork) ; root mean sq anomaly
-   end if
-       statx(18)= nx
-       statx(19)= nwork
-       statx(20)= nFill
-       statx(21)= 100*(one - (one*(nx-nFill))/nx)
+   if (.not.allFill) then
+       nwork    = 0l                    ; force nwork as 'long' int
+       nwork    = dimsizes(work)        ; so (say) 3*nwork will work
+       statx(0) = avg(x)                ; mean
+       statx(1) = stddev(x)             ; std. deviation
+       if (nwork.ge.10) then 
+           qsort( work )                    ; sort into ascending order
+           statx(2) = min ( work )
+                                            ; -1 ... NCL zero based 
+           statx(3) = work( nwork/10-1 )    ; lower dectile
+           statx(4) = work( nwork/8 -1 )    ; lower octtile
+           statx(5) = work( nwork/6 -1 )    ; lower sextile
+           statx(6) = work( nwork/4 -1 )    ; lower quartile
+           statx(7) = work( nwork/3 -1 )    ; lower 3tile
+           if (nwork%2 .eq.0) then          ; median even
+               statx(8) = (work(nwork/2-1)+work(nwork/2))*0.5  
+           else
+               statx(8) = work( nwork/2   ) ; median odd  
+           end if
+           statx(9) = work((nwork*2)/3 -1)  ; upper 3tile
+           statx(10)= work((nwork*3)/4 -1)  ; upper quartile
+           statx(11)= work((nwork*5)/6 -1)  ; upper sextile
+           statx(12)= work((nwork*7)/8 -1)  ; upper octtile
+           statx(13)= work((nwork*9)/10-1)  ; upper dectile
+           statx(14)= max ( work )      
+           statx(15)= statx(14)-statx(2)    ; range
+           if (statx(1).gt.0) then
+               statx(16)= statx(15)/statx(1); a measure of dispersion
+           end if
+           statx(17)= sqrt(sum((work-statx(0))^2)/nwork) ; root mean sq anomaly
+       end if                               ; nwork.ge.10
+   else                             
+       nwork    = 0
+   end if                                   ; .not.allFill
+   statx(18)= nx
+   statx(19)= nwork
+   statx(20)= nFill
+   statx(21)= 100*(one - (one*(nx-nFill))/nx)
 
    statx@long_name = "Robust Dispersion Statistics"
    if (isatt(x,"long_name")) then
@@ -11691,14 +12037,14 @@ begin
    end if
 end
 ;---------------------------------
-; undocumented
-;
+; undocumented and unsupported
+;---------------------------------
 undef ("calculate_monthly_values")
 function calculate_monthly_values (x:numeric, arith:string, nDim[1]:integer, opt[1]:logical)
 
 ; calculate monthly values [avg, sum, min, max]
 ; x: numeric array of 5D or less [eg: time,lev,lat,lon]
-;    *must* have time coordinate recognized by ut_calendar
+;    *must* have time coordinate recognized by cd_calendar
 ;    if 5D [case,time,lev,lat,lon]
 ; arith: "avg" [also, "ave"], "sum","min","max"     others may be added later
 ; nDim : scalar integer that specifies the 'time' dimension [generally, 0]
@@ -11709,6 +12055,9 @@ function calculate_monthly_values (x:numeric, arith:string, nDim[1]:integer, opt
 ;        xMonthSum = calculate_monthly_values(x, "sum", 0, False)
 ;        xMonthMin = calculate_monthly_values(x, "min", 0, False)
 ;        xMonthMax = calculate_monthly_values(x, "max", 0, False)
+;
+; It is assumed that there will be multiple elements for the dim_avg_n
+; calculation. 
 ;
 local dimx, rankx, utc_date, year, month, day, hour, ntim \
     , yrStrt, yrLast, nyrs, NTIM, dAvg, xReturn, xMonth \
@@ -11723,7 +12072,7 @@ begin
         exit
     end if
 
-    utc_date = ut_calendar(x&time, 0)
+    utc_date = cd_calendar(x&time, 0)
     year     = floattointeger(utc_date(:,0))   
     month    = floattointeger(utc_date(:,1))  
     day      = floattointeger(utc_date(:,2))
@@ -11764,7 +12113,16 @@ begin
          end if
          ii    = ind(yr.eq.year .and. (nmo+1).eq.month)
 
+
          if (.not.ismissing(ii(0))) then
+
+             dimii = dimsizes(ii)     ; should be > 1
+             if (dimii.eq.1) then
+                 print("calculate_monthly_values: there should be more than one element")
+                 print("This is unsupported code.                                      ")
+                 exit
+             end if
+
              xMonth(NT) = (/ x&time(ii(0)) /)
 
              if (rankx.eq.1) then
@@ -12162,9 +12520,9 @@ function time_to_newtime(time[*]:numeric, new_time_units[1]:string)
 ;  time = time_to_newtime(time, "hours since 1800-01-01 00:00") ; time(time) 
 begin
   ntim   = dimsizes(time)
-  date   = ut_calendar( time, 0)
+  date   = cd_calendar( time, 0)
  ;print(date(:,0)+"  "+date(:,1)+"  "+date(:,2)+"  "+date(:,3))
-  TIME   = ut_inv_calendar(toint(date(:,0)),toint(date(:,1)) \
+  TIME   = cd_inv_calendar(toint(date(:,0)),toint(date(:,1)) \
                           ,toint(date(:,2)),toint(date(:,3)) \
                           ,toint(date(:,4)),todouble(date(:,5)),new_time_units, 0)
   TIME@calendar = "gregorian"
@@ -12265,499 +12623,6 @@ begin
   end if
 
   return(dp_sigma)
-end
-;---------------------------------------------------------
-undef("remap_elements")
-function remap_elements(fwt[1]:file, fhom, var[1]:string, opt[1]:logical)
-;
-; remap a scalar variable
-;
-; Usage:
-;  dirw   = "./"
-;  filw   = "map_ne120np4_to_fv0.23_aave_da_100310"; weight file
-;  fw     = addfile(dirw+filw, "r")
-;  dirh   = "./"
-;  filh   = "cam_cube_sphere.nc"                   ; homme cubed sphere
-;  fh     = addfile(dirh+filh, "r")
-;
-;  psl    = remap_elements(fw, fc, "PSL", False)   ; (time,lat,lon)
-;  temp   = remap_elements(fw, fc, "T"  , False)   ; (time,lev,lat,lon)
-;****************************************************************
-;  The original weight files given to me did not have all the expected
-;  information. Hence, there is extra coding to try to deduce info. 
-;****************************************************************
-;  The fact that we want to return the full data object (including level/depth)
-;  makes it difficult to unambiguously determine the target grid. 
-;****************************************************************
-local ier, xin, dimx, rank, dim_dst, ntim, klev, nlat, mlon, lat, lon \
-    , errMsg, dst_add , src_add, s, nS, map_wts, xout1d, xout, xoutf  \
-    , fdimNames, fdimSizes, ia, ja, ib, jb, knam, nt, kl, ilon, jlon  \
-    , radUnints, latUnits, lonUnits, gridType_a , gridType_b, dim_src \
-    , irnk, src_rank, dst_rank
-begin
-         ; check 'fhom' argument
-      if (.not.(typeof(fhom).eq."file"    .or. \
-                typeof(fhom).eq."list"))  then
-          print("remap_elements: fhom is not of type file or list")
-          print("              fhom="+typeof(fhom))
-          exit
-      end if
-
-         ; read variable
-      ier = False
-      if (typeof(fhom).eq."file") then
-         if (isfilevar(fhom,var)) then 
-             xin = fhom->$var$
-         else
-             ier = True
-         end if
-      end if
-
-      if (typeof(fhom).eq."list") then
-          if (isfilevar(fhom[0],var)) then 
-              xin = fhom[:]->$var$
-          else
-              ier = True
-          end if
-      end if
-
-      if (ier) then
-          print("remap_elements: variable ="+var+" not on file")
-          exit
-      end if
-      
-      dnam = getvardims(xin)                ; input variable dim names
-      dimx = dimsizes( xin  )
-      rank = dimsizes( dimx )
-      if (rank.eq.1 .or. rank.gt.3) then
-          print("remap_elements: bad rank: rank="+rank)
-          exit
-      end if
-
-      fdimNames = getvardims(fwt)           ; dimension names on wgt file 
-      fdimSizes = getfiledimsizes(fwt)      ; dimension sizes on wgt file
-
-      if (any(fdimNames.eq."src_grid_rank")) then
-          irnk     = ind(fdimNames.eq."src_grid_rank")     ; index 
-          src_rank = toint(fdimSizes(irnk))
-      else
-          src_rank = -999                                  ; missing info
-      end if
-     ;print("remap_elements: src_rank="+src_rank)
-
-      if (any(fdimNames.eq."dst_grid_rank")) then
-          irnk     = ind(fdimNames.eq."dst_grid_rank")     ; index 
-          dst_rank = toint(fdimSizes(irnk))
-      else
-          dst_rank = -999                                  ; missing info
-      end if
-     ;print("remap_elements: dst_rank="+dst_rank)
-          
-      radUnits  = (/"radians","radian","Radians","Radian"/)
-
-      latUnits  = (/"degrees"      \ ; not udunits but .....
-                  ,"degrees_north","degrees-north","degree_north" \ 
-                  ,"degrees north","degrees_N","Degrees_north"    \
-                  ,"degree_N","degreeN","degreesN","deg north"    /)
-
-      lonUnits  = (/"degrees"      \ ; not udunits but .....
-                   ,"degrees_east","degrees-east","degree_east"   \
-                   ,"degrees east","degrees_E","Degrees_east"     \
-                   ,"degree_E","degreeE","degreesE","deg east"    /)
-                                               ; sizes source grid
-      if (isfilevar(fwt,"src_grid_dims") ) then   
-          dim_src = fwt->src_grid_dims         ; straight forward       
-          ilon    = dim_src(0)
-          jlat    = dim_src(1)
-      else                                     ; try another approach
-          if (any(fdimNames.eq."ni_a") .and. any(fdimNames.eq."nj_a")) then
-              dim_src   = (/0,0/)
-              ia        = ind(fdimNames.eq."ni_a")     ; index 
-              ja        = ind(fdimNames.eq."nj_a")
-              ilon      = toint(fdimSizes(ia))
-              jlat      = toint(fdimSizes(ja))
-              dim_src(0)= ilon
-              dim_src(1)= ilat
-          else
-              print("remap_elements: FATAL: src_grid_dims, ni_a, nj_a missing")
-              print("                Cannot determine the output grid sizes")
-              exit
-          end if
-      end if
-     ;print("remap_elements: ilon="+ilon+"   jlat="+jlat)
-                                               ; sizes destination grid
-      if (isfilevar(fwt,"dst_grid_dims") ) then   
-          dim_dst = fwt->dst_grid_dims         ; straight forward       
-          mlon    = dim_dst(0)
-          nlat    = dim_dst(1)
-      else                                     ; try another approach
-          fdimNames = getvardims(fwt)          ; names of dimensions on file 
-          if (any(fdimNames.eq."ni_b") .and. any(fdimNames.eq."nj_b")) then
-              dim_dst   = (/0,0/)
-              fdimSizes = getfiledimsizes(fwt) ; sizes of dimensions on file
-              ib        = ind(fdimNames.eq."ni_b")     ; index 
-              jb        = ind(fdimNames.eq."nj_b")
-              mlon      = toint(fdimSizes(ib))
-              nlat      = toint(fdimSizes(jb))
-              dim_dst(0)= mlon
-              dim_dst(1)= nlat
-          else
-              print("remap_elements: FATAL: dst_grid_dims, ni_b, nj_b missing")
-              print("                Cannot determine the output grid sizes")
-              exit
-          end if
-      end if
-     ;print("remap_elements: mlon="+mlon+"   nlat="+nlat)
-
-; coordinate information: rectilinear or curvilinear
-; rectilinear: return coordinate variables with xout
-
-      if (all(isfilevar(fwt,(/"xc_a","yc_a"/))) ) then
-                   ; Is grid "a" rectilinear or curvilinear; only way I can test?
-          xc_a     = fwt->xc_a
-          yc_a     = fwt->yc_a
-          nycb     = dimsizes(yc_a)
-          nycb     = nycb - mlon
-          if (isMonotonic(xc_a(0:mlon-1)).ne.0  .and. \
-              all(yc_a(0:mlon-1).eq.yc_a(0))    .and. \
-              all(yc_a(nycb:).eq.yc_a(nycb))   ) then 
-              gridType_a = "rectilinear"              ; rectilinear grid (hopefully)
-              lon        = fwt->xc_a(0:mlon-1)  
-              lon!0      = "lon"
-              if (isatt(lon,"units").and.any(radUnits.eq.lon@units)) then
-                  lon    = 57.29577951308232d0*lon    ; convert to degrees_east
-              end if
-              lon@units  = "degrees_east"             ; force these units
-              lon&lon    = lon
-             
-              lat        = fwt->yc_a(::mlon)
-              lat!0      = "lat"
-              if (isatt(lat,"units").and.any(radUnits.eq.lat@units)) then
-                  lat = 57.29577951308232d0*lat       ; convert to degrees_north
-              end if
-              lat@units  = "degrees_north"
-              lat&lat    = lat
-          else
-              gridType_a = "curvilinear"     
-          end if
-      else
-          print("remap_elements: FATAL: xc_a and/or yc_a missing")
-          print("                Cannot determine the output lat/lon locations")
-          exit
-      end if
-
-      if (all(isfilevar(fwt,(/"xc_b","yc_b"/))) ) then
-                   ; Is grid "b" rectilinear or curvilinear; only way I can test?
-          xc_b     = fwt->xc_b
-          yc_b     = fwt->yc_b
-          nycb     = dimsizes(yc_b)
-          nycb     = nycb - mlon
-          if (isMonotonic(xc_b(0:mlon-1)).ne.0  .and. \
-              all(yc_b(0:mlon-1).eq.yc_b(0))    .and. \
-              all(yc_b(nycb:).eq.yc_b(nycb))   ) then 
-              gridType_b = "rectilinear"              ; rectilinear grid (hopefully)
-              lon        = fwt->xc_b(0:mlon-1)  
-              lon!0      = "lon"
-              if (isatt(lon,"units").and.any(radUnits.eq.lon@units)) then
-                  lon    = 57.29577951308232d0*lon    ; convert to degrees_east
-              end if
-              lon@units  = "degrees_east"             ; force these units
-              lon&lon    = lon
-             
-              lat        = fwt->yc_b(::mlon)
-              lat!0      = "lat"
-              if (isatt(lat,"units").and.any(radUnits.eq.lat@units)) then
-                  lat = 57.29577951308232d0*lat       ; convert to degrees_north
-              end if
-              lat@units  = "degrees_north"
-              lat&lat    = lat
-          else
-              gridType_b = "curvilinear"     
-          end if
-      else
-          print("remap_elements: FATAL: xc_b and/or yc_b missing")
-          print("                Cannot determine the output lat/lon locations")
-          exit
-      end if
-     ;print("remap_elements: gridType_a="+gridType_a+"    gridType_b="+gridType_b)
-                                        ; read info from file
-      dst_add = fwt->row                ; destination grid [linear] 
-      src_add = fwt->col                ; source grid [linear] 
-
-      s       = fwt->S                  ; wts 
-      nS      = dimsizes(s)
-      map_wts = new ( (/nS,1/), typeof(s), "No_FillValue")
-      map_wts(:,0) = s 
-
-      ntim    = dimx(0)
-      xout1d  = new ( nlat*mlon, typeof(xin), getFillValue(xin))
-
-      errMsg  = NhlGetErrorObjectId()   ; only print Fatal messages
-      setvalues errMsg
-          "errLevel" : "Fatal"
-      end setvalues
-
-      mask_b  = fwt->mask_b
-      if (all(mask_b.eq.1) .or. \
-         (opt .and. isatt(opt,"mask") .and. opt@mask.eq.False)) then
-          doMask = False              ; no mask  
-          dFill  = "No_FillValue"
-      else
-          doMask = True               ; mask
-          if (isatt(xin,"_FillValue")) then
-              dFill = xin@_FillValue
-          else
-              dFill = 1d36
-          end if
-      end if
-
-      xinDimNames = getvardims(xin)
-      if (any(xinDimNames.eq."ncol")) then
-          ncolFlag = True 
-      else
-          ncolFlag = False 
-      end if
-
-      if (rank.eq.2) then     ; xin(ntim,ncol) 
-          if (ncolFlag) then  ; xin(ntim,ncol)
-              xout = new ( (/ntim,nlat,mlon/), typeof(xin), dFill)
-    
-              do nt=0,ntim-1
-                  pop_remap(xout1d,map_wts,dst_add,src_add,xin(nt,:)) 
-                  if (doMask) then
-                      xout1d = mask(xout1d, mask_b.eq.0, False)
-                  end if
-                  xout(nt,:,:) = onedtond(xout1d, (/nlat,mlon/))
-              end do
-    
-              if (gridType_b.eq."rectilinear") then
-                  xout!1   = "lat"
-                  xout!2   = "lon"
-              else
-                  xout!1   = "lat2d"
-                  xout!2   = "lon2d"
-              end if
-          end if           ; ncolFlag
-      end if
-
-      if (rank.eq.3) then     ; xin(ntim,klev,ncol) or (time,lat,lon)
-          if (ncolFlag) then  ; xin(ntim,klev,ncol)
-              klev = dimx(1)
-              knam = dnam(1)
-              xout = new ( (/ntim,klev,nlat,mlon/), typeof(xin), 1e20)
-    
-              do nt=0,ntim-1
-                do kl=0,klev-1
-                   pop_remap(xout1d,map_wts,dst_add,src_add,xin(nt,kl,:)) 
-                   if (doMask) then
-                      xout1d = mask(xout1d, mask_b.eq.0, False)
-                   end if
-                   xout(nt,kl,:,:) = onedtond(xout1d, (/nlat,mlon/))
-                end do
-              end do
-
-              xout!1   = knam                 ; xout!1 = xin!1
-              xout&$knam$ = xin&$knam$        ; xout!&$xin!1$ = xin&$xin!1$
-              if (gridType_b.eq."rectilinear") then
-                  xout!2   = "lat"
-                  xout!3   = "lon"
-              else
-                  xout!2   = "lat2d"
-                  xout!3   = "lon2d"
-              end if
-          else
-              xout = new ( (/ntim,nlat,mlon/), typeof(xin), 1e20)
-    
-              do nt=0,ntim-1
-                 pop_remap(xout1d,map_wts,dst_add,src_add,ndtooned(xin(nt,:,:))) 
-                 if (doMask) then
-                     xout1d = mask(xout1d, mask_b.eq.0, False)
-                 end if
-                 xout(nt,:,:) = onedtond(xout1d, (/nlat,mlon/))
-              end do
-              if (gridType_b.eq."rectilinear") then
-                  xout!1   = "lat"
-                  xout!2   = "lon"
-              else
-                  xout!1   = "lat2d"
-                  xout!2   = "lon2d"
-              end if
-          end if           ; ncolFlag
-      end if
-
-      if (rank.eq.4) then     ; xin(ntim,klev,lat,lon) 
-          klev = dimx(1)
-          knam = dnam(1)
-          xout = new ( (/ntim,klev,nlat,mlon/), typeof(xin), 1e20)
-    
-          do nt=0,ntim-1
-            do kl=0,klev-1
-               pop_remap(xout1d,map_wts,dst_add,src_add,ndtooned(xin(nt,kl,:,:)))
-               if (doMask) then
-                   xout1d = mask(xout1d, mask_b.eq.0, False)
-               end if
-               xout(nt,kl,:,:) = onedtond(xout1d, (/nlat,mlon/))
-            end do
-          end do
-          if (gridType_b.eq."rectilinear") then
-              xout!2   = "lat"
-              xout!3   = "lon"
-          else
-              xout!2   = "lat2d"
-              xout!3   = "lon2d"
-           end if
-      end if               ; rank=4
-
-      xout!0    = "time"
-      xout&time =  xin&time
-      if (gridType_b.eq."rectilinear") then
-          xout&lat  =  lat 
-          xout&lon  =  lon 
-      end if
-
-      setvalues errMsg
-          "errLevel" : "Warning"          ; return to default
-      end setvalues
-
-    ;;if (isatt(xin,"_FillValue")) then
-    ;;    xout@_FillValue = xin@_FillValue
-    ;;else
-    ;;    delete(xout@_FillValue)
-    ;;end if
-
-      copy_VarAtts(xin, xout)
-                            ; get rid of any spaces at end
-      if (isatt(xout,"long_name")) then
-          xout@long_name = str_right_strip(xout@long_name)
-      end if
-      if (isatt(xout,"units")) then
-          xout@units     = str_right_strip(xout@units)
-      end if
-      if (isatt(xout,"cell_methods")) then
-          xout@cell_methods= str_right_strip(xout@cell_methods)
-      end if
-
-      if (opt) then
-
-          if (typeof(xout).eq."double" .and. \
-              isatt(opt,"return_type") .and. opt@return_type.eq."float") then
-              xoutf = tofloat( xout )
-                    ; the following to to get around an irritating Warning
-                    ; message about _FillValue when copy_VarMeta is used
-              if (isatt(xout,"_FillValue")) then   ; xout is 'double'
-                  delete(xout@_FillValue)
-              end if
-
-              copy_VarMeta(xout,xoutf)
-
-              delete(xout)
-              xout  = xoutf
-              delete(xoutf)
-          end if              ; float
-
-          if (gridType.eq."rectilinear") then
-              if (isatt(opt,"latS") .and. isatt(opt,"latN")   .or. \
-                  isatt(opt,"lonL") .and. isatt(opt,"lonR") ) then  
-             
-                  if (rank.eq.2) then
-                      return( xout(:,{latS:latN},{lonL:lonR}) ) 
-                  else
-                      return( xout(:,:,{latS:latN},{lonL:lonR}) ) 
-                  end if
-              end if
-          else
-              print("remap_elements: WARNING: The latS, latN, lonL and lon")
-              print("                requires a rectilinear grid.         ")
-          end if
-      end if
-
-      return( xout )
-end
-;---------------------------------------------------------
-undef("remap_elements_2d")
-function remap_elements_2d(fwt[1]:file, latlon[1]:string)
-; latlon="lat2d" or "lon2d"
-local dim_dst, nlat, mlon, coords, fdimNames, fdimSizes \
-    , ib, jb, radUnits, slatlon, latNames 
-begin
-                                               ; sizes destination grid
-      if (isfilevar(fwt,"dst_grid_dims") ) then   
-          dim_dst = fwt->dst_grid_dims         ; straight forward       
-          mlon    = dim_dst(0)
-          nlat    = dim_dst(1)
-      else                                     ; try another approach
-          fdimNames = getvardims(fwt)          ; names of dimensions on file 
-          if (any(fdimNames.eq."ni_b") .and. any(fdimNames.eq."nj_b")) then
-              dim_dst   = (/0,0/)
-              fdimSizes = getfiledimsizes(fwt) ; sizes of dimensions on file
-              ib        = ind(fdimNames.eq."ni_b")     ; index 
-              jb        = ind(fdimNames.eq."nj_b")
-              mlon      = toint(fdimSizes(ib))
-              nlat      = toint(fdimSizes(jb))
-              dim_dst(0) = mlon
-              dim_dst(1) = nlat
-          else
-              print("remap_elements_2d: FATAL: dst_grid_dims, ni_b, nj_b missing")
-              print("                   Cannot determine the output grid sizes")
-              exit
-          end if
-      end if
-     ;print("remap_elements_2d: mlon="+mlon+"   nlat="+nlat)
-
-; 2d coordinate information
-
-      if (all(isfilevar(fwt,(/"xc_b","yc_b"/))) ) then
-          radUnits = (/"radians","radian","Radians","Radian"/)
-          latNames = (/"lat2d", "LAT2D", "LAT2d", "lat2D"  \
-                      ,"lat"  , "latitude"/) 
-
-          slatlon = str_lower(latlon)
-          if (any(latNames.eq.slatlon)) then
-              c1d    = fwt->yc_b
-          else
-              c1d    = fwt->xc_b
-          end if
-          coords = onedtond(c1d, (/nlat,mlon/))
-
-          if (isatt(c1d,"units").and.any(radUnits.eq.c1d@units)) then
-              coords  = 57.29577951308232d0*coords       ; convert to degrees
-          end if
-                                                         ; had to repeat this
-          if (any(latNames.eq.slatlon)) then
-              coords@long_name = "array of latitudes"
-              coords@units = "degrees_north"             ; force these units
-          else
-              coords@long_name = "array of longitudes"
-              coords@units = "degrees_east"              ; force these units
-          end if
-          coords!0 = "nlat"
-          coords!1 = "nlon"
-          return( coords )
-      else
-          print("remap_elements_2d: FATAL: xc_b and/or yc_b are missing")
-          exit
-      end if
-end
-;---------------------------------------------------------
-undef("homme2latlon")
-function homme2latlon(fwt[1]:file, fhom, var[1]:string, opt[1]:logical)
-;
-; entry for backward compatibility
-;
-; remap from original HOMME grid to rectilinear grid
-; Usage:
-;  dirw   = "./"
-;  filw   = "map_ne30np4_fv0.9x1.25_bilinear.nc"   ; weight file
-;  fw     = addfile(dirw+filw, "r")
-;  dirh   = "./"
-;  filh   = "camrun.cam2.h0.1995-01-01-00000.nc"   ; cubed sphere
-;  fh     = addfile(dirh+filh, "r")
-;
-;  psl    = homme2latlon(fw, fc, "PSL", False)     ; (time,lat,lon)
-;  temp   = homme2latlon(fw, fc, "T"  , False)     ; (time,lev,lat,lon)
-;  ----
-begin
-   return( remap_elements(fwt, fhom, var, opt) )
 end
 ;---------------------------------------------------
 ; Rob Nicholas [U. Washington] & D. Shea
@@ -12950,4 +12815,45 @@ begin
       copy_VarCoords(xc, rpc)
       return( rpc )
   end if
+end
+; ----------------------------------------------------
+undef ("rm_single_dims")
+function rm_single_dims (x)
+; remove singleton (degenerate) dimensions. A singleton dimension is size 1.
+; NCL philosophy: do not 'lose' information. 
+local dimx, dimy, rankx, dnamx, y, m, n
+begin
+  dimx  = dimsizes(x)
+
+  if (.not.any(dimx.eq.1)) then
+      return(x)                     ; no degenerate dimensions
+  end if
+
+  rankx = dimsizes(dimx)
+  dnamx = getvardims(x)             ; dim names
+
+  if (all(dimx.eq.1)) then    
+      dimy = 1                      ; all degenerate dimensions
+  else
+      dimy = dimx(ind(dimx.ne.1))
+  end if
+  y     = onedtond(ndtooned(x), dimy)
+
+  m     = -1
+  do n=0,rankx-1
+     if (.not.ismissing(dnamx(n))) then
+         if (iscoord(x, dnamx(n))) then 
+             if (dimx(n).ne.1) then
+                 m   = m+1
+                 y!m = dnamx(n)
+                 y&$dnamx(n)$ = x&$dnamx(n)$ ; attach coord &
+             else                            ; do not 'lose' information
+                 y@$dnamx(n)$ = x&$dnamx(n)$ ; attach singleton coord as attribute @
+             end if
+         end if
+     end if
+  end do
+  copy_VarAtts(x,y)
+
+  return(y)
 end

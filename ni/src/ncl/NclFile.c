@@ -840,7 +840,7 @@ NclQuark var;
 	}
 }
 
-NhlErrorTypes FilePrintSummary(NclObj self, FILE *fp)
+NhlErrorTypes _NclFilePrintSummary(NclObj self, FILE *fp)
 {
 	NclFile thefile = (NclFile)self;
 	int i,j;
@@ -1098,7 +1098,7 @@ NclObj self;
 		if(thefile->file.private_rec != NULL)
 			(*thefile->file.format_funcs->free_file_rec)(thefile->file.private_rec);
 	}
-	for(i =0 ; i < thefile->file.max_grps; i++) {
+	for(i =0 ; i < thefile->file.n_grps; i++) {
 		if(NULL != thefile->file.grp_info[i])
 			NclFree(thefile->file.grp_info[i]);
 		if(thefile->file.grp_att_cb[i] != NULL) {
@@ -1128,7 +1128,7 @@ NclObj self;
 	if(NULL != thefile->file.grp_att_ids)
         	NclFree(thefile->file.grp_att_ids);
 
-	for(i =0 ; i < thefile->file.max_vars; i++) {
+	for(i =0 ; i < thefile->file.n_vars; i++) {
 		if(NULL != thefile->file.var_info[i])
 			NclFree(thefile->file.var_info[i]);
 		if(thefile->file.var_att_cb[i] != NULL) {
@@ -1158,7 +1158,7 @@ NclObj self;
 	if(NULL != thefile->file.var_att_ids)
         	NclFree(thefile->file.var_att_ids);
 
-	for(i =0 ; i < thefile->file.max_file_dims; i++) {
+	for(i =0 ; i < thefile->file.n_file_dims; i++) {
 		if(NULL != thefile->file.file_dim_info[i])
 			NclFree(thefile->file.file_dim_info[i]);
 	}
@@ -1171,7 +1171,7 @@ NclObj self;
 		_NhlCBDelete(thefile->file.file_att_cb);
 		_NclDelParent(_NclGetObj(thefile->file.file_atts_id),self);
 	}
-	for(i =0 ; i < thefile->file.max_file_atts; i++) {
+	for(i =0 ; i < thefile->file.n_file_atts; i++) {
 		if(NULL != thefile->file.file_atts[i])
 			NclFree(thefile->file.file_atts[i]);
 	}
@@ -1226,7 +1226,7 @@ struct _NclObjRec *parent;
         int found = 0;
 
         if(theobj->obj.parents == NULL) {
-                NhlPError(NhlFATAL,NhlEUNKNOWN,"FileDelParent: Attempt to delete parent from empty list");
+                NHLPERROR((NhlFATAL,NhlEUNKNOWN,"FileDelParent: Attempt to delete parent from empty list"));
                 return(NhlFATAL);
         }
 
@@ -1428,10 +1428,10 @@ NclMultiDValData value;
 		for (i = 0; i < fcp->num_options; i++) {
 			if (fcp->options[i].name != loption)
 				continue;
-			found = 1;
 			idx = i;
 			if (thefile->file.format_funcs == _NclGetFormatFuncs(fcp->options[i].format))
 			{
+				found = 1;
 				break;
 			}
 		}
@@ -1542,25 +1542,42 @@ NclMultiDValData value;
 			}
 			return NhlNOERROR;
 		}
-		NhlPError(NhlWARNING,NhlEUNKNOWN,
+		NHLPERROR((NhlWARNING,NhlEUNKNOWN,
 			  "FileSetFileOption: %s is not a recognized file option for format %s",
-			  NrmQuarkToString(option),NrmQuarkToString(format));
+			  NrmQuarkToString(option),NrmQuarkToString(format)));
 		return(NhlWARNING);
 	}
 	else if (format != NrmNULLQUARK) {
+		found = 0;
 		for (i = 0; i < fcp->num_options; i++) {
 			if (fcp->options[i].name != loption)
 				continue;
-			if (! (_NclGetFormatFuncs(format) &&
+			if ((_NclGetFormatFuncs(format) &&
+			     _NclGetFormatFuncs(format) == _NclGetFormatFuncs(fcp->options[i].format)) ) {
+				found = 1;
+				break;
+			}
+			else if (_NclGetLower(format) == NrmStringToQuark("bin") &&
+				 fcp->options[i].format == _NclGetLower(format)) {
+				found = 1;
+				break;
+			}
+			else if (! (_NclGetFormatFuncs(format) &&
 			       _NclGetFormatFuncs(format) == _NclGetFormatFuncs(fcp->options[i].format)) ) {
-				if (! (_NclGetLower(format) == NrmStringToQuark("bin") &&
-				       fcp->options[i].format == _NclGetLower(format)) ) {
-					NhlPError(NhlWARNING,NhlEUNKNOWN,
-						  "FileSetFileOption: %s is not a recognized option for format %s",
-						  NrmQuarkToString(option),NrmQuarkToString(format));
-					return(NhlWARNING);
+				if (_NclGetLower(format) == NrmStringToQuark("shp"))
+				{
+					fcp->options[i].format = _NclGetLower(format);
+					found = 1;
+					break;
+				}
+				else if (! (_NclGetLower(format) == NrmStringToQuark("bin") &&
+					fcp->options[i].format == _NclGetLower(format)) ) {
+					found = 1;
+					break;
 				}
 			}
+		}
+		if (found) {
 			if (! value) {
 				/* if no value specified restore default - it's not an error */
 				tmp_md = fcp->options[i].def_value;
@@ -1635,9 +1652,9 @@ NclMultiDValData value;
 				_NclDestroyObj((NclObj)tmp_md);
 			return NhlNOERROR;
 		}
-		NhlPError(NhlWARNING,NhlEUNKNOWN,
+		NHLPERROR((NhlWARNING,NhlEUNKNOWN,
 			  "FileSetFileOption: %s is not a recognized file option for format %s",
-			  NrmQuarkToString(option),NrmQuarkToString(format));
+			  NrmQuarkToString(option),NrmQuarkToString(format)));
 		return(NhlWARNING);
 	}
 	else {
@@ -1721,7 +1738,8 @@ NclFileOption file_options[] = {
 	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB default NCEP parameter table */
 	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB print record info */
 	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB single element dimensions */
-	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL }  /* GRIB time period suffix */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB time period suffix */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL }   /* new file-structure */
 };
 
 NclFileClassRec nclFileClassRec = {
@@ -1736,6 +1754,7 @@ NclFileClassRec nclFileClassRec = {
 		(NclInitClassFunction)InitializeFileClass,
 		(NclAddParentFunction)FileAddParent,
 		(NclDelParentFunction)FileDelParent,
+/* NclPrintSummaryFunction print_summary */ NULL,
 		(NclPrintFunction) FilePrint,
 /* NclCallBackList* create_callback*/   NULL,
 /* NclCallBackList* delete_callback*/   NULL,
@@ -1907,7 +1926,7 @@ NhlErrorTypes InitializeFileOptions
 	fcp->options[Ncl_FORMAT].def_value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
 						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
 #ifdef USE_NETCDF4
-	len_dims = 4;
+	len_dims = 5;
 #else
 	len_dims = 3;
 #endif
@@ -1918,6 +1937,7 @@ NhlErrorTypes InitializeFileOptions
 
 #ifdef USE_NETCDF4
 	sval[3] = NrmStringToQuark("netcdf4classic");
+	sval[4] = NrmStringToQuark("netcdf4");
 #endif
 
 	fcp->options[Ncl_FORMAT].valid_values = 
@@ -2255,6 +2275,23 @@ NhlErrorTypes InitializeFileOptions
 				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
 	fcp->options[Ncl_TIME_PERIOD_SUFFIX].valid_values = NULL;
 
+	/* new file-structure */
+
+	fcp->options[Ncl_USE_NEW_HLFS].format = NrmStringToQuark("nc");
+	fcp->options[Ncl_USE_NEW_HLFS].name = NrmStringToQuark("usenewhlfs");
+	len_dims = 1;
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = False;
+	fcp->options[Ncl_USE_NEW_HLFS].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = False;
+	fcp->options[Ncl_USE_NEW_HLFS].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	fcp->options[Ncl_USE_NEW_HLFS].valid_values = NULL;
+
 	/* End of options */
 
 	return ret;
@@ -2313,6 +2350,7 @@ static int FileIsVar
 #endif
 {
 	int i, n;
+	int has_compound = 0;
 	char *dot_ptr;
 	char *slash_ptr;
 	char var_str[1024];
@@ -2343,6 +2381,9 @@ static int FileIsVar
 	       *fprintf(stdout, "\tcomponent_name_quark: <%s>\n", NrmQuarkToString(component_name_quark));
 	       */
 		for(i = 0; i < thefile->file.n_vars; i++) {
+			if(thefile->file.var_info[i]->num_compounds)
+			{
+			has_compound++;
 			strcpy(var_name, NrmQuarkToString(thefile->file.var_info[i]->var_full_name_quark));
 			dot_ptr = strchr(var_name, '.');
 			if(dot_ptr)
@@ -2360,7 +2401,11 @@ static int FileIsVar
 				dot_ptr[0] = '\0';
 				thefile->file.var_info[i]->var_name_quark = NrmStringToQuark(var_name);
 			}
+			}
 		}
+
+		if(has_compound)
+		{
 		for(i = 0; i < thefile->file.n_vars; i++) {
 		      /*
 		       *fprintf(stdout, "\tCheck %d: var_full_name <%s>\n\n", i, 
@@ -2405,6 +2450,7 @@ static int FileIsVar
 				}
 				return(i);
 			}
+		}
 		}
 	}
 
@@ -4317,35 +4363,35 @@ void _NclInitFilePart(NclFilePart *file)
 	file->file_att_udata = NULL;
 	file->private_rec = NULL;
 
-	file->grp_info = (struct _NclFGrpRec **)calloc(file->max_grps, sizeof(struct _NclFGrpRec *));
+	file->grp_info = (struct _NclFGrpRec **)NclCalloc(file->max_grps, sizeof(struct _NclFGrpRec *));
 	assert(file->grp_info);
-	file->grp_att_info = (NclFileAttInfoList **)calloc(file->max_grps, sizeof(NclFileAttInfoList *));
+	file->grp_att_info = (NclFileAttInfoList **)NclCalloc(file->max_grps, sizeof(NclFileAttInfoList *));
 	assert(file->grp_att_info);
-	file->grp_att_udata = (struct _FileCallBackRec **)calloc(file->max_grps, sizeof(struct _FileCallBackRec *));
+	file->grp_att_udata = (struct _FileCallBackRec **)NclCalloc(file->max_grps, sizeof(struct _FileCallBackRec *));
 	assert(file->grp_att_udata);
-	file->grp_att_cb = (_NhlCB *)calloc(file->max_grps, sizeof(_NhlCB));
+	file->grp_att_cb = (_NhlCB *)NclCalloc(file->max_grps, sizeof(_NhlCB));
 	assert(file->grp_att_cb);
-	file->grp_att_ids = (int *)calloc(file->max_grps, sizeof(int));
+	file->grp_att_ids = (int *)NclCalloc(file->max_grps, sizeof(int));
 	assert(file->grp_att_ids);
 
-	file->var_info = (struct _NclFVarRec **)calloc(file->max_vars, sizeof(struct _NclFVarRec *));
+	file->var_info = (struct _NclFVarRec **)NclCalloc(file->max_vars, sizeof(struct _NclFVarRec *));
 	assert(file->var_info);
-	file->var_att_info = (NclFileAttInfoList **)calloc(file->max_vars, sizeof(NclFileAttInfoList *));
+	file->var_att_info = (NclFileAttInfoList **)NclCalloc(file->max_vars, sizeof(NclFileAttInfoList *));
 	assert(file->var_att_info);
-	file->var_att_udata = (struct _FileCallBackRec **)calloc(file->max_vars, sizeof(struct _FileCallBackRec *));
+	file->var_att_udata = (struct _FileCallBackRec **)NclCalloc(file->max_vars, sizeof(struct _FileCallBackRec *));
 	assert(file->var_att_udata);
-	file->var_att_cb = (_NhlCB *)calloc(file->max_vars, sizeof(_NhlCB));
+	file->var_att_cb = (_NhlCB *)NclCalloc(file->max_vars, sizeof(_NhlCB));
 	assert(file->var_att_cb);
-	file->var_att_ids = (int *)calloc(file->max_vars, sizeof(int));
+	file->var_att_ids = (int *)NclCalloc(file->max_vars, sizeof(int));
 	assert(file->var_att_ids);
 
-	file->file_atts = (struct _NclFAttRec **)calloc(file->max_file_atts, sizeof(struct _NclFAttRec *));
+	file->file_atts = (struct _NclFAttRec **)NclCalloc(file->max_file_atts, sizeof(struct _NclFAttRec *));
         assert(file->file_atts);
 
-	file->file_dim_info = (struct _NclFDimRec **)calloc(file->max_file_dims, sizeof(struct _NclFDimRec *));
+	file->file_dim_info = (struct _NclFDimRec **)NclCalloc(file->max_file_dims, sizeof(struct _NclFDimRec *));
 	assert(file->file_dim_info);
 
-	file->coord_vars = (struct _NclFVarRec **)calloc(file->max_file_dims, sizeof(struct _NclFVarRec *));
+	file->coord_vars = (struct _NclFVarRec **)NclCalloc(file->max_file_dims, sizeof(struct _NclFVarRec *));
         assert(file->coord_vars);
 
 	for(i = 0; i < file->max_grps; i++)
@@ -4398,18 +4444,18 @@ void _NclReallocFilePart(NclFilePart *file,
 				file->max_grps *= 2;
 		}
 
-		file->grp_info = (struct _NclFGrpRec **)realloc(file->grp_info,
+		file->grp_info = (struct _NclFGrpRec **)NclRealloc(file->grp_info,
 							file->max_grps * sizeof(struct _NclFGrpRec *));
 		assert(file->grp_info);
-		file->grp_att_info = (NclFileAttInfoList **)realloc(file->grp_att_info,
+		file->grp_att_info = (NclFileAttInfoList **)NclRealloc(file->grp_att_info,
 							file->max_grps * sizeof(NclFileAttInfoList *));
 		assert(file->grp_att_info);
-		file->grp_att_udata = (struct _FileCallBackRec **)realloc(file->grp_att_udata,
+		file->grp_att_udata = (struct _FileCallBackRec **)NclRealloc(file->grp_att_udata,
 							file->max_grps * sizeof(struct _FileCallBackRec *));
 		assert(file->grp_att_udata);
-		file->grp_att_cb = (_NhlCB *)realloc(file->grp_att_cb, file->max_grps * sizeof(_NhlCB));
+		file->grp_att_cb = (_NhlCB *)NclRealloc(file->grp_att_cb, file->max_grps * sizeof(_NhlCB));
 		assert(file->grp_att_cb);
-		file->grp_att_ids = (int *)realloc(file->grp_att_ids, file->max_grps * sizeof(int));
+		file->grp_att_ids = (int *)NclRealloc(file->grp_att_ids, file->max_grps * sizeof(int));
 		assert(file->grp_att_ids);
 
 		for(i = pre_max_grps; i < file->max_grps; i++)
@@ -4436,18 +4482,18 @@ void _NclReallocFilePart(NclFilePart *file,
 				file->max_vars *= 2;
 		}
 
-		file->var_info = (struct _NclFVarRec **)realloc(file->var_info,
+		file->var_info = (struct _NclFVarRec **)NclRealloc(file->var_info,
 							file->max_vars * sizeof(struct _NclFVarRec *));
 		assert(file->var_info);
-		file->var_att_info = (NclFileAttInfoList **)realloc(file->var_att_info,
+		file->var_att_info = (NclFileAttInfoList **)NclRealloc(file->var_att_info,
 							file->max_vars * sizeof(NclFileAttInfoList *));
 		assert(file->var_att_info);
-		file->var_att_udata = (struct _FileCallBackRec **)realloc(file->var_att_udata,
+		file->var_att_udata = (struct _FileCallBackRec **)NclRealloc(file->var_att_udata,
 							file->max_vars * sizeof(struct _FileCallBackRec *));
 		assert(file->var_att_udata);
-		file->var_att_cb = (_NhlCB *)realloc(file->var_att_cb, file->max_vars * sizeof(_NhlCB));
+		file->var_att_cb = (_NhlCB *)NclRealloc(file->var_att_cb, file->max_vars * sizeof(_NhlCB));
 		assert(file->var_att_cb);
-		file->var_att_ids = (int *)realloc(file->var_att_ids, file->max_vars * sizeof(int));
+		file->var_att_ids = (int *)NclRealloc(file->var_att_ids, file->max_vars * sizeof(int));
 		assert(file->var_att_ids);
 
 		for(i = pre_max_vars; i < file->max_vars; i++)
@@ -4474,11 +4520,11 @@ void _NclReallocFilePart(NclFilePart *file,
 				file->max_file_dims *= 2;
 		}
 
-		file->file_dim_info = (struct _NclFDimRec **)realloc(file->file_dim_info,
+		file->file_dim_info = (struct _NclFDimRec **)NclRealloc(file->file_dim_info,
 							file->max_file_dims * sizeof(struct _NclFDimRec *));
 		assert(file->file_dim_info);
 
-		file->coord_vars = (struct _NclFVarRec **)realloc(file->coord_vars,
+		file->coord_vars = (struct _NclFVarRec **)NclRealloc(file->coord_vars,
 							file->max_file_dims * sizeof(struct _NclFVarRec *));
         	assert(file->coord_vars);
 
@@ -4503,7 +4549,7 @@ void _NclReallocFilePart(NclFilePart *file,
 				file->max_file_atts *= 2;
 		}
 
-		file->file_atts = (struct _NclFAttRec **)realloc(file->file_atts,
+		file->file_atts = (struct _NclFAttRec **)NclRealloc(file->file_atts,
 						file->max_file_atts * sizeof(struct _NclFAttRec *));
         	assert(file->file_atts);
 
@@ -4514,44 +4560,26 @@ void _NclReallocFilePart(NclFilePart *file,
 	}
 }
 
-NclFile _NclFileCreate
-#if	NhlNeedProto
-(NclObj  inst, NclObjClass theclass, NclObjTypes obj_type, unsigned int obj_type_mask, NclStatus status, NclQuark path,int rw_status)
-#else
-(inst, theclass, obj_type, obj_type_mask, status, path, rw_status)
-NclObj  inst;
-NclObjClass theclass;
-NclObjTypes obj_type;
-unsigned int obj_type_mask;
-NclStatus status; 
-NclQuark path;
-int rw_status;
-#endif
+NclFile _NclFileCreate(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
+			unsigned int obj_type_mask, NclStatus status,
+			NclQuark path, int rw_status, NclQuark file_ext_q,
+			NclQuark fname_q, NhlBoolean is_http,
+			char *end_of_name, int len_path)
 {
 	char *the_path = NrmQuarkToString(path);
 	NclQuark the_real_path = -1;
-	char *last_slash = NULL;
-	char *end_of_name = NULL;
 	char *tmp_path = NULL;
-	int len_path = 0;
-	char buffer[NCL_MAX_STRING];
-	NclQuark fname_q;
 	int i,j;
 	NclFile file_out = NULL;
 	int file_out_free = 0;
 	NhlErrorTypes ret= NhlNOERROR;
 	NclObjClass class_ptr;
-	NclQuark file_ext_q;
 	NclQuark *name_list;
 	int n_names;
 	NclQuark *name_list2;
 	int n_names2;
 	int index;
 	struct stat buf;
-	NhlBoolean is_http = False;
-
-	if (! strncmp(the_path,"http://",7))
-		is_http = True;
 
 	ret = _NclInitClass(nclFileClass);
 	if(ret < NhlWARNING) 
@@ -4560,68 +4588,6 @@ int rw_status;
 		class_ptr = nclFileClass;
 	} else {
 		class_ptr = theclass;
-	}
-	last_slash = strrchr(the_path,'/');
-	if(last_slash == NULL) {
-		last_slash = the_path;
-		len_path = 0;
-	}  else {
-/*
-* skip over '/'
-*/
-		last_slash++;
-	}
-	end_of_name = strrchr(last_slash,'.');
-	if (is_http) {
-		if (end_of_name == NULL) {
-			end_of_name = &last_slash[strlen(last_slash)];
-		}
-		len_path = end_of_name - the_path;
-		i = 0;
-		while(last_slash != end_of_name) {
-			buffer[i] = *last_slash;
-			i++;
-			last_slash++;
-		}
-		buffer[i] = '\0';
-		fname_q = NrmStringToQuark(buffer);
-#ifdef BuildOPENDAP
-                if(strcmp("nc", end_of_name+1) == 0)
-	        	file_ext_q = NrmStringToQuark("nc");
-	        else
-		{
-                        if(strcmp("he5", end_of_name+1) == 0)
-			{
-				file_ext_q = NrmStringToQuark("opendap");
-				fprintf(stderr, "file: <%s>, line: %d\n", __FILE__, __LINE__);
-				fprintf(stderr, "\topendap file_ext_q = <%s>\n", NrmQuarkToString(file_ext_q));
-	        		file_ext_q = NrmStringToQuark("nc");
-			}
-	                else
-	        		file_ext_q = NrmStringToQuark("nc");
-		}
-#else
-		file_ext_q = NrmStringToQuark("nc");
-#endif
-	}
-	else if(end_of_name == NULL) {
-		NhlPError(NhlFATAL,NhlEUNKNOWN,"(%s) has no file extension, can't determine type of file to open",NrmQuarkToString(path));
-		return(NULL);
-	} else {
-		len_path = end_of_name - the_path;
-		i = 0;
-		while(last_slash != end_of_name) {
-			buffer[i] = *last_slash;
-			i++;
-			last_slash++;
-		}
-		buffer[i] = '\0';
-		fname_q = NrmStringToQuark(buffer);
-/*
-* skip over '.'
-*/
-		end_of_name++;
-		file_ext_q = NrmStringToQuark(end_of_name);
 	}
 
  	/*
@@ -4656,6 +4622,7 @@ int rw_status;
 	} else {
 		file_out = (NclFile)inst;
 	}
+
 	file_out->file.fname = fname_q;
 	file_out->file.file_format = 0;
 	file_out->file.file_ext_q = file_ext_q;
@@ -4670,12 +4637,14 @@ int rw_status;
 		return(NULL);
 	}
 	file_out->file.private_rec = (*file_out->file.format_funcs->initialize_file_rec)(&file_out->file.file_format);
-	if(file_out->file.private_rec == NULL) {
+	if(file_out->file.private_rec == NULL)
+	{
 		NhlPError(NhlFATAL,ENOMEM,NULL);
 		if(file_out_free) 
 			NclFree((void*)file_out);
 		return(NULL);
 	}
+
 	if (file_out->file.format_funcs->set_option != NULL) {
 		NclFileClassPart *fcp = &(nclFileClassRec.file_class);
 		for (i = 0; i < fcp->num_options; i++) {
@@ -4743,7 +4712,8 @@ int rw_status;
 				file_out->file.private_rec = (*file_out->file.format_funcs->open_file)
 					(file_out->file.private_rec,
 					 NrmStringToQuark(_NGResolvePath(NrmQuarkToString(the_real_path))),rw_status);	
-				if(! file_out->file.private_rec) {
+				if(NULL == file_out->file.private_rec)
+				{
 					NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not open (%s)",NrmQuarkToString(the_real_path));
 					if(file_out_free) 
 						NclFree((void*)file_out);
@@ -4752,18 +4722,17 @@ int rw_status;
 			}
 		} else  {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,"An internal error in the extension code for the requested file format has occurred, could not open (%s)",NrmQuarkToString(the_real_path));
-		if(file_out_free) 
-			NclFree((void*)file_out);
+			if(file_out_free) 
+				NclFree((void*)file_out);
 			return(NULL);
 		}
 	}
 
-	if(file_out->file.format_funcs->get_grp_names != NULL)
-	{
+	if(file_out->file.format_funcs->get_grp_names != NULL) {
 		name_list = (*file_out->file.format_funcs->get_grp_names)(file_out->file.private_rec,&n_names);
-		file_out->file.n_grps = n_names;
 
 		_NclReallocFilePart(&(file_out->file), n_names, -1, -1, -1);
+		file_out->file.n_grps = n_names;
 
 		for(i = 0; i < n_names; i++){
 			file_out->file.grp_info[i] = (*file_out->file.format_funcs->get_grp_info)(file_out->file.private_rec,name_list[i]);
@@ -4882,14 +4851,16 @@ int type;
 	long stride[NCL_MAX_DIMENSIONS];
 	long real_stride[NCL_MAX_DIMENSIONS];
 	int i,j,k,done = 0,inc_done = 0;
-	int n_dims_target,n_elem = 1;
+	int n_dims_target;
+	ng_size_t n_elem = 1;
 	int n_dims_selection;
-	int total_elements = 1;
+	ng_size_t total_elements = 1;
 	int has_vectors = 0;
 	int has_stride = 0;
 	int has_reverse = 0;
 	int has_reorder = 0;
-	int from = 0,block_write_limit,n_elem_block;
+	ng_size_t from = 0,n_elem_block;
+	int block_write_limit;
 	NclFDimRec *tmpfdim = NULL;
 	
 	int multiplier_target[NCL_MAX_DIMENSIONS];
@@ -5829,6 +5800,7 @@ struct _NclSelectionRecord *rhs_sel_ptr;
         void *tmp_coord;
         char *tmp_ptr;
 	NclMultiDValData tmp_md;
+	NclMultiDValData coord_md;
 	struct _NclVarRec* cvar;
 	ng_size_t dimsize = -1;
 
@@ -5931,47 +5903,24 @@ struct _NclSelectionRecord *rhs_sel_ptr;
  * Need to create a temporary missing value filled array and write it then make and assigment using 
  * sel_ptr
  */
-								dimsize = (int)thefile->file.file_dim_info[thefile->file.var_info[index]->file_dim_num[lhs_sel_ptr->selection[i].dim_num]]->dim_size;
 								cvar = (NclVar)_NclGetObj(tmp_var->var.coord_vars[j]);
 								tmp_md = (NclMultiDValData)_NclGetObj(cvar->var.thevalue_id);
-								tmp_coord = NclMalloc(dimsize*tmp_md->multidval.type->type_class.size);
-                                                                tmp_ptr = (char*)tmp_coord;
-                                                                for(m = 0; m < dimsize; m++) {
-                                                                        memcpy((void*)tmp_ptr,(void*)&(tmp_md->multidval.type->type_class.default_mis),tmp_md->multidval.type->type_class.size);
-                                                                        tmp_ptr = tmp_ptr + tmp_md->multidval.type->type_class.size;
-
-                                                                }
-
-								ret = _NclFileWriteCoord(
-									thefile,	
-									tmp_var->var.dim_info[j].dim_quark,
-									_NclCreateMultiDVal( 
-										NULL, 
-										NULL, 
-										Ncl_MultiDValData, 
-										0, 
-										tmp_coord, 
-										&tmp_md->multidval.type->type_class.default_mis, 
-										1, 
-										&dimsize, 
-										TEMPORARY, 
-										NULL,
-										tmp_md->multidval.type),
-									NULL);
-
-								tmp_sel.selection[0] = lhs_sel_ptr->selection[i];
-								tmp_sel.selection[0].dim_num = 0;
-								ret = _NclFileWriteCoord(thefile,tmp_var->var.dim_info[j].dim_quark,tmp_md,&tmp_sel);
-							}
-							if(ret < NhlWARNING) {
-								NhlPError(NhlWARNING,NhlEUNKNOWN,"FileWriteVarVar: Could not write coordinate variable (%s) to file (%s), continuing anyway",NrmQuarkToString(tmp_var->var.dim_info[i].dim_quark),NrmQuarkToString(thefile->file.fname));
-								ret = NhlWARNING;
-							} else {
+								cindex = FileIsVar(thefile,tmp_var->var.dim_info[j].dim_quark);
+								if (cindex < 0) {
+									NclQuark name = tmp_var->var.dim_info[j].dim_quark;
+									ret = FileAddVar(thefile,tmp_var->var.dim_info[j].dim_quark,
+											 NrmStringToQuark(_NclBasicDataTypeToName(tmp_md->multidval.type->type_class.data_type)),
+											 1,&name);
+									if(ret < NhlWARNING) {
+										return(ret);
+									}
+								}
+								dimsize = (int)thefile->file.file_dim_info[thefile->file.var_info[index]->file_dim_num[lhs_sel_ptr->selection[i].dim_num]]->dim_size;
 								if(cvar->var.att_id != -1) {
 									theatt = (NclAtt)_NclGetObj(cvar->var.att_id);
 									step = theatt->att.att_list;
 									while(step != NULL) {
-										ret = FileWriteVarAtt(thefile,tmp_var->var.dim_info[i].dim_quark,step->quark,step->attvalue,NULL);
+										ret = FileWriteVarAtt(thefile,tmp_var->var.dim_info[j].dim_quark,step->quark,step->attvalue,NULL);
 										if(ret < NhlWARNING){
 											NhlPError(NhlWARNING,NhlEUNKNOWN,
                                                 "FileWriteVarVar: Could not write attribute (%s) to variable (%s) in file (%s), continuing anyway",
@@ -5984,6 +5933,13 @@ struct _NclSelectionRecord *rhs_sel_ptr;
 				
 									}
 								}
+								tmp_sel.selection[0] = lhs_sel_ptr->selection[i];
+								tmp_sel.selection[0].dim_num = 0;
+								ret = _NclFileWriteCoord(thefile,tmp_var->var.dim_info[j].dim_quark,tmp_md,&tmp_sel);
+							}
+							if(ret < NhlWARNING) {
+								NhlPError(NhlWARNING,NhlEUNKNOWN,"FileWriteVarVar: Could not write coordinate variable (%s) to file (%s), continuing anyway",NrmQuarkToString(tmp_var->var.dim_info[i].dim_quark),NrmQuarkToString(thefile->file.fname));
+								ret = NhlWARNING;
 							}
 						}
 				
@@ -6025,30 +5981,40 @@ struct _NclSelectionRecord *rhs_sel_ptr;
 							continue;
 						}
 						tmp_coord_var = (NclVar)_NclGetObj(tmp_var->var.coord_vars[j]);
-						ret = FileWriteCoord(thefile,tmp_var->var.dim_info[j].dim_quark,_NclVarValueRead(tmp_coord_var,NULL,NULL),NULL);
+						cindex = FileIsVar(thefile,tmp_var->var.dim_info[j].dim_quark);
+						coord_md = _NclVarValueRead(tmp_coord_var,NULL,NULL);
+						if (cindex < 0) {
+							NclQuark name = tmp_var->var.dim_info[j].dim_quark;
+							ret = FileAddVar(thefile,tmp_var->var.dim_info[j].dim_quark,
+									 NrmStringToQuark(_NclBasicDataTypeToName(coord_md->multidval.type->type_class.data_type)),
+									 1,&name);
+							if(ret < NhlWARNING) {
+								return(ret);
+							}
+						}
+						if(tmp_coord_var->var.att_id != -1) {
+							theatt = (NclAtt)_NclGetObj(tmp_coord_var->var.att_id);
+							step = theatt->att.att_list;
+							while(step != NULL) {
+								ret = FileWriteVarAtt(thefile,tmp_var->var.dim_info[j].dim_quark,step->quark,step->attvalue,NULL);
+								if(ret < NhlWARNING){
+									NhlPError(NhlWARNING,NhlEUNKNOWN,
+										  "FileWriteVarVar: Could not write attribute (%s) to variable (%s) in file (%s), continuing anyway",
+										  NrmQuarkToString(step->quark),
+										  NrmQuarkToString(tmp_var->var.dim_info[j].dim_quark),
+										  NrmQuarkToString(thefile->file.fname));
+									ret = NhlWARNING;
+								}
+								step = step->next;
+			
+							}
+						}
+						ret = FileWriteCoord(thefile,tmp_var->var.dim_info[j].dim_quark,coord_md,NULL);
 						if(ret < NhlWARNING) {
 							NhlPError(NhlWARNING,NhlEUNKNOWN,"FileWriteVarVar: Could not write coordinate variable (%s) to file (%s), continuing anyway",
 								  NrmQuarkToString(tmp_var->var.dim_info[j].dim_quark),NrmQuarkToString(thefile->file.fname));
 							ret = NhlWARNING;
-						} else {
-							if(tmp_coord_var->var.att_id != -1) {
-								theatt = (NclAtt)_NclGetObj(tmp_coord_var->var.att_id);
-								step = theatt->att.att_list;
-								while(step != NULL) {
-									ret = FileWriteVarAtt(thefile,tmp_var->var.dim_info[j].dim_quark,step->quark,step->attvalue,NULL);
-									if(ret < NhlWARNING){
-										NhlPError(NhlWARNING,NhlEUNKNOWN,
-						   "FileWriteVarVar: Could not write attribute (%s) to variable (%s) in file (%s), continuing anyway",
-											  NrmQuarkToString(step->quark),
-											  NrmQuarkToString(tmp_var->var.dim_info[j].dim_quark),
-											  NrmQuarkToString(thefile->file.fname));
-										ret = NhlWARNING;
-									}
-									step = step->next;
-			
-								}
-							}
-						}
+						} 
 					} else if(thefile->file.coord_vars[file_dim_num] != NULL) {
 
 /*
@@ -6783,7 +6749,9 @@ NclQuark group_name;
 	if(index < 0)
 		return (NULL);
 
+#ifdef USE_NETCDF4_FEATURES
 	group_out = _NclCreateGroup(NULL,NULL,Ncl_File,0,TEMPORARY,thefile,group_name);
+#endif
 
 #if 0
 	if(group_out != NULL) {

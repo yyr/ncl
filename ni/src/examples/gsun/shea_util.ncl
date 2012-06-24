@@ -61,7 +61,7 @@ begin
           ;else                            ; debug print
           ;    print (label+": no zero contours")
            end if
-       end if
+       end if 
        return (cnlvls)                                      
 end
 ; -------------------------------------------------------
@@ -1941,17 +1941,18 @@ procedure drawNDCGrid(wks:graphic)
 ;       
 local colors, nu, numb, cmap, x6res, gh
 begin
-        colors = gsn_retrieve_colormap(wks)	;Add gray color to color map
-        nu = dimsizes(colors)
-        numb = nu(0)
-        cmap = new ((/numb+1,3/),float)
-        cmap(:numb-1,:) = colors
-        cmap(numb,:) = (/.72,.72,.72/)
-        gsn_define_colormap(wks,cmap)
-	delete(numb)
-	delete(nu)
-	delete(cmap)
-	delete(colors)
+;; No longer need to add "gray" in V6.1.0 and later
+;;        colors = gsn_retrieve_colormap(wks)	;Add gray color to color map
+;;        nu = dimsizes(colors)
+;;        numb = nu(0)
+;;        cmap = new ((/numb+1,3/),float)
+;;        cmap(:numb-1,:) = colors
+;;        cmap(numb,:) = (/.72,.72,.72/)
+;;        gsn_define_colormap(wks,cmap)
+;;	delete(numb)
+;;	delete(nu)
+;;	delete(cmap)
+;;	delete(colors)
 
      	x6res = True                      ; polyline mods desired
         x6res@gsLineColor = "gray"        ; color of lines
@@ -2410,7 +2411,7 @@ begin
 	end if
 
 	if (max(inlon).ge.360) then
-	   if (inlon.ge.361) then
+	   if (max(inlon).ge.361) then
 	      print("Fatal error: invalid longitude point > 360.999, outside valid longitude range")
 	      print("Exiting")
 	      exit
@@ -2459,220 +2460,226 @@ end
 undef("boxplot")
 function boxplot (wks:graphic,x[*]:numeric,y[*][*]:numeric,boxOpts:logical,plotres:logical,lineres:logical)
 ;
-;	This function creates a blank linLog plot object, on which box plots are created by extensive
-;	use of gsn_add_polyline. The user can draw as many or as few box plots as they wish.
-;	The plot is not drawn, and the frame is not advanced. May be used with gsn_panel. Missing data
+;    This function creates a blank linLog plot object, on which box plots are created by extensive
+;    use of gsn_add_polyline. The user can draw as many or as few box plots as they wish.
+;    The plot is not drawn, and the frame is not advanced. May be used with gsn_panel. Missing data
 ; may be present in the input Y array, but not the input X array.
-;	The function options are as follows:
+;    The function options are as follows:
 ;
-;	wks     ----- The workstation
-;	x[*]    ----- A one-dimensional array containing the X-axis values of where the box plot(s)
-;	              will be drawn.
-;	y[*][*] ----- A two-dimensional array, where the rightmost dimension contains the box plot
-;	 	      reference pt. data. y(n,0)=bottom_value, y(n,1)=bottom_value_of_box,
-;		      y(n,2)=mid-value_of_box,y(n,3)=top_value_of_box,y(n,4)=top_value
-;	boxOpts ----- 2 options attached as attributes may be attached here. 
-;		      boxWidth ---- Sets the width of the box.
-;		      boxColors ---- An array that contains the colors that the boxes will be drawn in.
-;			             Ex. boxOpts@boxColors =  (/"green","blue"/)
-;				     If the number of colors specified does not equal the number of 
-;				     boxes drawn, only the first color specified will be used.
-;	plotres ----- An optional xy-plot resource list. Will override defaults where applicable.
-;	lineres ----- An optional resource list pertaining to the lines used to draw the boxes/lines.
+;    wks     ----- The workstation
+;    x[*]    ----- A one-dimensional array containing the X-axis values of where the box plot(s)
+;                  will be drawn.
+;    y[*][*] ----- A two-dimensional array, where the rightmost dimension contains the box plot
+;               reference pt. data. y(n,0)=bottom_value, y(n,1)=bottom_value_of_box,
+;               y(n,2)=mid-value_of_box,y(n,3)=top_value_of_box,y(n,4)=top_value
+;    boxOpts ----- 2 options attached as attributes may be attached here.
+;               boxWidth ---- Scalar or array that contains the widths of the boxes.
+;               boxColors ---- Scalar or array that contains the colors that the boxes will be drawn in.
+;                           Ex. boxOpts@boxColors =  (/"green","blue"/)
+;                        If the number of colors specified does not equal the number of
+;                        boxes drawn, only the first color specified will be used.
+;    plotres ----- An optional xy-plot resource list. Will override defaults where applicable.
+;    lineres ----- An optional resource list pertaining to the lines used to draw the boxes/lines.
 ;
-;	Example call: plot3 = boxplot(wks,ntime,newyval,opti,res,False)
-;		      draw(plot3)
-;		      frame(wks)
+;    Example call: plot3 = boxplot(wks,ntime,newyval,opti,res,False)
+;               draw(plot3)
+;               frame(wks)
 ;
 begin
-	dimquery = dimsizes(y)
-	numbox = dimquery(0)
-	if (numbox.ne.dimsizes(x)) then
-	   print("Fatal: X must be one-dimensional and both X and Y must have the same rightmost dimension")
-	   exit
-	end if
- if (any(ismissing(x))) then
-    print("Fatal: X array cannot contain missing data, exiting")
-    exit
- end if
+     dimquery = dimsizes(y)
+     numbox = dimquery(0)
+     boxWidths = new((/numbox/),float)
+     if (numbox.ne.dimsizes(x)) then
+        print("boxplot: Fatal: X must be one-dimensional and both X and Y must have the same rightmost dimension")
+        exit
+     end if
+     if (any(ismissing(x))) then
+        print("boxplot: Fatal: X array cannot contain missing data, exiting")
+        exit
+     end if
 
-;	Developing x-axis
-	xAxis = new(numbox+2,typeof(x))
-	xAxis(1:numbox) = x
-	if (numbox.ne.1) then
-	   dx = x(1)-x(0)
-	   xAxis(0) = x(0)-dx
-	   xAxis(numbox+1) = x(numbox-1)+dx
-	else
-	   dx = 1
-	   xAxis(0) = x-dx
-	   xAxis(2) = x+dx
-	end if
-	
-	if (boxOpts) then
-	   if (isatt(boxOpts,"boxWidth")) then
-	      boxwidth = boxOpts@boxWidth
-	   else
-	      boxwidth = dx*.3
-	   end if
-	else
-	   boxwidth = dx*.3
-	end if	
-	
-		
-	labarr = new(numbox+2,"string")		;Prepare actual X-axis labels...
-	labarr(0) = ""
-	labarr(numbox+1) = ""
-	labarr(1:numbox) = xAxis(1:numbox)	
+;    Developing x-axis
+     xAxis = new(numbox+2,typeof(x))
+     xAxis(1:numbox) = x
+     if (numbox.ne.1) then
+        dx = x(1)-x(0)
+        xAxis(0) = x(0)-dx
+        xAxis(numbox+1) = x(numbox-1)+dx
+     else
+        dx = 1
+        xAxis(0) = x-dx
+        xAxis(2) = x+dx
+     end if
+
+     if (boxOpts) then
+        if (isatt(boxOpts,"boxWidth")) then
+           if (dimsizes(boxOpts@boxWidth).ne.1.and.dimsizes(boxOpts@boxWidth).ne.numbox) then
+              print("boxplot: Number of input box widths must either equal 1 or the number of boxes ("+numbox+"). Using first specified box width only.")
+              boxWidths(:) = boxOpts@boxWidth(0)
+           else
+              boxWidths = boxOpts@boxWidth
+           end if
+        else
+           boxWidths(:) = dx*.3
+        end if
+     else
+        boxWidths(:) = dx*.3
+     end if
+
+
+     labarr = new(numbox+2,"string")         ;Prepare actual X-axis labels...
+     labarr(0) = ""
+     labarr(numbox+1) = ""
+     labarr(1:numbox) = xAxis(1:numbox)
 
 ; Whether to maximize plot in frame.
-        maximize = get_res_value(plotres,"gsnMaximize",False) 
+     maximize = get_res_value(plotres,"gsnMaximize",False)
 
-	if (plotres) then
-;	   print("Plot resources detected, accepting")
-	   fsatts = getvaratts(plotres)
-	   do ty = 0,dimsizes(fsatts)-1
-	      if (fsatts(ty).eq."tmXBLabels") then		;Special section to test for XBLabels
-	         if (dimsizes(plotres@tmXBLabels).ne.numbox) then
-		           print("Fatal:Number of XB Labels does not match number of boxes, exiting")
-		           exit
-		        else
-		           labarr(1:numbox) = plotres@$fsatts(ty)$
-		        end if
-		        xblab = plotres@tmXBLabels
-		        delete(plotres@tmXBLabels)		;Delete so tmXBLabels is not used when all
-	      end if					;atts are assigned below...
-	   end do
-	   delete(fsatts)
-	end if
-	
-	plot = create "plot" logLinPlotClass wks
-	   "trYMinF" : min(y)-2
-	   "trYMaxF" : max(y)+2
-	   "trXMinF" : min(xAxis)
-	   "trXMaxF" : max(xAxis)
-	   "pmTickMarkDisplayMode" : "Always"
-	   "tmXBMode"   : "Explicit"
-	   "tmXBValues" : xAxis
-	   "tmXBLabels" : labarr
-	   "tmYROn"  : False
-	   "tmXTOn"  : False
-	   "tmYRBorderOn" : False
-	   "tmXTBorderOn" : False
-  	   "pmTitleDisplayMode": "Always"                   ; allow titles
-  	   "tiMainOn"     : True
-  	   "tiMainString"   : ""	   
-	end create
-	if (plotres) then
-	   attsetvalues(plot,plotres)	
-	end if
-		
-	polyres = True						;Set up defaults
- 	polyres@gsLineColor       = "black"                     ; color of lines
-        polyres@gsLineThicknessF  = 1.5                       	; thickness of lines
-	polyres@gsLineDashPattern = 0
-	if (lineres) then
-	   fsatts = getvaratts(lineres)
-	   do ty = 0,dimsizes(fsatts)-1
-	      polyres@$fsatts(ty)$ = lineres@$fsatts(ty)$
-	   end do
-	end if
-	
-	if (boxOpts) then
-	   if (isatt(boxOpts,"boxColors")) then
-	      boxcolor = boxOpts@boxColors
-	      if (dimsizes(boxcolor).eq.1.or.dimsizes(boxcolor).ne.numbox) then
-	         if (dimsizes(boxcolor).ne.numbox) then
-	            print("warning:Number of colors provided does not match number of boxes, using only one color")
-		 end if
-	         polyres@gsLineColor = boxcolor(0)
-	         cflag = 1
-	      else
-	         cflag = 2
-	      end if
-	   else
-	      cflag =1
-	   end if
-	else
-	   cflag = 1
-	end if
-	
-	dum = new((/numbox,9/),graphic)
-	do gg = 0,numbox-1
-	   ff = xAxis(gg+1)
-	   if (cflag.eq.2) then
-	       polyres@gsLineColor = boxcolor(gg)
-	   end if
-	   yy = (/y(gg,4),y(gg,4)/)
-	   xx = (/(ff-(boxwidth/8.)),(ff+(boxwidth/8.))/)
+     if (plotres) then
+;       print("Plot resources detected, accepting")
+        fsatts = getvaratts(plotres)
+        do ty = 0,dimsizes(fsatts)-1
+           if (fsatts(ty).eq."tmXBLabels") then        ;Special section to test for XBLabels
+              if (dimsizes(plotres@tmXBLabels).ne.numbox) then
+                     print("boxplot: Fatal:Number of XB Labels does not match number of boxes, exiting")
+                     exit
+                  else
+                     labarr(1:numbox) = plotres@$fsatts(ty)$
+                  end if
+                  xblab = plotres@tmXBLabels
+                  delete(plotres@tmXBLabels)      ;Delete so tmXBLabels is not used when all
+           end if                       ;atts are assigned below...
+        end do
+        delete(fsatts)
+     end if
+
+     plot = create "plot" logLinPlotClass wks
+        "trYMinF" : min(y)-2
+        "trYMaxF" : max(y)+2
+        "trXMinF" : min(xAxis)
+        "trXMaxF" : max(xAxis)
+        "pmTickMarkDisplayMode" : "Always"
+        "tmXBMode"   : "Explicit"
+        "tmXBValues" : xAxis
+        "tmXBLabels" : labarr
+        "tmYROn"  : False
+        "tmXTOn"  : False
+        "tmYRBorderOn" : False
+        "tmXTBorderOn" : False
+        "pmTitleDisplayMode": "Always"                   ; allow titles
+        "tiMainOn"     : True
+        "tiMainString"   : ""
+     end create
+     if (plotres) then
+        attsetvalues(plot,plotres)
+     end if
+
+     polyres = True                          ;Set up defaults
+     polyres@gsLineColor       = "black"                     ; color of lines
+     polyres@gsLineThicknessF  = 1.5                          ; thickness of lines
+     polyres@gsLineDashPattern = 0
+     if (lineres) then
+        fsatts = getvaratts(lineres)
+        do ty = 0,dimsizes(fsatts)-1
+           polyres@$fsatts(ty)$ = lineres@$fsatts(ty)$
+        end do
+     end if
+
+     if (boxOpts) then
+        if (isatt(boxOpts,"boxColors")) then
+           boxcolor = boxOpts@boxColors
+           if (dimsizes(boxcolor).eq.1.or.dimsizes(boxcolor).ne.numbox) then
+              if (dimsizes(boxcolor).ne.numbox) then
+                 print("boxplot: warning: Number of input colors must either equal 1 or the number of boxes ("+numbox+"). Using first specified color only.")
+              end if
+              polyres@gsLineColor = boxcolor(0)
+              cflag = 1
+           else
+              cflag = 2
+           end if
+        else
+           cflag =1
+        end if
+     else
+        cflag = 1
+     end if
+
+     dum = new((/numbox,9/),graphic)
+     do gg = 0,numbox-1
+        ff = xAxis(gg+1)
+        if (cflag.eq.2) then
+            polyres@gsLineColor = boxcolor(gg)
+        end if
+        yy = (/y(gg,4),y(gg,4)/)
+        xx = (/(ff-(boxWidths(gg)/8.)),(ff+(boxWidths(gg)/8.))/)
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,0) = gsn_add_polyline(wks,plot,xx,yy,polyres)   
+           dum(gg,0) = gsn_add_polyline(wks,plot,xx,yy,polyres)
     end if
-    
-	   yy = (/y(gg,3),y(gg,4)/)
-	   xx = (/ff,ff/)
-	   polyres@gsLineDashPattern = 1
+
+        yy = (/y(gg,3),y(gg,4)/)
+        xx = (/ff,ff/)
+        polyres@gsLineDashPattern = 1
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,1) = gsn_add_polyline(wks,plot,xx,yy,polyres)   
-	   end if
+           dum(gg,1) = gsn_add_polyline(wks,plot,xx,yy,polyres)
+        end if
     polyres@gsLineDashPattern = 0
 
-	   yy = (/y(gg,3),y(gg,3)/)
-	   xx = (/(ff-(boxwidth/2.)),(ff+(boxwidth/2.))/)
+        yy = (/y(gg,3),y(gg,3)/)
+        xx = (/(ff-(boxWidths(gg)/2.)),(ff+(boxWidths(gg)/2.))/)
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,2) = gsn_add_polyline(wks,plot,xx,yy,polyres)
+           dum(gg,2) = gsn_add_polyline(wks,plot,xx,yy,polyres)
     end if
 
-	   yy = (/y(gg,1),y(gg,3)/)
-	   xx = (/(ff-(boxwidth/2.)),(ff-(boxwidth/2.))/)
+        yy = (/y(gg,1),y(gg,3)/)
+        xx = (/(ff-(boxWidths(gg)/2.)),(ff-(boxWidths(gg)/2.))/)
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,3) = gsn_add_polyline(wks,plot,xx,yy,polyres)   
+           dum(gg,3) = gsn_add_polyline(wks,plot,xx,yy,polyres)
     end if
 
-	   yy = (/y(gg,2),y(gg,2)/)
-	   xx = (/(ff-(boxwidth/2.)),(ff+(boxwidth/2.))/)
+        yy = (/y(gg,2),y(gg,2)/)
+        xx = (/(ff-(boxWidths(gg)/2.)),(ff+(boxWidths(gg)/2.))/)
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,4) = gsn_add_polyline(wks,plot,xx,yy,polyres)   
-    end if
-    
-	   yy = (/y(gg,1),y(gg,3)/)
-	   xx = (/(ff+(boxwidth/2.)),(ff+(boxwidth/2.))/)
-    if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,5) = gsn_add_polyline(wks,plot,xx,yy,polyres)   
+           dum(gg,4) = gsn_add_polyline(wks,plot,xx,yy,polyres)
     end if
 
-	   yy = (/y(gg,1),y(gg,1)/)
-	   xx = (/(ff-(boxwidth/2.)),(ff+(boxwidth/2.))/)
+        yy = (/y(gg,1),y(gg,3)/)
+        xx = (/(ff+(boxWidths(gg)/2.)),(ff+(boxWidths(gg)/2.))/)
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,6) = gsn_add_polyline(wks,plot,xx,yy,polyres)   
+           dum(gg,5) = gsn_add_polyline(wks,plot,xx,yy,polyres)
     end if
 
-	   yy = (/y(gg,0),y(gg,1)/)
-	   xx = (/ff,ff/)
-	   polyres@gsLineDashPattern = 1
+        yy = (/y(gg,1),y(gg,1)/)
+        xx = (/(ff-(boxWidths(gg)/2.)),(ff+(boxWidths(gg)/2.))/)
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,7) = gsn_add_polyline(wks,plot,xx,yy,polyres)   
-	   end if
+           dum(gg,6) = gsn_add_polyline(wks,plot,xx,yy,polyres)
+    end if
+
+        yy = (/y(gg,0),y(gg,1)/)
+        xx = (/ff,ff/)
+        polyres@gsLineDashPattern = 1
+    if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
+           dum(gg,7) = gsn_add_polyline(wks,plot,xx,yy,polyres)
+        end if
     polyres@gsLineDashPattern = 0
 
-	   yy = (/y(gg,0),y(gg,0)/)
-	   xx = (/(ff-(boxwidth/8.)),(ff+(boxwidth/8.))/)
+        yy = (/y(gg,0),y(gg,0)/)
+        xx = (/(ff-(boxWidths(gg)/8.)),(ff+(boxWidths(gg)/8.))/)
     if (.not.(any(ismissing(xx).or.ismissing(yy)))) then
-	      dum(gg,8) = gsn_add_polyline(wks,plot,xx,yy,polyres)
-	   end if
+           dum(gg,8) = gsn_add_polyline(wks,plot,xx,yy,polyres)
+        end if
  end do
-	dumname = unique_string("dum")								
-	plot@$dumname$ = dum									
-	if (isvar("xblab").eq."True") then							
-	   plotres@tmXBLabels = xblab		;reassign XBLabels for possible future plots	
-	end if				
+     dumname = unique_string("dum")
+     plot@$dumname$ = dum
+     if (isvar("xblab").eq."True") then
+        plotres@tmXBLabels = xblab      ;reassign XBLabels for possible future plots
+     end if
  if (maximize) then
     mres = True
     mres@gsnDraw  = False
     mres@gsnFrame = False
     maximize_output(wks,mres)
  end if
-	return(plot)
+     return(plot)
 end
 ; ---------------------------------
 undef("SPECX_ANAL")
@@ -3107,7 +3114,7 @@ begin
   PDFXY(1:ny2-1,mx2-1) = PDFXY@_FillValue
 
   xAxis   = fspan(p@binx_bound_min, p@binx_bound_max, mx2)
-  yAxis   = fspan(p@biny_bound_min, p@biny_bound_max, mx2)
+  yAxis   = fspan(p@biny_bound_min, p@biny_bound_max, ny2)
 
   PDFXY!0 = "Y"
   PDFXY!1 = "X"
@@ -3684,7 +3691,11 @@ begin
   G   = 9.80665                    ; m/s2 ; gravity at 45 deg lat used by the WMO
   W   = 7.292e-5                   ; (1/s)     ; earth ang rotation
   rad = 4.*atan(1.)/180.
-  f   = 2.*W*sin(lat*rad)          ; (1/s)     ; coriolis parameter
+  if (typeof(lat).eq.typeof(vr)) then
+      f = 2.*W*sin(lat*rad)          ; (1/s)     ; coriolis parameter
+  else 
+      f = 2.*W*sin(tofloat(lat)*rad)
+  end if
 
   vr  = vr + conform(vr,f,nlt)     ; absolute vorticity   
                                    ; G used for commonly used units
@@ -3825,11 +3836,18 @@ begin
   R   = 287.04                     ; m2/(s2-K) ; gas constant dry air
   W   = 7.292e-5                   ; (1/s)     ; earth ang rotation
   rad = 4.*atan(1.)/180.
-  f   = 2.*W*sin(lat*rad)          ; (1/s)     ; coriolis parameter
+  if (typeof(lat).eq.typeof(vr)) then
+      f = 2.*W*sin(lat*rad)          ; (1/s)     ; coriolis parameter
+  else
+      f = 2.*W*sin(tofloat(lat)*rad)
+  end if
 
   vr  = vr + conform(vr,f,nlt)     ; absolute vorticity   
   con = R/(s*conform(t,p,npr))  
-                                   ; G* added to get common pv units pv    = -G*(vr + con*(dvdp*dtdx-dudp*dtdy))*dthdp  pv@long_name  = "potential vorticity" pv@short_name = "PV"
+                                   ; G* added to get common pv units 
+  pv    = -G*(vr + con*(dvdp*dtdx-dudp*dtdy))*dthdp  
+  pv@long_name  = "potential vorticity"
+  pv@short_name = "PV"
   pv@units      = "K m2/kg/s"      ; common units
   copy_VarCoords(t,pv)
 
@@ -4033,3 +4051,232 @@ function pie_chart(wks:graphic, percent[*]:numeric, name[*]:string        \
 
   return (plotPC)
  end
+;-------------------------------------------------------
+
+undef("sstLandFill")
+procedure sstLandFill(sst)
+; Fill all land with interpolated values 
+local dims, ntim,nlat,mlon,sstice,latSH,ni,ml  \
+    , opts, optp, nscan, eps, gtype, guess, relc
+
+begin
+  dims   = dimsizes(sst)
+  ntim   = dims(0)
+  nlat   = dims(1)
+  mlon   = dims(2)
+
+  sstice = -1.8
+  latSH  = -70.    ; all pts polward set to sstice
+  ni     = 4       ; max # of pts in longitude direction
+
+;-----------------------------------------------------------------
+; Arbitrarily set all grid pts poleward of 70S to sstice
+;-----------------------------------------------------------------
+  work = conform(sst, sst&lat, 1)
+  sst  = where(work.le.latSH, sstice, sst)
+  delete(work)     ; not necessary       
+
+;-----------------------------------------------------------------
+; Set nearest neighbor values                              
+;-----------------------------------------------------------------
+  work = sst
+
+  do ml=0,mlon-2   ; left-to-right
+     sst(:,:,ml+1) = where(.not.ismissing(work(:,:,ml)) .and. ismissing(work(:,:,ml+1)) \
+                          ,work(:,:,ml), work(:,:,ml+1))
+  end do
+
+  work = sst       ; use 'updated' sst
+
+  do ml=mlon-1,1,1 ; right-to-left
+     sst(:,:,ml-1) = where(.not.ismissing(work(:,:,ml)) .and. ismissing(work(:,:,ml-1)) \
+                          ,work(:,:,ml), work(:,:,ml-1))
+  end do
+  delete(work)     ; not necessary       
+  
+;-----------------------------------------------------------------
+; Linearly interpolate in longitude spannin a max of "ni" pts
+; Rationale: SST contours have small variations in longitude
+;-----------------------------------------------------------------
+  opts  = (/0, ni/)
+  sst   = linmsg(sst,opts)
+
+;-----------------------------------------------------------------
+; Set the poisson_grid_fill variables
+; Global grid: Fill in over land             
+;-----------------------------------------------------------------
+  nscan = 2000     ; usually *much* fewer
+  eps   = 0.001    ; variable depended
+  gtype = True     ; Cyclic in longitude [global]
+  guess = 0        ; use zonal means
+  relc  = 0.6      ; standard relaxation coef
+  optp  = 0
+
+  poisson_grid_fill( sst, gtype, guess, nscan, eps, relc, optp)
+
+;-----------------------------------------------------------------
+; Make sure no SST are .lt. sstice
+;-----------------------------------------------------------------
+  sst   = sst > sstice
+end
+
+;***********************************************************
+; Mimic MATLAB fftshift:
+;    http://www.mathworks.com/help/techdoc/ref/fftshift.html 
+;***********************************************************
+; test code is at: /Users/shea/Data/CarlSchreck/tst_shiftarray.ncl
+;***********************************************************
+
+undef ("shift_array")
+procedure shift_array(x[*][*], kmode)
+local i, j, dimx, nrow, ncol, jwrap, iwrap
+begin
+  dimx = dimsizes(x)
+  nrow = dimx(0)
+  ncol = dimx(1)
+
+  tmp  = x
+      
+  if (kmode.eq.0) then                   ; quadrant shift
+      do j=0,ncol-1
+         jwrap = mod(j+ncol/2,ncol)
+        do i=0,nrow-1
+           iwrap = mod(i+nrow/2,nrow)
+           tmp(iwrap,jwrap) = x(i,j)
+        end do
+      end do
+  end if
+
+  if (kmode.lt.0) then                   ; column shift 
+      do j=0,ncol-1
+         jwrap = mod(j+ncol/2,ncol)
+         tmp(:,jwrap) = x(:,j)
+      end do
+  end if
+      
+  if (kmode.gt.0) then                   ; row shift
+      do i=0,nrow-1
+         iwrap = mod(i+nrow/2,nrow)
+         tmp(iwrap,:) = x(i,:)
+      end do
+  end if
+      
+  x = tmp                                ; return to original array
+end
+;-------------------------------
+undef("area_global_rectilinear_grid")
+function area_global_rectilinear_grid (lat[*]:numeric, lon[*], opt[1]:logical)
+; Area (approximate) of a global rectilinear grid cells.
+; This could be modified for non-global grids by adding
+;     the left and right and left dx.
+local rearth, nlat, mlon, pi, rad, rr, dlon, dx, dy
+    , area_lat, area_grid, area_total, area_sphere  
+begin
+  rearth = 6371.220d0            ; default; kilometers
+  if (opt .and. isatt(opt, "rearth")) then
+      rearth = opt@rearth 
+  end if
+
+  nlat   = dimsizes(lat)
+  mlon   = dimsizes(lon)
+
+  pi     = 4d0*atan(1.0d0)
+  rad    = pi/180d0
+  rr     = rearth*rad
+  dlon   = rr*(lon(2)-lon(1))
+
+  dx     = dlon*cos(lat*rad)   ; lon spacing at each latitude
+
+  if (lat(0).lt.-89.9999d0) then ; force exact 0.0, rounding issue
+      dx(0)  = 0.0d0
+  end if
+  if (lat(nlat-1).gt.89.9999d0) then
+      dx(nlat-1)  = 0.0d0
+  end if
+                               ; lat can have variable spacing
+  dy           = new (nlat, "double", "No_FillValue")
+  dy(0)        = (lat(1)-lat(0))*rr
+  dy(1:nlat-2) = (lat(2:)-lat(1:nlat-2))*rr
+  dy(nlat-1)   = (lat(nlat-1)-lat(nlat-2))*rr
+
+  area_lat      = dx*dy        ; [*]
+  area_grid     = conform_dims( (/nlat,mlon/), area_lat, 0)
+  area_total    = sum( area_grid )
+
+  area_sphere   = 4d0*pi*rearth^2
+
+  area_grid@long_name  = "area of each grid cell"
+  area_grid@units      = "km^2"
+  area_grid@area_total = area_total      ; scalar
+  area_grid@area_lat   = area_lat        ; [*]
+  area_grid@rearth     = rearth          ; scalar
+  area_grid@area_sphere= area_sphere     ; scalar
+  area_grid@area_ratio = area_total/area_sphere    ; scalar
+
+  area_grid!0   = "lat"
+  area_grid!1   = "lon"
+  area_grid&lat =  lat
+  area_grid&lon =  lon
+
+  return(area_grid)
+end
+;-------------------------------
+undef("area_polar_region")
+function area_polar_region (lat[*]:numeric, opt[1]:logical)
+; Area from pole to latitude. Special case of area_sphere_region
+local rearth, pi, rad, rr, twopi, parea
+begin
+  rearth = 6371.220d0            ; default; kilometers
+  if (opt .and. isatt(opt, "rearth")) then
+      rearth = opt@rearth
+  end if
+
+  pi     = 4d0*atan(1.0d0)
+  rad    = pi/180d0
+  twopi  = 2.0d0*pi
+  parea  = twopi*rearth*rearth*(1.0d0-sin(rad*lat))
+  parea@long_name = "Polar Area"
+  parea@units     = "km^2"
+
+  return(parea)
+end
+;-------------------------------
+undef("area_earth_region")
+function area_earth_region (lat1[*]:numeric, lat2[*]:numeric \
+                           ,lon1[*]:numeric, lon2[*]:numeric \
+                           ,opt[1]:logical)
+; sfc area of a region of the globe
+; area_g = area_area_earth_region( 90,-90,   0,360,False) ; globe
+; area_g = area_area_earth_region( 90,-90,-180,180,False) ; globe
+; area_p = area_area_earth_region( 90, 45,   0,360,False) ; pole  area
+; area_p = area_area_earth_region(-90,-60,   0,360,False) ; pole  area
+; area_r = area_area_earth_region( 30,-30, -45, 60,False) ; region area
+local rearth, pi, rad, twopi, lonRatio, con, area
+begin
+                           ; Radius of sphere with same volume as earth
+  rearth = 6371.220d0      ; default; kilometers; ECMWF uses this value
+  if (opt .and. isatt(opt, "rearth")) then
+      rearth = opt@rearth
+  end if
+
+  if (any( (lat2-lat1).gt.180) ) then
+      print("area_earth_region: latitude span is incorrect")
+      exit
+  end if
+
+  if (any( (lon2-lon1).gt.360) ) then
+      print("area_earth_region: longitude span is incorrect")
+      exit
+  end if
+
+  pi    = 4d0*atan(1.0d0)
+  rad   = pi/180d0
+  twopi = 2.0d0*pi
+  lonRatio = abs(lon2-lon1)/360d0
+  con   = (twopi*rearth^2)*lonRatio
+
+  area  = con*abs(sin(rad*lat1)-sin(rad*lat2))
+  area@long_name = "Area"
+  area@units     = "km^2"
+  return(area)
+end

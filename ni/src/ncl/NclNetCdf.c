@@ -98,7 +98,7 @@ struct _NetCdfDimInqRec {
 	int dimid;
 	int is_unlimited;
 	NclQuark name;
-	long size;
+	ng_size_t size;
 };
 	
 struct _NetCdfAttInqRec {
@@ -650,8 +650,8 @@ int wr_status;
 	int cdfid;
 	int nc_ret = NC_NOERR;
 	int dummy;
-	char buffer[MAX_NC_NAME];
-	char buffer2[MAX_NC_NAME];
+	char buffer[4*NC_MAX_NAME+1];
+	char buffer2[4*NC_MAX_NAME+1];
 	int i,j,has_scalar_dim = 0,nvars = 0;
 	long tmp_size;
 	NetCdfAttInqRecList **stepalptr;
@@ -730,9 +730,9 @@ int wr_status;
 			(*stepdlptr)->dim_inq->is_unlimited = (i==dummy)?1:0;
 			(*stepdlptr)->next = NULL;
 			(*stepdlptr)->dim_inq->dimid = i;
-			ncdiminq(cdfid,i,buffer,&((*stepdlptr)->dim_inq->size));
+			nc_inq_dim(cdfid,i,buffer,&((*stepdlptr)->dim_inq->size));
 #if NETCDF_DEBUG
-			fprintf(stderr,"ncdiminq(%d,%d,buffer,&dim_size);\n",cdfid,i);
+			fprintf(stderr,"nc_inq_dim(%d,%d,buffer,&dim_size);\n",cdfid,i);
 #endif                
 
 /*
@@ -768,9 +768,9 @@ int wr_status;
 #endif                
 			for(j = 0; j < ((*stepvlptr)->var_inq->n_dims); j++) {
 				tmp_size = 0;
-				ncdiminq(cdfid,((*stepvlptr)->var_inq->dim)[j],buffer2,&tmp_size);
+				nc_inq_dim(cdfid,((*stepvlptr)->var_inq->dim)[j],buffer2,&tmp_size);
 #if NETCDF_DEBUG
-				fprintf(stderr,"ncdiminq(%d,%d,buffer,&size);\n",cdfid,((*stepvlptr)->var_inq->dim)[j]);
+				fprintf(stderr,"nc_inq_dim(%d,%d,buffer,&size);\n",cdfid,((*stepvlptr)->var_inq->dim)[j]);
 #endif                
 			}
 			if(j != ((*stepvlptr)->var_inq->n_dims)) {
@@ -1335,7 +1335,7 @@ void* storage;
 	NetCdfVarInqRecList *stepvl;
 	NetCdfDimInqRecList *stepdl; 
 	void *out_data;
-	int n_elem = 1;
+	ng_size_t n_elem = 1;
 	int cdfid = -1;
 	int ret = -1,i;
 	int nc_ret = NC_NOERR;
@@ -1350,7 +1350,7 @@ void* storage;
 			}
 			for(i= 0; i< stepvl->var_inq->n_dims; i++) {
 				int dimid;
-				count[i] = (int)floor((finish[i] - start[i])/(double)stride[i]) + 1;
+				count[i] = (long)((finish[i] - start[i])/stride[i]) + 1;
 				n_elem *= count[i];
 				if(stride[i] != 1) {
 					no_stride = 0;
@@ -1649,7 +1649,8 @@ long *stride;
 	NetCdfVarInqRecList *stepvl; 
 	NetCdfDimInqRecList *stepdl; 
 	long count[MAX_NC_DIMS];
-	int i,n_elem = 1,no_stride = 1,k;
+	ng_size_t n_elem = 1;
+	int i,no_stride = 1,k;
 	int ret;
 	int fill_mode;
 
@@ -1665,7 +1666,7 @@ long *stride;
 					stepvl->var_inq->value = NULL;
 				}
 				for(i= 0; i< stepvl->var_inq->n_dims; i++) {
-					count[i] = (int)floor((finish[i] - start[i])/(double)stride[i]) + 1;
+					count[i] = (long)((finish[i] - start[i])/stride[i]) + 1;
 					n_elem *= count[i];
 					if(stride[i] != 1) {
 						no_stride = 0;
@@ -1715,32 +1716,29 @@ long *stride;
 
 	
 				if(no_stride) {
-					ret = ncvarputg(cdfid,
-						stepvl->var_inq->varid,
-						start,
-						count,
-						NULL,
-						NULL,
-						data);
+					ret = nc_put_vara(cdfid,
+							  stepvl->var_inq->varid,
+							  (const size_t *)start,
+							  (const size_t *)count,
+							  data);
 #if NETCDF_DEBUG
-				fprintf(stderr,"ncvarputg(%d,%d,start,count,NULL,NULL,outdata);\n",cdfid,stepvl->var_inq->varid);
+				fprintf(stderr,"nc_put_vara(%d,%d,start,count,NULL,NULL,outdata);\n",cdfid,stepvl->var_inq->varid);
 #endif
 				} else {
-					ret = ncvarputg(cdfid,
-						stepvl->var_inq->varid,
-						start,
-						count,
-						stride,
-						NULL,
-						data);
+					ret = nc_put_vars(cdfid,
+							  stepvl->var_inq->varid,
+							  (const size_t *)start,
+							  (const size_t *)count,
+							  (const ptrdiff_t *)stride,
+							  data);
 #if NETCDF_DEBUG
-				fprintf(stderr,"ncvarputg(%d,%d,start,count,stride,NULL,outdata);\n",cdfid,stepvl->var_inq->varid);
+				fprintf(stderr,"nc_put_vars(%d,%d,start,count,stride,NULL,outdata);\n",cdfid,stepvl->var_inq->varid);
 #endif
 				}
 	
 				CloseOrNot(rec,cdfid,1);
-				if(ret == -1) {
-					NhlPError(NhlFATAL,NhlEUNKNOWN,"NetCdf: An error occurred while attempting to write variable (%s) to file (%s)",NrmQuarkToString(thevar),NrmQuarkToString(rec->file_path_q));
+				if(ret != NC_NOERR) {
+					NhlPError(NhlFATAL,NhlEUNKNOWN,"%s: error attempting to write variable (%s) to file (%s)",nc_strerror(ret),NrmQuarkToString(thevar),NrmQuarkToString(rec->file_path_q));
 					return(NhlFATAL);
 				} else {
 					return(NhlNOERROR);
@@ -3409,10 +3407,7 @@ NclFormatFunctionRec NetCdfRec = {
 /* NclMapNclTypeToFormat   map_ncl_type_to_format; */	NetMapFromNcl,
 /* NclDelAttFunc           del_att; */			NetDelAtt,
 /* NclDelVarAttFunc        del_var_att; */		NetDelVarAtt,
-/* NclGetGrpNamesFunc      get_grp_names; */            NULL,
-/* NclGetGrpInfoFunc       get_grp_info; */             NULL,
-/* NclGetGrpAttNamesFunc   get_grp_att_names; */        NULL, 
-/* NclGetGrpAttInfoFunc    get_grp_att_info; */         NULL,
+#include "NclGrpFuncs.null"
 /* NclSetOptionFunc        set_option;  */              NetSetOption
 };
 NclFormatFunctionRecPtr NetCdfAddFileFormat 

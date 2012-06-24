@@ -1,0 +1,21 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-19 14:48:57 haley Exp $
+#
+
+MYNAME	= agupwrtx
+
+GENERIC_SRCS = agpwrt.f
+
+GENERIC_OBJS = agpwrt.o
+
+OBJECTS = $(GENERIC_OBJS)
+
+SOURCES = $(GENERIC_SRCS)
+
+#if defined(alpha) && (MAJOR==1)
+InstallTarget($(OBJECTS),$(INSTALL_LIB),$(ROBJPATH)/$(MYNAME))
+#else
+RelocatableTarget(libagupwrtx.o,$(OBJECTS))
+#endif
+
+SourceLibraryTarget($(MYNAME),srcagupwrtx.a,$(SOURCES))

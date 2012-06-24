@@ -1,0 +1,38 @@
+#
+#       $Id: yMakefile,v 1.22 2006-10-06 21:42:31 kennison Exp $
+#
+#	Makefile for libncarg.a
+#	Includes utilities and their corresponding test programs,
+#	and SPPS.
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = Iftran \
+	areas autogrph colconv common concom conpack conpackt conran conrec \
+	conterp dashchar dashpack ezmap ezmapa ezmapb ezmapc gflash \
+	gridal hafton histgr isosrf isosrfhr labelbar ngmisc plotchar \
+	polypack pwritx pwrity pwrzi pwrzs pwrzt softfill spps \
+	srface stitle strmln support tdpack threed vaspackt velvct wmap \
+	areasC autogrphC colconvC conpackC conpacktC \
+	commonC dashcharC dashpackC ezmapCC gflashC gridalC \
+	histgrC isosrfC labelbarC ngmiscC plotcharC \
+	polypackC softfillC sppsC srfaceC stitleC \
+	supportC strmlnC tdpackC threedC velvctC wmapC
+
+INCLUDES    = ncargC.h
+
+PartialLibraryRoot(libncarg.a,$(SUBDIRS))
+PartialSourceLibraryRoot(srcncarg.a,$(SUBDIRS))
+
+BuildSharedPartialFromArch(libNGmisc,libNGmisc.a,1,0,NullArgument)
+BuildSharedPartialFromArch(libNGmisc2,libNGmisc2.a,1,0,NullArgument)
+BuildSharedPartialFromArch(libNGmp,libNGmp.a,1,0,NullArgument)
+BuildSharedPartialFromArch(libNGff,libNGff.a,1,0,NullArgument)
+BuildSharedPartialFromArch(libNGcn,libNGcn.a,1,0,NullArgument)
+BuildSharedPartialFromArch(libNGlluC,libNGlluC.a,1,0,NullArgument)
+BuildSharedFromArch(libNGllu,libNGllu.a,1,0,-exports -lNGcn -exports -lNGff -exports -lNGmp -exports -lNGmisc -exports -lNGmisc2 -exports -lNGlluC)
+CleanFilesTarget(libNGmisc.a libNGmisc2.a libNGmp.a libNGff.a libNGcn.a libNGllu.a libNGlluC.a)
+
+BuildIncludes($(INCLUDES),ncarg,..)
+InstallTarget($(INCLUDES),$(INSTALL_INC),$(NCARGINCPATH))

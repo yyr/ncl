@@ -1,0 +1,24 @@
+#
+#	$Id: yMakefile,v 1.16 1994-05-27 20:49:06 haley Exp $
+#
+
+MAN1	= ctrans ictrans ncgm2cgm cgm2ncgm med gcaps fcaps \
+	rasview idt rascat rasgetpal \
+	rasls rassplit
+MAN3	= cgm 
+MAN5	= ncarv_spool ras_palette ras_formats
+
+MAN	= $(MAN1) $(MAN3) $(MAN5)
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+
+InstallManPages($(MAN1),$(FORMAT_EXT),$(MAN1PATH),$(MAN1_SECTION))
+InstallManPages($(MAN3),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+InstallManPages($(MAN5),$(FORMAT_EXT),$(MAN5PATH),$(MAN5_SECTION))
+FormatManPages($(MAN),.m,.p)

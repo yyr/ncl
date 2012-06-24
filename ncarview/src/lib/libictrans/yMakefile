@@ -1,0 +1,58 @@
+#
+#	$Id: yMakefile,v 1.24 2003-12-09 17:04:34 grubin Exp $
+#
+
+MYNAME1		= libictrans.o
+
+#
+# name of the spooler translator
+#
+SPOOL_TRANS	= ctrans
+
+EXTRA_CDEFINES	=	-DSPOOL_TRANS='"$(SPOOL_TRANS)"' -DNGTMPDIR='"$(NGTMPDIR)"'\
+			-DBINDIR='"$(BINDIR)"' -DLIBDIR='"$(LIBDIR)"'\
+			-DNCARGDIR='"$(NCARGDIR)"'
+
+EXTENSION_OBJS	= ictrans_mem.o ictrans_wks.o fort_ictrans.o
+
+EXTENSION_SRCS	= ictrans_mem.c ictrans_wks.c 
+
+GENERIC_OBJS	= commands.o cmd_tab.o get_cmd.o \
+		glob.o spooler.o ictrans.o lex_stuff.o input.o
+
+#if defined(Linux) || defined(LINUX)
+#define linux
+#endif
+#if defined(linux) || defined(Darwin) || defined(FreeBSD)
+LEX_OBJS = lex.yy_linux.o
+#else
+LEX_OBJS = lex.yy.o
+#endif
+
+
+GENERIC_SRCS	= commands.c cmd_tab.c get_cmd.c \
+		glob.c spooler.c ictrans.c input.c
+
+OBJS	= $(GENERIC_OBJS) $(LEX_OBJS) $(EXTENSION_OBJS)
+SRCS	= $(GENERIC_SRCS) $(EXTENSION_SRCS)
+
+RelocatableTarget($(MYNAME1),$(OBJS))
+BuildSharedLibTarget(libNGictrans,$(GENERIC_OBJS),1,0,$(CTRANSLIB) $(CGMLIB) $(NCARGCLIB) -lc)
+DependTarget($(SRCS))
+CleanFilesTarget(lex.yy.c lex.yy.c.sed sedscript)
+
+#if !defined(linux) && !defined(Darwin) && !defined(FreeBSD)
+lex.yy.c: lex.l Makefile
+	@echo '1a\' > sedscript
+	@echo '#include "input.h"' >>  sedscript
+	@echo 's/yylex/my_yylex/g' >>  sedscript
+	@echo 's/getc/my_getc/g' >>  sedscript
+	@echo 's/static void __yy__unused() { main(); }//g' >>  sedscript
+	lex lex.l
+	@$(MV) lex.yy.c lex.yy.c.sed
+	@sed -f sedscript < lex.yy.c.sed > lex.yy.c
+	@$(RM) lex.yy.c.sed sedscript
+#endif
+
+lint: $(SRCS)
+	lint $(CFLAGS) 1> lint.out 2>&1

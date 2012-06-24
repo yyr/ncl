@@ -1,0 +1,18 @@
+#
+#	$Id: yMakefile,v 1.4 1996-10-25 21:45:24 boote Exp $
+#
+MYNAME	= pwrzt
+
+GENERIC_SRCS = \
+	pwrzt.f intzt.f initzt.f pwrzot.f pwrzgt.f
+
+GENERIC_OBJS = \
+	pwrzt.o intzt.o initzt.o pwrzot.o pwrzgt.o
+
+SOURCES = $(GENERIC_SRCS)
+OBJECTS = $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc2.a,$(OBJECTS))

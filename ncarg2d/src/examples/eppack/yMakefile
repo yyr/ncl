@@ -1,0 +1,15 @@
+#
+#       $Id: yMakefile,v 1.3 1995-06-14 13:56:57 haley Exp $
+#
+MYNAME  = eppack
+
+SRCS = ppex01.f
+OBJS = ppex01.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(ppex01,ppex01.o)

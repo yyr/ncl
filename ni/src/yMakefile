@@ -1,0 +1,26 @@
+#
+#      $Id: yMakefile,v 1.19 2010-02-16 15:32:30 haley Exp $
+#
+#########################################################################
+#									#
+#			   Copyright (C)  1993				#
+#	     University Corporation for Atmospheric Research		#
+#			   All Rights Reserved				#
+#									#
+#########################################################################
+#
+#	File:		yMakefile
+#
+#	Author:		Jeff W. Boote
+#			National Center for Atmospheric Research
+#			PO 3000, Boulder, Colorado
+#
+#	Date:		Tue Apr 27 15:00:26 MDT 1993
+#
+#	Description:	yMakefile for ncarg/ni/src
+
+#if !defined(CRAY)
+#define	IHaveSubdirs
+SUBDIRS = nyacc lib ncl mkwrap db scripts contrib examples
+#endif
+

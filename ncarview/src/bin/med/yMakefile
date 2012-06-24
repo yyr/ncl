@@ -1,0 +1,21 @@
+#
+#	$Id: yMakefile,v 1.9 1993-10-19 17:43:11 boote Exp $
+#
+
+MYNAME	= med
+
+PROG_LIBS	=	$(CGMLIB) $(NCARGCLIB)
+DEP_LIBS	=	$(DEPCGMLIB) $(DEPNCARGCLIB)
+
+SRCS	= cmd_tab.c commands.c error.c med.c 
+OBJS	= cmd_tab.o commands.o error.o med.o
+
+#if defined(CRAY)
+SYS_LIBS	=	-lbsd
+#endif
+
+CProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+DependTarget($(SRCS))
+
+lint: $(HDR) $(SRCS)
+	lint $(CDEFINES) $(LINTLIBS) $(SRCS)  1> lint.out 2>&1

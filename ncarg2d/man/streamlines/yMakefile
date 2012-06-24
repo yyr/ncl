@@ -1,0 +1,17 @@
+#
+#	$Id: yMakefile,v 1.10 2003-05-22 17:22:07 haley Exp $
+#
+
+MAN =	ezstrm stgetc stgeti stgetr stinit stream streamlines \
+	streamlines_params strmln strset stsetc stseti stsetr stuixy \
+	stumsl stumta stumxy
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

@@ -1,0 +1,8 @@
+#
+#	$Id: yMakefile,v 1.7 1993-11-02 21:53:03 haley Exp $
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = \
+	tareas tconpack tezmap class

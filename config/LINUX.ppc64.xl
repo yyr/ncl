@@ -1,0 +1,44 @@
+/*
+ *  Description:    This file contains all the directives needed to
+ *                  tell ymake how to build NCARG/NCL on a PPC
+ *                  64-bit LINUX system using the xlf/xlc compilers.
+ * 
+ *                  Copy this file to the LINUX file in this directory
+ *                  before you start the NCL/NCARG build.
+ */
+#define HdfDefines    -D_IBMR2
+#define StdDefines    -DSYSV -D_POSIX_SOURCE -D_XOPEN_SOURCE -D_XOPEN_SOURCE_EXTENDED=1 -DNGLONG2XINT -Dppc64
+#define CCompiler     xlc
+#define FCompiler     xlf
+#define CcOptions     -q64 -qfullpath -qmaxmem=-1
+#define FcOptions     -q64 -qfullpath
+#define LdCommand     ld -melf64ppc
+#define LdRelCommand  ld -melf64ppc
+#define ArCommand     ar
+#define COptimizeFlag -O
+#define FOptimizeFlag -O
+#define Cstatic       -bnso
+#define Cdynamic      -bso
+#define CtoFLibraries -L/opt/ibmcmp/xlf/9.1/lib64 -lxlfmath -lxlf90 -lm
+#define NgCallF       reg
+#define CppCommand '/usr/bin/cpp -traditional'
+#define XToolLibrary -lXt -lSM -lICE
+#define BuildShared NO
+#define XLibrary -lX11 -lXext
+
+#define ArchRecLibSearch -L/usr/X11R6/lib64
+#define ArchRecIncSearch -I/usr/X11R6/include
+
+
+/*************** Redefine Macros from Rules ********************************/
+
+/*
+ * Macro: MakeDir
+ *
+ * Description: This rule creates a directory - if a parent dir doesn't exist
+ *  it attempts to create it.
+ */
+#ifndef MakeDir
+#define MakeDir(dir) @if (test ! -d dir); then ($(MKDIRHIER) dir); fi
+#endif
+

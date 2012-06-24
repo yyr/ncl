@@ -1,0 +1,209 @@
+Adding a Fortran routine as an NCL built-in function
+----------------------------------------------------
+
+Assume the Fortran routine is in a file called "calc.f".  It must be a
+Fortran 77 file.
+ 
+The below instructions assume you already have NCARG/NCL source code
+checked out and built.
+
+   o  If there is an underscore in the Fortran routine name, then
+      g77 may add an extra underscore at the end of the name.  This
+      can cause load problems unless care is taken to account for this.
+
+      Avoiding underscores in the Fortran routine names is advisable.
+
+      Rename the routine to not contain underscores.
+
+   o  The routine should be a double precision version.
+
+      Instead of coding a double precision version 
+      directly, it is less error prone to use 
+      the NAG single-to-double-precision converter.  This
+      is on windom: /usr/local/NAGWare-4.1/bin/nag_apt .
+
+      The default execution of nag_apt is to take a single
+      precision .f file and convert it to double precision.
+
+      The original file is backed up to a .orig file and 
+      the input file is overwritten with the double precision
+      version.
+
+         nag_apt -double calc.f
+
+      If this command is successful, you will see something like
+      this:
+
+       [nag_apt Normal Termination]
+       nag_apt: 'calc.f' backed up to 'calc.f.orig'
+
+      If it isn't successful, then "calc.f" will be unchanged. You
+      can look through the errors and usually it is pretty easy
+      to tell what needs to be fixed. For example, "nag_apt" doesn't
+      like "!" as a comment character, and will tell you this.
+
+   o  Add the routine to the nfpfort directory:
+
+        cp calc.f $NCARG/ni/src/lib/nfpfort/.
+        cd $NCARG/ni/src/lib/nfpfort
+        cvs add calc.f
+
+      Add the file to the yMakefile as well. Check these both into
+      CVS at this point, if you want:
+
+        cvs ci yMakefile calc.f
+
+   o  To make sure it compiles, type:
+
+          cvs update 
+          make me
+          make
+
+      This should update the "libnfpfort.a" library with the new
+      Fortran routine.
+
+      Eventually test compilations on all test machines.  This is not
+      necessary if you are super confident about the source. You can
+      see a list of test machines at
+
+      https://www.ncl.ucar.edu/internal/ncl-dev/systems.shtml
+
+      You can also test later, *after* you've added the NCL wrapper.
+
+   o  Change to directory $NCARG/ni/src/lib/nfp
+
+      Create the wrapper file that calls the Fortran. Generally,
+      call this file "calcW.c". Or, if it's similar to an existing
+      wrapper, you can add it to the end of the existing *W.c
+      file.
+ 
+        --> Be sure to prototype the Fortran function/subroutine.
+            Make sure the you are prototyping the
+            correct routine, in particular that you are
+            referencing the double precision version in the
+            cases where there double precision and single
+            precision versions available.
+
+        --> The "W" file may contain several functions or procedures
+            and those names will have an "_W" after them.
+
+   o  Add the prototype to wrapper.c in directory $NCARG/ni/src/lib/nfp.
+
+   o  Add the registration to wrapper.c 
+
+      *Make sure the routine is properly registered as either a
+      function or procedure.*
+
+      The registered NCL name will be the same as the "_W" name
+      without the "_W".
+
+   o  Add the "calcW.c" file name to the yMakefile (see how the other 
+      files are done).
+
+   o  In the nfp directory do:
+
+        cvs update
+        make me
+        make
+
+   o  If instead of your having added a new routine to the nfpfort
+      directory, but rather have added a new Fortran routine to
+      libncarg, be sure to write the C wrappers and prototype them
+      in $NCARG/ncarg2d/src/libncarg/ncargC.h .
+
+   o  Go to $NCARG/ni/src/ncl and do
+
+        cvs update
+        make me
+        make
+
+      to make ncl for testing purposes.
+
+   o  Add analysis test scripts to:
+
+        ncargtest/nclscripts
+
+   o  Add plotting test scripts to:
+
+        ncargtest/nclscripts/plotting
+
+   o  After testing is complete,
+         +  Check in the original Fortran source in
+            directory $NCARG/ni/src/lib/nfpfort
+         +  Add and check in the test scripts in
+            directory ncargtest/nclscripts.
+         +  Add the "W" wrapper in directory
+            $NCARG/ni/src/lib/nfp and check in
+            wrapper.c, yMakefile, and the wrapper.
+
+   o  Add NCL routine documentation to:
+
+        webdoc/ncl/Document/Functions/Built-in
+
+      Determine the version number of the release where the new
+      routine will appear.  Add a "newversion" tag to the source like:
+
+         <newversion>
+         4.3.1
+         </newversion>
+
+      This version tag should appear after the </summary> tag and
+      before the <synopsis ...> tag.
+
+      For details on the formatting of the .xml files, see:
+ 
+        webdoc/ncl/Document/Functions/Built-in/README
+
+      Add the new file names to the yMakefile
+ 
+      To review the new documentation use
+
+         webdoc/ncl/internal/about_website/updatetnclweb
+
+      to create a .shtml file from the .xml and copy that 
+      to the NCL test web site  http://test.www.ncl.ucar.edu/
+      (note the "t" that distinguishes updatetnclweb from updatenclweb).
+
+      You can then review the documentation at
+
+  http://test.www.ncl.ucar.edu/Document/Functions/Built-in/new_routine.shtml
+
+  
+      where "new_routine" is the name of the NCL routine just added.
+
+      When you are satisfied with the documentation, use
+      updatenclweb to copy it to the live web site.
+
+      CVS add and check in the new .xml files as well as the
+      yMakefile.  Do not check in .shtml files.
+
+   o  Update various function lists on the web, for example, those
+      that you see in:
+
+      http://www.ncl.ucar.edu/Document/Functions/index.shtml
+      http://www.ncl.ucar.edu/Document/Functions/list_type.shtml
+      http://www.ncl.ucar.edu/Document/Functions/list_alpha.shtml
+      http://www.ncl.ucar.edu/Document/Functions/Built-in/index.shtml
+
+      To do this, cd to webdoc/ncl/Document/Functions and run:
+
+         ./update_lists
+
+      This may take awhile and generate a lot of output. It will
+      also try to run "cvs update" in several directories. For
+      a list of available options, type "./update_lists -h".
+
+      To only copy files to the test web machine, type:
+
+         ./update_lists -t
+
+      You don't need to CVS check-in anything here.
+
+   o  Edit webdoc/ncl/future_release.xml to add the new stuff.
+      CVS check-in this file.
+
+   o  If you want to add an Applications example that shows usage of
+      the new routine, see
+
+        webdoc/ncl/Applications/README
+

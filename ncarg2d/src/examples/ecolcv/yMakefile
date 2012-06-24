@@ -1,0 +1,17 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 13:56:17 haley Exp $
+#
+MYNAME	= ecolcv
+
+SRCS = coex01.f coex02.f coex03.f
+OBJS = coex01.o coex02.o coex03.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(coex01,coex01.o)
+FExampleTarget(coex02,coex02.o)
+FExampleTarget(coex03,coex03.o)

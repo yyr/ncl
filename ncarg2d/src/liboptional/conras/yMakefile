@@ -1,0 +1,21 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-19 14:50:20 haley Exp $
+#
+
+MYNAME	= conras
+
+GENERIC_SRCS = conras.f conpms.f
+
+GENERIC_OBJS = conras.o conpms.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS = $(GENERIC_OBJS)
+
+#if defined(alpha) && (MAJOR==1)
+InstallTarget($(OBJECTS),$(INSTALL_LIB),$(ROBJPATH)/$(MYNAME))
+#else
+RelocatableTarget(libconras.o,$(OBJECTS))
+#endif
+
+SourceLibraryTarget($(MYNAME),srcconras.a,$(SOURCES))

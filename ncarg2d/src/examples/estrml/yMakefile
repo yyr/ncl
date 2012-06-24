@@ -1,0 +1,18 @@
+#
+#	$Id: yMakefile,v 1.5 1995-06-14 13:57:14 haley Exp $
+#
+
+MYNAME	= estrml
+
+SRCS = stex01.f stex02.f stex03.f
+OBJS = stex01.o stex02.o stex03.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(stex01,stex01.o)
+FExampleTarget(stex02,stex02.o)
+FExampleTarget(stex03,stex03.o)

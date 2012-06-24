@@ -1,0 +1,9 @@
+#
+#	$Id: yMakefile,v 1.4 1993-10-19 17:39:56 boote Exp $
+#
+MYNAME	= ncarbd
+
+OBJECTS = ncarbd.o
+FSOURCES = ncarbd.f
+
+RelocatableTarget(libncarbd.o,$(OBJECTS))

@@ -1,0 +1,17 @@
+#
+#	$Id: yMakefile,v 1.6 1995-06-14 13:57:01 haley Exp $
+#
+
+MYNAME	= esoftf
+
+SRCS = sfex01.f sfex02.f
+OBJS = sfex01.o sfex02.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(sfex01,sfex01.o)
+FExampleTarget(sfex02,sfex02.o)

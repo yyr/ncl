@@ -1,0 +1,5 @@
+#
+#	$Id: yMakefile,v 1.6 1999-09-18 00:20:55 fred Exp $
+#
+#define IHaveSubdirs
+SUBDIRS = csagrid cssgrid natgrid dsgrid fitgrid shgrid

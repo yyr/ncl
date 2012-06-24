@@ -1,0 +1,36 @@
+#
+#   $Id: yMakefile,v 1.9 1999-03-25 03:47:56 haley Exp $
+#
+#   Makefile for HLU LabeBar examples
+#
+
+MYNAME      = labelbar
+
+PROG_LIBS   =   $(HLULIBS) $(NCARGLIBS)
+EXTRA_LIBS  =   $(XMOTIFCLIENTLIBS)
+SYS_LIBS    =   $(CTOFLIBS) -lm
+
+CSRCS     = lb01c.c lb02c.c
+FSRCS     = lb01f.f lb02f.f
+NSRCS     = lb01n.ncl lb02n.ncl
+COBJS     = lb01c.o lb02c.o
+FOBJS     = lb01f.o lb02f.o
+SRCS      = $(CSRCS) $(FSRCS)
+OBJS      = $(COBJS) $(FOBJS)
+RESFILES  = lb01.res lb02.res
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(HLUEXROOT)/$(MYNAME))
+#if !defined(CRAY)
+InstallTarget($(NSRCS),$(INSTALL_LIB),$(NCLEXROOT)/$(MYNAME))
+#endif
+InstallTarget($(RESFILES),$(INSTALL_LIB),$(RESFILEROOT)/$(MYNAME))
+
+CExampleTarget(lb01c,lb01c.o)
+CExampleTarget(lb02c,lb02c.o)
+
+FExampleTarget(lb01f,lb01f.o)
+FExampleTarget(lb02f,lb02f.o)
+
+CleanFilesTarget($(OBJS))
+DependTarget($(CSRCS))
+

@@ -1,0 +1,37 @@
+/*
+ *  Description:    This file contains all the directives needed to
+ *                  tell ymake how to build NCARG/NCL on an Alpha
+ *                  system using the cc/fort compilers.
+ * 
+ */
+
+#define HdfDefines  -DLINUX
+#define StdDefines  -DSYSV -D_POSIX_SOURCE -D_XOPEN_SOURCE -DByteSwapped
+#define ByteSwapped
+#define Cstatic -Wl,-Bstatic
+#define Cdynamic -Wl,-Bdynamic
+#define CppCommand '/usr/bin/cpp -traditional'
+#define CCompiler   cc
+#define FCompiler   fort
+#define CtoFLibraries   -lg2c -lfor -lots
+#define CcOptions      -ansi
+#define XToolLibrary    -lXt -lSM -lICE
+#define BuildShared NO
+#define XLibrary -lXpm -lX11 -lXext
+
+#define ArchRecLibSearch    -L/usr/X11R6/lib
+#define ArchRecIncSearch    -I/usr/X11R6/include
+
+FC = $(F77)
+
+/*************** Redefine Macros from Rules ********************************/
+
+/*
+ * Macro:	MakeDir
+ *
+ * Description:	This rule creates a directory - if a parent dir doesn't exist
+ *		it attempts to create it.
+ */
+#ifndef MakeDir
+#define MakeDir(dir)    @if (test ! -d dir); then ($(MKDIRHIER) dir); fi
+#endif

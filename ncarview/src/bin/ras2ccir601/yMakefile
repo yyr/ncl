@@ -1,0 +1,22 @@
+#
+#
+#	$Id: yMakefile,v 1.2 2001-04-12 15:54:43 haley Exp $
+#
+#
+#	Makefile for ras2ccir601
+#
+#
+
+MYNAME		= ras2ccir601
+
+PROG_LIBS	=	$(NCARGRASLIB) $(NCARGCLIB)
+DEP_LIBS	=	$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+
+EXTRA_LIBS	=	$(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	=	-lm
+
+OBJS		= ras2ccir601.o
+SRCS		= ras2ccir601.c
+
+CProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+DependTarget($(SRCS))

@@ -1,0 +1,27 @@
+#
+#	$Id: yMakefile,v 1.21 2007-08-22 13:55:22 haley Exp $
+#
+
+#ifdef BuildNCARGSourceLibrary
+MOREMAN1 = ncargsrc
+#endif
+
+MAN1 = findg ncargcc ncargex ncargf77 ncargf90 ncargrun \
+	ncargfile $(MOREMAN1) ncargversion pre2ncgm psblack pswhite psplit \
+	ncarlogo2ps
+MAN3 = ncarg_cbind ncarg_gks ncarg_gks_cbind 
+MAN5 = ncargintro ncarg_env
+
+MAN = $(MAN1) $(MAN3) $(MAN5)
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN1),$(FORMAT_EXT),$(MAN1PATH),$(MAN1_SECTION))
+InstallManPages($(MAN3),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+InstallManPages($(MAN5),$(FORMAT_EXT),$(MAN5PATH),$(MAN5_SECTION))
+FormatManPages($(MAN),.m,.p)

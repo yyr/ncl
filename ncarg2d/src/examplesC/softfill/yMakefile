@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.5 1997-04-11 18:50:16 haley Exp $
+#
+
+SRCS = c_sfex02.c
+OBJS = c_sfex02.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+CExampleTarget(c_sfex02,c_sfex02.o)

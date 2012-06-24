@@ -1,0 +1,11 @@
+#
+#	$Id: yMakefile,v 1.4 1994-08-23 18:02:11 haley Exp $
+#
+
+MYNAME  = psfltrs
+
+GENERIC_SRCS = ps.bkg_black.f ps.bkg_white.f
+GENERIC_OBJS = ps.bkg_black.o ps.bkg_white.o
+
+FortranTarget(psblack,ps.bkg_black.o)
+FortranTarget(pswhite,ps.bkg_white.o)

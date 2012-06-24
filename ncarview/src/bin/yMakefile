@@ -1,0 +1,9 @@
+#
+#	Makefile for NCAR Graphics source directories
+#
+
+#define IHaveSubdirs
+
+SUBDIRS	= ctrans ictrans filter med scripts rascat rasstat \
+	  ncgmstat idt rasview rasls rasgetpal rassplit \
+	  ras2ccir601

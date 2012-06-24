@@ -1,0 +1,19 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:01:44 haley Exp $
+#
+MYNAME	= fautograph
+
+SRCS = clbbar.f clbfil.f clblbr.f
+OBJS = clbbar.o clbfil.o clblbr.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(clbbar,clbbar.o)
+FExampleTarget(clbfil,clbfil.o)
+FExampleTarget(clblbr,clblbr.o)
+
+

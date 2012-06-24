@@ -1,0 +1,16 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:01:56 haley Exp $
+#
+MYNAME	= fscrolled_title
+
+SRCS = fslfont.f
+OBJS = fslfont.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fslfont,fslfont.o)
+

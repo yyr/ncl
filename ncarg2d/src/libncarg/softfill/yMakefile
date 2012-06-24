@@ -1,0 +1,28 @@
+#
+#       $Id: yMakefile,v 1.7 2004-06-29 19:23:30 kennison Exp $
+#
+MYNAME	= softfill
+
+SOURCES = \
+	 sfsgfa.f sfwrld.f sfnorm.f sfgetc.f sfgeti.f sfgetp.f sfgetr.f \
+	 sfsetc.f sfseti.f sfsetp.f sfsetr.f sfsort.f sfblda.f
+
+OBJECTS = \
+	 sfsgfa.o sfwrld.o sfnorm.o sfgetc.o sfgeti.o sfgetp.o sfgetr.o \
+	 sfsetc.o sfseti.o sfsetp.o sfsetr.o sfsort.o sfblda.o
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc.a,$(OBJECTS))
+
+CleanFilesTarget($(SOURCES) IftranRun)
+
+$(SOURCES) : IftranRun
+
+IftranRun : CodeIftran
+	@$(IFTRAN) < CodeIftran > CodeFortran
+	@$(FSPLIT) -both CodeFortran
+	-@$(RM) CodeFortran
+	touch IftranRun

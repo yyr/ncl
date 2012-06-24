@@ -1,0 +1,28 @@
+#
+#   $Id: yMakefile,v 1.26 2006-11-29 23:44:05 fred Exp $
+#
+#   Makefile for netCDF data files for examples.
+#
+
+MYNAME = cdf
+
+DATA = 941110_P.cdf 941110_UV.cdf 95031800_sao.cdf 95031801_sao.cdf \
+	95031802_sao.cdf 95031803_sao.cdf 95031804_sao.cdf 95031805_sao.cdf \
+	95031806_sao.cdf 95031807_sao.cdf 95031808_sao.cdf 95031809_sao.cdf \
+	95031810_sao.cdf 95031811_sao.cdf 95031812_sao.cdf 95031813_sao.cdf \
+	95031814_sao.cdf 95031815_sao.cdf 95031816_sao.cdf 95031817_sao.cdf \
+	95031818_sao.cdf 95031819_sao.cdf 95031820_sao.cdf 95031821_sao.cdf \
+	95031822_sao.cdf 95031823_sao.cdf 950318_sao.cdf Pstorm.cdf ocean.nc \
+	Tstorm.cdf U500storm.cdf Ustorm.cdf V500storm.cdf Vstorm.cdf \
+	ced1.lf00.t00z.eta.nc climdiv_polygons.nc cn10n.cdf color.nc \
+	contour.cdf ctnccl.nc ctcbay.nc ex01B1_uv300.hs.nc fice.nc landsea.nc \
+	meccatemp.cdf sst30e_netcdf.nc hswm_d000000p000.g2.nc seam.nc pop.nc \
+	sstdata_netcdf.nc traj_data.nc trinidad.nc meteo_data.nc scatter1.nc \
+	vinth2p.nc chi200_ud_smooth.nc ice5g_21k_1deg.nc \
+	sstanom.robinsonproj.nc hgt.nc panel2.nc uv300.nc
+
+InstallTarget($(DATA),$(INSTALL_LIB),$(DATAROOT)/cdf)
+#ifdef BuildPyNGL
+InstallTarget($(DATA),$(INSTALL_LIB),$(PYNGLNCARGPATH)/$(DATADIR)/cdf)
+#endif
+

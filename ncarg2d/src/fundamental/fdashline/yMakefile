@@ -1,0 +1,19 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:01:18 haley Exp $
+#
+MYNAME	= fdashline
+
+SRCS = fdlcurvd.f fdldashc.f fdldashd.f fdlsmth.f
+OBJS = fdlcurvd.o fdldashc.o fdldashd.o fdlsmth.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fdlcurvd,fdlcurvd.o)
+FExampleTarget(fdldashc,fdldashc.o)
+FExampleTarget(fdldashd,fdldashd.o)
+FExampleTarget(fdlsmth,fdlsmth.o)
+

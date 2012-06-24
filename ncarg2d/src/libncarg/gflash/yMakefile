@@ -1,0 +1,19 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:43:52 boote Exp $
+#
+MYNAME	= gflash
+
+GENERIC_SRCS = \
+	 gflas1.f gflsbd.f gflas2.f gflas3.f gflas4.f
+
+GENERIC_OBJS = \
+	 gflas1.o gflsbd.o gflas2.o gflas3.o gflas4.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS = $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc.a,$(OBJECTS))

@@ -1,0 +1,36 @@
+#
+#   $Id: yMakefile,v 1.9 1999-03-25 03:48:05 haley Exp $
+#
+#   Makefile for HLU Title examples
+#
+
+MYNAME  = title
+
+PROG_LIBS   =   $(HLULIBS) $(NCARGLIBS)
+EXTRA_LIBS  =   $(XMOTIFCLIENTLIBS)
+SYS_LIBS    =   $(CTOFLIBS) -lm
+
+CSRCS    = ti01c.c ti02c.c ti03c.c
+FSRCS    = ti01f.f ti02f.f ti03f.f
+NSRCS    = ti01n.ncl ti02n.ncl ti03n.ncl
+COBJS    = ti01c.o ti02c.o ti03c.o
+FOBJS    = ti01f.o ti02f.o ti03f.o
+SRCS     = $(CSRCS) $(FSRCS)
+OBJS     = $(COBJS) $(FOBJS)
+RESFILES = ti01.res ti02.res ti03.res
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(HLUEXROOT)/$(MYNAME))
+#if !defined(CRAY)
+InstallTarget($(NSRCS),$(INSTALL_LIB),$(NCLEXROOT)/$(MYNAME))
+#endif
+InstallTarget($(RESFILES),$(INSTALL_LIB),$(RESFILEROOT)/$(MYNAME))
+
+CExampleTarget(ti01c,ti01c.o)
+CExampleTarget(ti02c,ti02c.o)
+CExampleTarget(ti03c,ti03c.o)
+FExampleTarget(ti01f,ti01f.o)
+FExampleTarget(ti02f,ti02f.o)
+FExampleTarget(ti03f,ti03f.o)
+
+CleanFilesTarget($(OBJS))
+DependTarget($(CSRCS))

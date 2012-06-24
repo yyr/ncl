@@ -1,0 +1,8 @@
+#
+#	$Id: yMakefile,v 1.10 2007-05-16 22:12:43 haley Exp $
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = scripts impltest ncargworld findg logos psfltrs \
+	  pre2ncgm psplit tdpackdemo ezmapdemo

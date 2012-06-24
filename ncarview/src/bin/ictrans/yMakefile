@@ -1,0 +1,48 @@
+
+MYNAME		= ictrans
+
+#if defined(alpha) && (MAJOR==1)
+#define COptOrDebugFlag -g3
+#endif
+
+#
+#	X11 libraries
+#
+#ifdef BuildXlibDependentCode
+X11LIBS		= $(XLIB)
+#endif BuildXlibDependentCode
+
+#
+#	Sun SunView libraries
+#
+#ifdef BuildSunViewctrans
+SUNLIBS		= -lsuntool -lsunwindow -lpixrect
+#endif
+
+#
+#	local libraries
+#
+PROG_LIBS	=	$(ICTRANSLIB) $(CTRANSLIB) $(CGMLIB) $(NCARGRASLIB) \
+			$(NCARGCLIB)
+DEP_LIBS	=	$(DEPICTRANSLIB) $(DEPCTRANSLIB) $(DEPCGMLIB) \
+			$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+
+#ifdef  IRIX
+MORE_LIBS	= -lmalloc
+#endif
+
+EXTRA_LIBS	= $(X11LIBS) $(SUNLIBS) $(NETCDFLIB) $(HDFLIB) $(CTOFLIBS)
+SYS_LIBS	=  $(MORE_LIBS)
+
+SRCS		= main.c 
+OBJS		= main.o 
+
+CProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+DependTarget($(SRCS))
+
+all-local::
+	@$(CAT) Copyright
+
+lint: $(HDR) $(SRCS)
+	lint $(CDEFINES) $(LINTLIBS) $(SRCS)  1> lint.out 2>&1
+#	lint $(SRCS) $(LIBS) > lint.out

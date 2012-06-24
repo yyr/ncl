@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-08 22:14:04 haley Exp $
+#
+
+MAN = histgr histogram histogram_params hstopc hstopi hstopl hstopr
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

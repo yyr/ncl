@@ -1,0 +1,16 @@
+#
+#	$Id: yMakefile,v 1.6 1997-04-11 18:50:03 haley Exp $
+#
+
+SRCS = c_gtxpac.c c_xwndws.c c_pgkex21.c
+OBJS = c_gtxpac.o c_xwndws.o c_pgkex21.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+CExampleTarget(c_gtxpac,c_gtxpac.o)
+CExampleTarget(c_xwndws,c_xwndws.o)
+CExampleTarget(c_pgkex21,c_pgkex21.o)

@@ -1,0 +1,34 @@
+#
+#       $Id: yMakefile,v 1.7 2005-06-07 17:47:41 haley Exp $
+#
+
+MYNAME  = polypack
+
+#if defined(SUN)
+.f.o:
+	$(F77) $(FCOPTIONS) -g -c $*.f
+#endif
+
+SOURCES = \
+	ppdipo.f ppditr.f ppinpo.f ppintr.f ppplcl.f ppppap.f \
+	ppunpo.f ppuntr.f ppzbts.f
+
+OBJECTS = \
+	ppdipo.o ppditr.o ppinpo.o ppintr.o ppplcl.o ppppap.o \
+	ppunpo.o ppuntr.o ppzbts.o
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc.a,$(OBJECTS))
+
+CleanFilesTarget($(SOURCES) IftranRun)
+
+$(SOURCES) : IftranRun
+
+IftranRun : CodeIftran
+	@$(IFTRAN) < CodeIftran > CodeFortran
+	@$(FSPLIT) -both CodeFortran
+	-@$(RM) CodeFortran
+	touch IftranRun

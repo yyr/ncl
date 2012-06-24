@@ -1,0 +1,17 @@
+#
+#	$Id: yMakefile,v 1.5 1995-06-14 14:01:40 haley Exp $
+#
+MYNAME	= fisosurface
+
+SRCS = fisissrf.f fispwrzi.f
+OBJS = fisissrf.o fispwrzi.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fisissrf,fisissrf.o)
+FExampleTarget(fispwrzi,fispwrzi.o)
+

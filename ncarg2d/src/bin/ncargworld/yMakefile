@@ -1,0 +1,27 @@
+#
+#	$Id: yMakefile,v 1.13 2001-10-10 02:23:17 haley Exp $
+#
+
+MYNAME	= ncargworld
+
+SRC    = ncargworld.f
+OBJ    = ncargworld.o
+
+ROBJS = $(NCARGGKSLIBSRC)/awi/ggkwdr_stub.o
+
+#if defined(Ardent) || defined(AIX370)
+#ifdef	UseInstalled
+OTHER_ROBJS =	$(ROBJROOT)/libncarbd.o
+#else
+OTHER_ROBJS =	$(NCARGOPTLIBSRC)/ncarbd/ncarbd.o
+#endif	/* UseInstalled */
+#endif	/* Ardent || AIX370 */
+
+OBJECTS	= $(OBJ) $(ROBJS) $(OTHER_ROBJS)
+
+PROG_LIBS =	$(NCARGLIBS)
+DEP_LIBS =	$(DEPNCARGLIBS)
+
+FortranProgram($(MYNAME),$(OBJECTS),$(DEP_LIBS))
+InstallTarget($(SRC),$(INSTALL_LIB),$(EXAMPLESPATH))
+

@@ -1,0 +1,36 @@
+
+      PROGRAM EXAMPLE
+C
+C Define the error file, the Fortran unit number, the workstation type,
+C and the workstation ID to be used in calls to GKS routines.
+C
+C     PARAMETER (IERRF=6, LUNIT=2, IWTYPE=1,  IWKID=1)   ! NCGM
+C     PARAMETER (IERRF=6, LUNIT=2, IWTYPE=8,  IWKID=1)   ! X Windows
+C     PARAMETER (IERRF=6, LUNIT=2, IWTYPE=11, IWKID=1)   ! PDF
+C     PARAMETER (IERRF=6, LUNIT=2, IWTYPE=20, IWKID=1)   ! PostScript
+C
+      PARAMETER (IERRF=6, LUNIT=2, IWTYPE=1,  IWKID=1)
+C
+      REAL Y(21)
+C
+C OPEN GKS, OPEN WORKSTATION OF TYPE 1, ACTIVATE WORKSTATION
+C
+      CALL GOPKS (IERRF, ISZDM)
+      CALL GOPWK (IWKID, LUNIT, IWTYPE)
+      CALL GACWK (IWKID)
+C
+C Fill Y array for entry EZY of AUTOGRAPH.
+C
+      DO  10 I=1,21
+         Y(I) = EXP(-.1*REAL(I))*COS(REAL(I)*.5)
+   10 CONTINUE
+C
+      CALL EZY (Y(1),21,'DEMONSTRATING EZY ENTRY OF AUTOGRAPH$')
+C
+C     DEACTIVATE AND CLOSE WORKSTATION, CLOSE GKS.
+C
+      CALL GDAWK (IWKID)
+      CALL GCLWK (IWKID)
+      CALL GCLKS
+C
+      END

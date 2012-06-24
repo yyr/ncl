@@ -1,0 +1,21 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:44:27 boote Exp $
+#
+MYNAME	= isosrfhr
+
+GENERIC_SRCS = dandr.f init3d.f
+
+GENERIC_OBJS = dandr.o init3d.o
+
+NEW_SRCS = isoscr.f
+
+NEW_OBJS = isoscr.o
+
+SOURCES = $(GENERIC_SRCS) $(NEW_SRCS)
+
+OBJECTS = $(GENERIC_OBJS) $(NEW_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc2.a,$(OBJECTS))

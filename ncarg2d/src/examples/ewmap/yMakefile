@@ -1,0 +1,35 @@
+#
+#       $Id: yMakefile,v 1.7 2007-12-19 21:48:53 fred Exp $
+#
+MYNAME  = ewmap
+
+SRCS = wmex01.f wmex02.f wmex03.f wmex04.f wmex05.f wmex06.f wmex07.f \
+	wmex08.f wmex09.f wmex10.f wmex11.f wmex12.f wmex13.f wmex14.f \
+	wmex15.f wmex16.f wmex17.f
+OBJS = wmex01.o wmex02.o wmex03.o wmex04.o wmex05.o wmex06.o wmex07.o \
+	wmex08.o wmex09.o wmex10.o wmex11.o wmex12.o wmex13.o wmex14.o \
+	wmex15.o wmex16.o wmex17.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(wmex01,wmex01.o)
+FExampleTarget(wmex02,wmex02.o)
+FExampleTarget(wmex03,wmex03.o)
+FExampleTarget(wmex04,wmex04.o)
+FExampleTarget(wmex05,wmex05.o)
+FExampleTarget(wmex06,wmex06.o)
+FExampleTarget(wmex07,wmex07.o)
+FExampleTarget(wmex08,wmex08.o)
+FExampleTarget(wmex09,wmex09.o)
+FExampleTarget(wmex10,wmex10.o)
+FExampleTarget(wmex11,wmex11.o)
+FExampleTarget(wmex12,wmex12.o)
+FExampleTarget(wmex13,wmex13.o)
+FExampleTarget(wmex14,wmex14.o)
+FExampleTarget(wmex15,wmex15.o)
+FExampleTarget(wmex16,wmex16.o)
+FExampleTarget(wmex17,wmex17.o)

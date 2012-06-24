@@ -1,0 +1,22 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:43:11 boote Exp $
+#
+
+MYNAME	= conrec
+
+GENERIC_SRCS = \
+	conrec.f clgen.f crdrln.f minmax.f reord.f stline.f calcnt.f \
+	ezcntr.f conbd.f
+
+GENERIC_OBJS = \
+	conrec.o clgen.o crdrln.o minmax.o reord.o stline.o calcnt.o \
+	ezcntr.o conbd.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS	= $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGcn.a,$(OBJECTS))

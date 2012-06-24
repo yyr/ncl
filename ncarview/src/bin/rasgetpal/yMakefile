@@ -1,0 +1,21 @@
+#
+#
+#	$Id: yMakefile,v 1.4 2001-04-12 15:55:25 haley Exp $
+#
+#
+#	Makefile for rasgetpal
+#
+#
+
+MYNAME		= rasgetpal
+
+PROG_LIBS	=	$(NCARGRASLIB) $(NCARGCLIB)
+DEPLIBS		=	$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+EXTRA_LIBS	=	$(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	=	-lm
+
+OBJS		= rasgetpal.o
+SRCS		= rasgetpal.c
+
+CProgram($(MYNAME),$(OBJS),$(DEPLIBS))
+DependTarget($(SRCS))

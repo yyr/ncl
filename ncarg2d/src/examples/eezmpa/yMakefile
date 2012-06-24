@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.6 1995-06-14 13:56:45 haley Exp $
+#
+MYNAME	= eezmpa
+
+SRCS = eezmpa.f
+OBJS = eezmpa.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(eezmpa,eezmpa.o)

@@ -1,0 +1,4 @@
+APP	= \
+	Idt
+
+InstallXappFiles($(APP))

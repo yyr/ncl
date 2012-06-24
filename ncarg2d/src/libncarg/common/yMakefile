@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:42:43 boote Exp $
+#
+
+MYNAME	=	common
+
+SOURCES =       fx.f fy.f
+
+OBJECTS	=	fx.o fy.o
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGllu.a,$(OBJECTS))

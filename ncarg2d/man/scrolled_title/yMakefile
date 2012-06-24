@@ -1,0 +1,16 @@
+#
+#	$Id: yMakefile,v 1.8 1995-07-28 23:06:01 kennison Exp $
+#
+
+MAN =	ftitle scrolled_title scrolled_title_params slgeti slgetr slogap \
+	slrset slseti slsetr stitle
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

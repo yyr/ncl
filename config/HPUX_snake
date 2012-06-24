@@ -1,0 +1,27 @@
+/*
+ *  Description:    This file contains all the directives needed to
+ *                  tell ymake how to build NCAR Graphics on an HP
+ *                  system running HP-UX.
+ *
+ *                  The default version of this file assumes you are
+ *                  using the native HP compilers.
+ *
+ *                  You may need to modify it to change or include
+ *                  options, especially for the "CtoFLibraries" line.
+ */
+#define	HdfDefines	-DHP9000
+#define	StdDefines	-DSYSV -D_HPUX_SOURCE
+#define	CCompiler	c89
+#define CcOptions        -D_FILE_OFFSET_BITS=64
+#define	Cdynamic	-Wl,-a,default
+#define	Cstatic		-Wl,-a,archive
+#define	FCompiler	fort77
+#define FOptimizeFlag    -O
+#define	ArQuickOpt	ql
+#define DoesRanlib	NO
+#define	CtoFLibraries	-lf -lm
+#define ExtraExportFlags -Wl,-E
+#define NgCallF       reg
+
+#define ArchRecLibSearch	-L/usr/lib/Motif2.1 -L/usr/lib/X11R6
+#define ArchRecIncSearch	-I/usr/include/Motif2.1 -I/usr/include/X11R6

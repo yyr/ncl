@@ -1,0 +1,28 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:01:07 haley Exp $
+#
+MYNAME	= fautograph
+
+SRCS = fagaxclr.f fagaxlbl.f fagaxmax.f fagcuclr.f fagcudsh.f fagezmxy.f \
+	fagezmy.f fagezxy.f fagezy.f fagilclr.f fagovrvw.f
+OBJS = fagaxclr.o fagaxlbl.o fagaxmax.o fagcuclr.o fagcudsh.o fagezmxy.o \
+	fagezmy.o fagezxy.o fagezy.o fagilclr.o fagovrvw.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fagaxclr,fagaxclr.o)
+FExampleTarget(fagaxlbl,fagaxlbl.o)
+FExampleTarget(fagaxmax,fagaxmax.o)
+FExampleTarget(fagcuclr,fagcuclr.o)
+FExampleTarget(fagcudsh,fagcudsh.o)
+FExampleTarget(fagezmxy,fagezmxy.o)
+FExampleTarget(fagezmy,fagezmy.o)
+FExampleTarget(fagezxy,fagezxy.o)
+FExampleTarget(fagezy,fagezy.o)
+FExampleTarget(fagilclr,fagilclr.o)
+FExampleTarget(fagovrvw,fagovrvw.o)
+

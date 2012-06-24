@@ -1,0 +1,21 @@
+#
+#
+#	$Id: yMakefile,v 1.4 2001-04-12 15:55:48 haley Exp $
+#
+#
+#	Makefile for rassplit
+#
+#
+
+MYNAME		= rassplit
+
+PROG_LIBS	=	$(NCARGRASLIB) $(NCARGCLIB)
+DEPLIBS		=	$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+EXTRA_LIBS	=	$(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	=	-lm
+
+OBJS		= rassplit.o
+SRCS		= rassplit.c
+
+CProgram($(MYNAME),$(OBJS),$(DEPLIBS))
+DependTarget($(SRCS))

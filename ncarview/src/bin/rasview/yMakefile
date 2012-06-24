@@ -1,0 +1,28 @@
+#
+#
+#	$Id: yMakefile,v 1.16 2002-12-11 18:23:38 haley Exp $
+#
+#	Makefile for rasview
+#
+
+MYNAME		= rasview
+
+SRCS	= rasdraw.c rasview.c
+OBJS	= rasdraw.o rasview.o
+
+#if defined(linux)
+EXTRA_CDEFINES = -D_BSD_SOURCE
+#endif
+
+PROG_LIBS	=	$(NCARGRASLIB) $(NCARGCLIB)
+DEPLIBS		=	$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+
+XLIBS		=	$(XTOOLLIB) $(XLIB)
+EXTRA_LIBS	=	$(XLIBS) $(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	=	-lm
+
+CProgram($(MYNAME),$(OBJS),$(DEPLIBS))
+DependTarget($(SRCS))
+
+lint: $(HDR) $(SRCS)
+	lint $(CDEFINES) $(LINTLIBS) $(SRCS)  1> lint.out 2>&1

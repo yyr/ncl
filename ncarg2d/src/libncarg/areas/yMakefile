@@ -1,0 +1,34 @@
+#
+#       $Id: yMakefile,v 1.11 2004-06-29 19:12:49 kennison Exp $
+#
+
+MYNAME	= areas
+
+SOURCES = \
+	arblda.f arrat2.f ardat2.f ardbda.f ardbpa.f ardrln.f aredam.f \
+	argeti.f argetr.f argpai.f argtai.f arinam.f arini2.f arinit.f \
+	armpia.f armvam.f arpram.f arscam.f arseti.f arsetr.f
+
+OBJECTS = \
+	arblda.o arrat2.o ardat2.o ardbda.o ardbpa.o ardrln.o aredam.o \
+	argeti.o argetr.o argpai.o argtai.o arinam.o arinit.o arini2.o \
+	armpia.o armvam.o arpram.o arscam.o arseti.o arsetr.o
+
+PROG_LIBS = $(NCARGCLIB)
+DEPLIBS = $(DEPNCARGCLIB)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmp.a,$(OBJECTS))
+
+CleanFilesTarget($(SOURCES) IftranRun)
+
+$(SOURCES) : IftranRun
+
+IftranRun : CodeIftran
+	@$(IFTRAN) < CodeIftran > CodeFortran
+	@$(FSPLIT) -both CodeFortran
+	-@$(RM) CodeFortran
+	touch IftranRun

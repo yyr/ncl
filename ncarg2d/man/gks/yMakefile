@@ -1,0 +1,21 @@
+#
+#	$Id: yMakefile,v 1.7 1998-10-27 19:54:08 fred Exp $
+#
+
+MAN =	gactm gacwk gca gclks gclrwk gclsg gclwk gcrsg gcsgwk gdawk gdsg gesc \
+	gevtm gfa gks gopks gopwk gpl gpm gqasf gqchh gqchsp gqchup gqchxp \
+	gqclip gqcntn gqcr gqfaci gqfais gqfasi gqln gqlwsc gqmk gqmksc gqmntn \
+	gqnt gqops gqopsg gqplci gqpmci gqsgus gqtxal gqtxci gqtxfp gqtxp \
+	gsasf gschh gschsp gschup gschxp gsclip gscr gselnt gsfaci gsfais \
+	gsfasi gsln gslwsc gsmk gsmksc gsplci gspmci gssgt gstxal gstxci \
+	gstxfp gstxp gsvp gswn gtx guwk
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

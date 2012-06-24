@@ -1,0 +1,30 @@
+#
+#	$Id: yMakefile,v 1.8 2005-08-19 19:51:10 haley Exp $
+#
+
+MYNAME	= pwritxnt
+
+OBJECTS	= \
+	 ccheck.o creb15.o crebin.o dcheck.o dport.o mkmsk.o pcrbin.o\
+	 xtch.o
+
+FSOURCES = \
+	 ccheck.f creb15.f crebin.f dcheck.f dport.f mkmsk.f pcrbin.f\
+	 xtch.f
+
+PROG_LIBS	= $(NCARGLIB) $(NCARGCLIB)
+DEPLIBS		= $(DEPNCARGLIB) $(DEPNCARGCLIB)
+
+FortranProgram(pwritxnt,$(OBJECTS),$(DEPLIBS))
+InstallTarget(pwritdata,$(INSTALL_DB),$(DBPATH))
+#ifdef BuildPyNGL
+InstallTarget(pwritdata,$(INSTALL_DB),$(PYNGLNCARGPATH)/$(DBDIR))
+#endif
+
+
+CleanFilesTarget(pwritdata)
+
+pwritdata: pwritxnt pwritxc1 pwritxd1 pwritxc2 pwritxd2
+	-@$(RM) pwritdata
+	@echo "Building the PWRITX database"
+	@./pwritxnt

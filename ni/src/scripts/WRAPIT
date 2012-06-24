@@ -1,0 +1,884 @@
+#!/bin/csh -f
+# set echo verbose timestamp
+set version = 110125    # YYMMDD
+echo " " 
+echo "WRAPIT Version: "$version 
+if ($#argv == 0) then
+  echo ERROR: NO ARGUMENTS
+  echo For help: "WRAPIT -h | less"
+  exit 1
+endif
+if ($argv[1]:q == "-h" || $argv[1]:q == "-help") then
+echo written by Mark Stevens, formerly of NCAR/CGD/Climate Modeling Section
+echo "----------------------------------------------------------------------"
+echo "WRAPIT works on SunOS, IRIX64, IRIX (Sgi), AIX (IBM), OSF1 (alpha),"
+echo "MacOSX, HP-UX, Linux and FreeBSD operating systems. WRAPIT can handle "
+echo "both f77 and f90 files. The f77 files must have a suffix of .f, and the "
+echo "f90 files a suffix of .f90, on all of the operating systems. All .f90"
+echo "files MUST have a corresponding '"stub"' file which contains the declara-"
+echo "tions of the f90 subroutine in fortran 77 syntax, for example in the "
+echo "file '"file1.stub"' we might have the following:"
+echo "C NCLFORTSTART"
+echo "     subroutine DOIT (x, y, z)"
+echo "     real x, y"
+echo "     integer z"
+echo "C NCLEND"
+echo "The two comment lines C NCLFORTSTART and C NCLEND (called"
+echo "delimiters) are REQUIRED. The C NCLFORTSTART appears before the"
+echo "subroutine statement. The NCLEND is placed after all the declaration"
+echo "statements pertaining to the arguments passed from NCL."
+echo "These delimiters can be upper or lower case, or mixed case."
+echo "All user fortran77 subroutines invoked from NCL must contain these "
+echo "delimiters. User f77 subroutines do not require a separate 'stub'"
+echo "file. User supplied f90 subroutines invoked from NCL and f90"
+echo "subroutines invoked from external libraries (eg: IMSL, NAG, ..)"
+echo "require such '"stub"' files."
+echo " "
+echo "-------------------- Command Line Options --------------------------"
+echo "The six available options must appear on the command line before"
+echo "the fortran file names. "
+echo "OPTION: -d turns on array bounds checking, turns off optimization,"
+echo "displays some debug information and prevents file cleanup." 
+echo "OPTION: -h displays information comments and usage examples."
+echo "OPTION: -l <libname> passes a library name to the linker."
+echo "OPTION: -L <libpath> passes a directory path to the linker."
+echo "  Use of the -L and -l options may require the user to specify"
+echo "  more than the specific path(s) and libraries. For example, one"
+echo "  might encounter the message '.so not found, etc'. In this case,"
+echo "  the may have to set the environment variable LD_LIBRARY_PATH"
+echo "  to assorted paths to ensure that appropriate directory paths"
+echo "  are searched by the system at runtime. For example:"
+echo "  setenv LD_LIBRARY_PATH /usr/local/nag/lib:/contrib/lib"
+echo "OPTION: -n <so name> assigns a name to the created shared object, if"
+echo "  this option is not used then the name for the created shared object"
+echo "  is derived from the first fortran filename on the command line."
+echo "OPTION: -q32 is used to specify a 32-bit IRIX or AIX operating"
+echo "environment.  NOTE: the default is a 64-bit operating envirnonment."
+echo "OPTION: -r8 is used to promote floats of real*4 to real*8."
+echo "OPTION: -fPIC is used to compile with the '-fPIC' option."
+echo " "
+echo "------------------------ Linux Compilers ---------------------------"
+echo "The default linux fortran compiler is the GNU gfortran compiler. If"
+echo "your system has one of the supported linux fortran compilers you must"
+echo "specify which one you want to use by the appropriate command line"
+echo "option, otherwise the gfortran compiler will be used. "
+echo "The supported linux fortran compilers are the Portland Group"
+echo "(pgf90), the Lahey/Fujitsu (lf95), and the g95 compiler (g95),"
+echo "and the Intel compiler (ifc/ifort)."
+echo "OPTION: -pg  to specify the Portland Group compiler."
+echo "OPTION: -lf  to specify the Lahey/Fujitsu compiler."
+echo "OPTION: -in  to specify the Intel compiler."
+echo "OPTION: -g95 to specify the g95 compiler."
+echo "OPTION: -gf  to specify the gfortran compiler."
+echo "OPTION: -g77 to specify the old g77 compiler."
+echo " " 
+echo "-------------------- Some Usage Examples ---------------------------"
+echo "One argument"
+echo "WRAPIT file1.f"                         
+echo "WRAPIT subdir/file1.f"                         
+echo " "
+echo Two arguments
+echo "WRAPIT file1.f file2.f                  # no options"
+echo "WRAPIT -r8 file1.f                      # -r8 option"
+echo "WRAPIT -d -r8 file1.f                   # -d and -r8 options"
+echo "WRAPIT -r8 subdir/file1.f               # -r8 option"
+echo "WRAPIT file1.stub file1.f90"
+echo "WRAPIT subdir/file1.stub subdir/file1.f90"
+echo " " 
+echo "Three arguments"
+echo "WRAPIT file1.f file2.f file3.f"          # no options"       
+echo "WRAPIT file1.stub file1.f90 file2.f"
+echo "WRAPIT file1.f file2.stub file2.f90"
+echo "WRAPIT -r8 file1.f file2.f"              # -r8 only"
+echo "WRAPIT -r8 file1.stub file1.f90"
+echo "WRAPIT -n foo file1.f"                   # -n <so name> only"
+echo "WRAPIT -l imsl_mp file1.f"               # -l <libname> only"
+echo " "
+echo "Four arguments"
+echo "WRAPIT file1.f file2.f file3.f file4.f"      # no options"
+echo "WRAPIT -r8 file1.f file2.f file3.f"          # -r8 only"
+echo "WRAPIT -r8 file1.f file2.stub file2.f90"
+echo "WRAPIT -r8 -n foo file1.f"                   # -r8 -n <so name>"
+echo "WRAPIT -r8 -l imsl_mp file1.f"               # -r8 -l <libname>" 
+echo "WRAPIT -n foo file1.f file2.f"               # -n <so name> only"
+echo "WRAPIT -n foo -r8 file1.f"                   # -n <so name> -r8"
+echo "WRAPIT -l imsl_mp file1.stub file1.f90"      # -l <libname> only"
+echo "WRAPIT -l imsl_mp -r8 file1.f"               # -l <libname> -r8"
+echo " "
+echo "Many arguments"
+echo "WRAPIT -l blas_mp -L /usr/local/lib64/r4i4 -l imsl_mp file1.f"
+echo " "
+exit 1
+endif
+#---------------------------------------------------------------------- 
+set OS = `uname`
+set mach = `uname -m`
+
+if ($OS != "SunOS" && $OS != "IRIX64" && $OS != "IRIX" && $OS != "AIX" \
+ && $OS != "Linux" && $OS != "OSF1" && $OS != "Darwin" && $OS != "HP-UX" \
+ && $OS != "FreeBSD") then
+  echo WRAPIT IS NOT SUPPORTED ON THE $OS OPERATING SYSTEM 
+  echo EXITING WRAPIT
+  echo " "
+  exit 1
+endif
+if (-e WRAPIT.c) then
+  'rm' -f WRAPIT.c
+endif
+if (-e WRAPIT.o) then
+  'rm' -f WRAPIT.o
+endif
+if (-e WRAPIT.stub) then
+  'rm' -f WRAPIT.stub
+endif
+#echo ARGUMENTS: $argv 
+
+# Set some defaults
+set real8 = 0     # off 
+set debug = 0     # off
+set nbits = 64    # default for AIX and IRIX
+if ($OS == Linux || $OS == Darwin) then
+  switch ("$mach")
+    case    i*64:
+    case    x*64:
+    case    p*64:
+      set nbits   = 64
+    breaksw
+    default:
+      set nbits   = 32
+    breaksw
+  endsw
+endif
+
+set f90c  = gfortran   # default linux compiler
+set exfopts = ""   # default is no extra Fortran options
+set excopts = ""   # default is no extra C options
+
+# get a name for the shared object file
+set SharedObj = NONE
+
+#--------------- Check the command line arguments ------------------
+
+while ($#argv)
+  set arg = $argv[1]
+# echo ARG: $arg
+  if ($arg:q == "-d") then
+    set debug = 1
+  else if ($arg:q == "-pg") then
+    if ($OS == Linux) then
+      which pgf90
+      if ($status) then
+        echo WARNING: Portland Group fortran compiler NOT found.
+        echo Using default GNU gfortran compiler.
+      else
+        set f90c = pgf90
+      endif
+    else
+      echo "WARNING: option -pg INVALID for $OS system"
+    endif
+  else if ($arg:q == "-lf") then
+    if ($OS == Linux) then
+      which lf95
+      if ($status) then
+        echo WARNING: Lahey/Fujitsu fortran compiler NOT found.
+        echo Using default GNU gfortran compiler.
+      else
+        set f90c = lf95 
+      endif
+    else
+      echo "WARNING: option -lf INVALID for $OS system"
+    endif
+  else if ($arg:q == "-g95") then
+    if ($OS == Linux || $OS == Darwin) then
+      which g95
+      if ($status) then
+        echo WARNING: g95 fortran compiler NOT found.
+        echo Using default GNU gfortran compiler.
+      else
+        set f90c = g95
+      endif
+    else
+      echo "WARNING: option -g95 INVALID for $OS system"
+    endif
+  else if ($arg:q == "-gf") then
+    which gfortran >! /dev/null
+    if ($status) then
+      echo WARNING: gfortran fortran compiler NOT found.
+      echo Will try GNU g77 or g95 compiler.
+    else
+      set f90c = gfortran
+    endif
+  else if ($arg:q == "-g77") then
+    which g77 >! /dev/null
+    if ($status) then
+      echo WARNING: g77 fortran compiler NOT found.
+      echo Will try GNU gfortran or g95 compiler.
+    else
+      set f90c = g77
+    endif
+  else if ($arg:q == "-in") then
+    if ($OS == Linux) then
+      which ifort              # newer version (8.1)
+      if ($status) then
+        which ifc              # older version (7.8)
+        if ($status) then
+          echo WARNING: Intel fortran compiler NOT found.
+          echo Using default GNU gfortran compiler.
+        else
+          set f90c = ifc
+        endif
+      else
+        set f90c = ifort
+      endif
+    else
+      echo "WARNING: option -in INVALID for $OS system"
+    endif
+  else if ($arg:q == "-fPIC") then
+    set exfopts = "-fPIC"
+    set excopts = "-fPIC"
+  else if ($arg:q == "-q32") then
+    set nbits = 32
+  else if ($arg:q == "-m64") then
+    set nbits = 64
+  else if ($arg:q == "-m32") then
+    set nbits = 32
+  else if ($arg:q == "-r8") then
+    set real8 = 1
+  else if ($arg:q == "-n") then
+    if ($#argv < 3) then
+      echo "FATAL ERROR: missing shared object name after -n option"
+      echo EXITING WRAPIT
+      echo " "
+      exit 1
+    endif
+    shift
+    if ($argv[1]:q == "-l" || $argv[1]:q == "-L" || $argv[1]:q == "-r8" || \
+        $argv[1]:q == "-pg" || $argv[1]:q == "-lf" || $argv[1]:q == "-in" || \
+        $argv[1]:q == "-g95" || $argv[1]:q == "-gf" || \
+        $argv[1]:q == "-q32" || $argv[1]:q == "-d" || $argv[1]:q == "-h") then
+      echo "FATAL ERROR: missing shared object name after -n option"
+      echo EXITING WRAPIT
+      echo " "
+      exit 1
+    endif
+    set SharedObj = $argv[1].so
+  else if ($arg:q == "-L") then
+    if ($#argv < 3) then
+      echo "FATAL ERROR: missing library path after -L option"
+      echo EXITING WRAPIT
+      echo " "
+      exit 1
+    endif
+    shift
+    if ($argv[1]:q == "-l" || $argv[1]:q == "-n" || $argv[1]:q == "-r8" || \
+        $argv[1]:q == "-pg" || $argv[1]:q == "-lf" || $argv[1]:q == "-in" || \
+        $argv[1]:q == "-g95" || $argv[1]:q == "-gf" || \
+        $argv[1]:q == "-q32" || $argv[1]:q == "-d" || $argv[1]:q == "-h") then
+      echo "FATAL ERROR: missing library path after -L option"
+      echo EXITING WRAPIT
+      echo " "
+      exit 1
+    endif
+    if ($?libraries) then
+      set libraries = "$libraries -L$argv[1]"
+    else
+      set libraries = "-L$argv[1]"
+    endif
+  else if ($arg:q == "-l") then
+    if ($#argv < 3) then
+      echo "FATAL ERROR: missing library name after -l option"
+      echo EXITING WRAPIT
+      echo " "
+      exit 1
+    endif
+    shift
+    if ($argv[1]:q == "-L" || $argv[1]:q == "-n" || $argv[1]:q == "-r8" || \
+        $argv[1]:q == "-pg" || $argv[1]:q == "-lf" || $argv[1]:q == "-in" || \
+        $argv[1]:q == "-g95" || $argv[1]:q == "-gf" || \
+        $argv[1]:q == "-q32" || $argv[1]:q == "-d" || $argv[1]:q == "-h") then
+      echo "FATAL ERROR: missing library name after -l option"
+      echo EXITING WRAPIT
+      echo " "
+      exit 1
+    endif
+    if ($?libraries) then
+      set libraries = "$libraries -l$argv[1]"
+    else
+      set libraries = "-l$argv[1]"
+    endif
+  else             # arg is filename
+    if ($SharedObj == NONE) then
+      set SharedObj = ${argv[1]:r}.so
+    endif
+    break
+  endif
+  shift
+end      
+
+# check for g77, gfortran, g95 compiler if needed
+if (($OS == Linux || $OS == Darwin || $OS == FreeBSD) && $f90c == gfortran) then 
+  which gfortran >! /dev/null
+  if ($status) then
+    which g95 >! /dev/null
+    if ($status) then
+      which g77 >! /dev/null
+      if ($status) then
+        echo "FATAL ERROR: g77, gfortran, g95 compilers NOT found."
+        echo EXITING WRAPIT
+        echo " "
+        exit 1
+      else
+        set f90c = g77
+      endif
+    else
+      set f90c = g95
+    endif
+  endif
+endif
+
+set args = ($argv)     # save list of remaining arguments
+
+#------------- Set the fortran compiler options ---------------------
+
+set fopts = $exfopts
+set copts = $excopts
+
+switch ($OS)
+ case Linux:                         # Linux 
+   if ($f90c == pgf90) then          # Portland Group 
+     if ($debug == 1) then
+       set fopts = "$fopts -c -Mbounds"
+     else
+       set fopts = "$fopts -c -O"
+     endif
+     if ($real8 == 1) then
+       set fopts = "$fopts -r8"
+     endif
+   else if ($f90c == lf95) then      # Lahey/Fujitsu
+     if ($debug == 1) then
+       set fopts = "$fopts -c --chk a,e,s"
+     else
+       set fopts = "$fopts -c -O"
+     endif 
+     if ($real8 == 1) then
+       set fopts = "$fopts --dbl"
+     endif
+   else if ($f90c == ifc || $f90c == ifort) then     # Intel 
+     if ($debug == 1) then
+       set fopts = "$fopts -fPIC -c -CB -V"
+     else
+       set fopts = "$fopts -fPIC -c -O2"
+     endif 
+     if ($real8 == 1) then
+       set fopts = "$fopts -r8"
+     endif
+   else if ($f90c == g77) then     # GNU g77
+     if ($debug == 1) then
+       set fopts = "$fopts -fPIC -v -c -ffortran-bounds-check -fno-second-underscore" 
+     else
+       set fopts = "$fopts -fPIC -c -O -fno-second-underscore"
+     endif 
+   else                              # gfortran or g95
+     if ($debug == 1) then
+       set fopts = "$fopts -m{$nbits} -fPIC -v -c -fno-second-underscore" 
+     else
+       set fopts = "$fopts -m{$nbits} -fPIC -c -O -fno-second-underscore"
+     endif 
+   endif  
+   breaksw
+ case AIX:                           # AIX
+   if ($debug == 1) then
+     set fopts = "$fopts -c -C -q{$nbits} -qmaxmem=-1 -qarch=auto -qextname=flush"
+   else
+     set fopts = "$fopts -c -q{$nbits} -qmaxmem=-1 -qarch=auto -qextname=flush -O"
+   endif
+   if ($real8 == 1) then
+     set fopts = "$fopts -qautodbl=dbl4"
+   endif
+   breaksw
+ case IRIX64:                        # SGI 64-bit or 32-bit
+   if ($nbits == 32) then
+     if ($debug == 1) then
+       set fopts = "$fopts -n32 -c -C"
+     else
+       set fopts = "$fopts -n32 -c -O"
+     endif
+   else                             # 64-bit default
+     if ($debug == 1) then
+       set fopts = "$fopts -64 -c -C"
+     else
+       set fopts = "$fopts -64 -c -O"
+     endif
+   endif
+   if ($real8 == 1) then
+     set fopts = "$fopts -r8"
+   endif
+   breaksw
+ case IRIX:                          # SGI 32-bit
+   if ($debug == 1) then
+     set fopts = "$fopts -n32 -c -C"
+   else
+     set fopts = "$fopts -n32 -c -O" 
+   endif
+   if ($real8 == 1) then
+     set fopts = "$fopts -r8"
+   endif
+   breaksw
+ case Darwin:                                # MacOSX (g77/gfortran/g95)
+   if ($f90c == g77) then            # g77
+     if ($debug == 1) then
+       set fopts = "$fopts -fPIC -v -c -ffortran-bounds-check -fno-second-underscore" 
+     else
+       set fopts = "$fopts -fPIC -c -O -fno-second-underscore"
+     endif 
+   else                              # gfortran or g95
+     if ($debug == 1) then
+       set fopts = "$fopts -m{$nbits} -fPIC -v -c -fno-second-underscore" 
+     else
+       set fopts = "$fopts -m{$nbits} -fPIC -c -O -fno-second-underscore"
+     endif 
+   endif 
+   breaksw
+ case FreeBSD:                               # FreeBSD
+   if ($debug == 1 && ($f90c == g77 || $f90c == gfortran)) then   # GNU
+     set fopts = "$fopts -m{$nbits} -v -c -ffortran-bounds-check -fno-second-underscore"
+   else
+     set fopts = "$fopts -m{$nbits} -c -O -fno-second-underscore"
+   endif
+   breaksw
+ case HP-UX:                         # HP-UX
+   if ($debug == 1) then
+     set fopts = "$fopts +z -c -C"
+   else
+     set fopts = "$fopts +z -c -O"
+   endif
+   if ($real8 == 1) then
+     set fopts = "$fopts +r8"
+   endif
+   breaksw
+ case OSF1:                          # OSF1
+   if ($debug == 1) then
+     set fopts = "$fopts -c -C"
+   else
+     set fopts = "$fopts -c -O" 
+   endif
+   if ($real8 == 1) then
+     set fopts = "$fopts -r8"
+   endif
+   breaksw
+ default:                            # SunOS
+   if ($debug == 1) then
+     set fopts = "$fopts -c -C" 
+   else
+     set fopts = "$fopts -c -O" 
+   endif
+   if ($real8 == 1) then
+     set fopts = "$fopts -xtypemap=real:64"
+   endif
+   breaksw
+endsw
+
+if ($debug == 1) then
+  echo "OPERATING SYSTEM: "$OS
+  if ($OS == AIX || $OS == IRIX || $OS == Linux) then
+    echo "nbits = "{$nbits}
+  endif
+  if ($OS == Linux || $OS == FreeBSD || $OS == Darwin) then
+    echo "FORTRAN COMPILER (f90c): "$f90c
+  endif
+  echo "FORTRAN COMPILER OPTIONS (fopts): "$fopts
+endif
+
+#------------- Create the WRAPIT.c code ------------------------
+
+echo > WRAPIT.stub     # create empty file
+ 
+while ($#argv)
+  if (-e $argv[1]) then
+    if ($argv[1]:e == "f" || $argv[1]:e == "stub") then
+      cat $argv[1] | sed -e \
+'/^[cC][ ]*[nN][cC][lL][fF][oO][rR][tT][sS][tT][aA][rR][tT]/,/^[cC][ ]*[nN][cC][lL][eE][nN][dD]/p' -e 'd' >> WRAPIT.stub
+    endif
+    shift
+  else
+    echo FATAL ERROR: FILE $argv[1] DOES NOT EXIST
+    echo EXITING WRAPIT
+    echo " "
+    exit 1
+  endif
+end
+$NCARG_ROOT/bin/wrapit77 < WRAPIT.stub >! WRAPIT.c
+
+if ($status) then
+  echo FATAL ERROR: 'wrapit77' failed
+  echo 
+  exit 1
+endif
+
+#----------- Compile the WRAPIT.c code ------------------------
+
+switch ($OS)
+ case AIX:
+   if ($debug == 1) then
+     set cmd = "xlc $copts -DRS6000 -D_POSIX_SOURCE -D_XOPEN_SOURCE -D_XOPEN_SOURCE_EXTENDED=1 -c -q{$nbits} -qmaxmem=-1 -qarch=auto -I${NCARG_ROOT}/include WRAPIT.c "
+     echo $cmd
+   else
+     set cmd = "xlc $copts -DRS6000 -D_POSIX_SOURCE -D_XOPEN_SOURCE -D_XOPEN_SOURCE_EXTENDED=1 -c -q{$nbits} -qmaxmem=-1 -qarch=auto -O -I${NCARG_ROOT}/include WRAPIT.c "
+   endif
+   $cmd
+   breaksw
+ case IRIX64:
+#  -woff turns off warning messages about variables not used or set
+   if ($nbits == 32) then
+     if ($debug == 1) then
+       set cmd = "cc $copts -c -n32 -woff 1174 -woff 1552 -I${NCARG_ROOT}/include WRAPIT.c"
+       echo $cmd
+     else
+       set cmd = "cc $copts -c -n32 -O -woff 1174 -woff 1552 -I${NCARG_ROOT}/include WRAPIT.c"
+     endif
+     $cmd
+   else     # 64-bit default
+     if ($debug == 1) then
+       set cmd = "cc $copts -c -64 -woff 1174 -woff 1552 -I${NCARG_ROOT}/include WRAPIT.c"
+       echo $cmd
+     else
+       set cmd = "cc $copts -c -64 -O -woff 1174 -woff 1552 -I${NCARG_ROOT}/include WRAPIT.c"
+     endif
+     $cmd
+   endif
+   breaksw
+ case IRIX:
+   if ($debug == 1) then
+     set cmd = "cc $copts -c -n32 -woff 1174 -woff 1552 -I${NCARG_ROOT}/include WRAPIT.c"
+     echo $cmd
+   else
+     set cmd = "cc $copts -c -n32 -O -woff 1174 -woff 1552 -I${NCARG_ROOT}/include WRAPIT.c"
+   endif
+   $cmd
+   breaksw
+ case Darwin:
+   if ($debug == 1) then
+     set cmd = "gcc -m{$nbits} $copts -c -fno-common -I${NCARG_ROOT}/include WRAPIT.c"
+     echo $cmd
+   else
+     set cmd = "gcc -m{$nbits} $copts -c -fno-common -O -I${NCARG_ROOT}/include WRAPIT.c"
+   endif
+   $cmd
+   breaksw
+ case HP-UX:
+   if ($debug == 1) then
+     set cmd = "cc $copts +z -c -I${NCARG_ROOT}/include WRAPIT.c"
+     echo $cmd
+   else
+     set cmd = "cc $copts +z -c -O -I${NCARG_ROOT}/include WRAPIT.c"
+   endif
+   $cmd
+   breaksw
+ case Linux:                       # Linux
+   if ($f90c == pgf90 || $f90c == lf95) then
+     if ($debug == 1) then
+       set cmd = "cc $copts -c -I${NCARG_ROOT}/include WRAPIT.c"
+       echo $cmd
+     else
+       set cmd = "cc $copts -c -O -I${NCARG_ROOT}/include WRAPIT.c"
+     endif
+     $cmd
+   else if ($f90c == ifc || $f90c == ifort) then
+     if ($debug == 1) then
+       set cmd = "cc $copts -fPIC -c -I${NCARG_ROOT}/include WRAPIT.c"
+       echo $cmd
+     else
+       set cmd = "cc $copts -fPIC -c -O -I${NCARG_ROOT}/include WRAPIT.c"
+     endif
+     $cmd
+   else
+     if ($debug == 1) then
+       set cmd = "gcc -fPIC -m{$nbits} -c -I${NCARG_ROOT}/include WRAPIT.c"
+       echo $cmd
+     else
+       set cmd = "gcc -fPIC -m{$nbits} $copts -c -O -I${NCARG_ROOT}/include WRAPIT.c"
+     endif
+     $cmd
+   endif
+   breaksw
+ default:          # OSF1, SunOS, FreeBSD
+   if ($debug == 1) then
+     set cmd = "cc $copts -c -I${NCARG_ROOT}/include WRAPIT.c"
+     echo $cmd
+   else
+     set cmd = "cc $copts -c -O -I${NCARG_ROOT}/include WRAPIT.c"
+   endif
+   $cmd
+   breaksw
+endsw
+
+if ($status) then
+  echo FATAL ERROR: compilation of C wrapper failed
+  exit 1
+endif
+
+echo WRAPIT.o > objects
+
+#---------------- Compile the fortran code -------------------
+
+foreach arg ($args) 
+  if (-e $arg) then
+    if ($arg:e == "f" || $arg:e == "f90" || $arg:e == "F90") then 
+      echo COMPILING $arg
+      if ($OS == AIX) then                 # AIX
+        if ($arg:e == "f") then            # fixed format
+          set cmd = "xlf90 $fopts -qfixed $arg"
+        else                               # free format
+          set cmd = "xlf90 $fopts -qsuffix=f=f90 $arg"
+        endif
+        if ($debug == 1) then
+          echo $cmd
+        endif
+        $cmd
+      else if ($OS == Linux || $OS == Darwin || $OS == FreeBSD) then  
+        if (($arg:e == "f90" || $arg:e == "F90") && $f90c == "g77") then
+          echo FATAL ERROR: g77 can not compile f90 code
+          echo " "
+          exit 1
+        else
+          set cmd = "$f90c $fopts $arg"
+          if ($debug == 1) then
+            echo $cmd
+          endif
+          $cmd
+        endif
+      else if ($OS == SunOS) then          # SunOS
+        if ($arg:e == "f90" || $arg:e == "F90") then
+          set cmd = "/opt/SUNWspro/bin/f90 $fopts $arg"
+        else
+          set cmd = "/opt/SUNWspro/bin/f77 $fopts $arg"
+        endif
+        if ($debug == 1) then
+          echo $cmd
+        endif
+        $cmd
+      else                               # IRIX,IRIX64,OSF1,HP-UX
+        set cmd = "f90 $fopts $arg"
+        if ($debug == 1) then
+          echo $cmd
+        endif
+        $cmd
+      endif
+      set objfile = {$arg:t}              # remove path 
+      echo {$objfile:r}.o >> objects      # remove extension
+    endif
+  else
+    echo FATAL ERROR: FILE $arg DOES NOT EXIST
+    echo " "
+    exit 1
+  endif
+end
+
+if ($status) then
+  echo FATAL ERROR: compilation of Fortran code(s) failed
+  exit 1
+endif
+
+set object_files = `cat objects`
+
+#---------------------- Linking --------------------------------
+# link the object modules and produce the shared object module
+
+if (-e $SharedObj) then
+  'rm' $SharedObj
+endif
+if ($?libraries) then
+  set ld_suffix = "$object_files $libraries -o $SharedObj"
+else
+  set ld_suffix = "$object_files -o $SharedObj"
+endif
+if ($debug) then
+  echo "SHARED OBJECT NAME (SharedObj): "$SharedObj
+  echo "LINKER SUFFIX (ld_suffix): "$ld_suffix
+  echo " "
+endif
+
+echo LINKING
+switch ($OS)
+ case AIX:                         # AIX
+   set a = `/usr/sbin/lsconf | grep POWER`
+   set b = $a[3] 
+   set pwr = `echo $b | cut -c 14- `
+   if ($pwr == 4) then
+     if ($debug == 1) then
+       set cmd = "ld -bnoquiet -G -b{$nbits} -bnoentry -bexpall -lm -lc -lxlf90 -lxlf -lxlopt $ld_suffix"
+       echo $cmd
+     else
+       set cmd = "ld -G -b{$nbits} -bnoentry -bexpall -lm -lc -lxlf90 -lxlf -lxlopt $ld_suffix"
+     endif
+     $cmd
+   else
+     if ($debug == 1) then
+       set cmd = "ld -bnoquiet -G -b{$nbits} -bnoentry -bexpall -lm -lc -lxlf90 -lxlf $ld_suffix"
+       echo $cmd
+     else
+       set cmd = "ld -G -b{$nbits} -bnoentry -bexpall -lm -lc -lxlf90 -lxlf $ld_suffix"
+     endif
+     $cmd
+   endif
+   breaksw
+ case IRIX64:                      # IRIX64
+   if ($nbits == 32) then
+     if ($debug == 1) then
+       set cmd = "ld -n32 -v -V -shared $ld_suffix -lfortran"
+       echo $cmd
+     else
+       set cmd = "ld -n32 -shared $ld_suffix -lfortran"
+     endif
+     $cmd
+   else      # default 64-bits
+     if ($debug == 1) then
+       set cmd = "ld -64 -v -V -shared $ld_suffix"
+       echo $cmd
+     else
+       set cmd = "ld -64 -shared $ld_suffix"
+     endif
+     $cmd     
+   endif
+   if (-e so_locations) then
+     'rm' so_locations
+   endif
+   breaksw
+ case IRIX:                        # IRIX
+   if ($debug == 1) then
+     set cmd = "ld -n32 -v -V -shared $ld_suffix -lfortran"
+     echo $cmd
+   else
+     set cmd = "ld -n32 -shared $ld_suffix -lfortran"
+   endif
+   $cmd     
+   if (-e so_locations) then
+     'rm' so_locations
+   endif
+   breaksw
+ case Linux:                       # Linux
+   if ($f90c == pgf90) then        # PG compiler
+     if ($debug == 1) then
+       set cmd = "$f90c $exfopts -V -v -shared $ld_suffix"
+       echo $cmd
+     else
+       set cmd = "$f90c $exfopts -shared $ld_suffix"
+     endif
+     $cmd     
+   else if ($f90c == lf95) then    # LF compiler
+     set cmd = "$f90c --shared -lfj9f6 -lfj9i6 -lfj9e6 $ld_suffix"
+     if ($debug == 1) then
+       echo $cmd
+     endif
+     $cmd     
+   else if ($f90c == ifc || $f90c == ifort) then     # INTEL compiler
+     set cmd = "$f90c -shared $ld_suffix"
+     if ($debug == 1) then
+       echo $cmd
+     endif
+     $cmd     
+   else                            # GNU compilers
+     if ($debug == 1) then
+       set cmd = "gcc -m{$nbits} -fPIC -shared $ld_suffix"
+     else
+       set cmd = "gcc -m{$nbits} -fPIC -shared $ld_suffix"
+     endif
+     if ($f90c == g77) then       # g77 compiler
+       set cmd = "$cmd -lg2c"
+     endif
+     if ($f90c == gfortran) then  # gfortran compiler
+       set cmd = "$cmd -lgfortran"
+     endif
+     if ($f90c == g95) then       # g95 compiler
+       set cmd = "$cmd -lf95"
+     endif
+     if ($debug == 1) then
+       echo $cmd
+     endif
+     $cmd     
+   endif
+   breaksw
+ case FreeBSD:                     # FreeBSD
+   if ($debug == 1) then
+     set cmd = "gcc -m{$nbits} -shared $ld_suffix"
+     echo $cmd
+   else
+     set cmd = "gcc -m{$nbits} -shared $ld_suffix"
+   endif
+   if ($f90c == g77) then         # g77 compiler
+     set cmd = "$cmd -lg2c"
+   endif
+   if ($f90c == gfortran) then    # gfortran compiler
+     set cmd = "$cmd -lgfortran"
+   endif
+   if ($f90c == g95) then         # g95 compiler
+     set cmd = "$cmd -lf95"
+   endif
+   $cmd     
+   breaksw
+ case OSF1:                        # OSF1
+   set cmd = "f90 -shared $ld_suffix"
+   if ($debug == 1) then
+     echo $cmd
+   endif
+   $cmd     
+   if (-e so_locations) then
+     'rm' so_locations
+   endif
+   breaksw
+ case Darwin:                      # MacOSX
+   if (-e /sw/lib/libg2c.a) then
+     set cmd = "gcc -m{$nbits} -bundle -flat_namespace -undefined suppress $ld_suffix -L/sw/lib -lg2c"
+   else
+     set cmd = "gcc -m{$nbits} -bundle -flat_namespace -undefined suppress $ld_suffix"
+   endif
+   if ($f90c == gfortran) then     # gfortran compiler
+       set cmd = "$cmd -lgfortran"
+   endif
+   if ($f90c == g95) then          # g95 compiler
+     set cmd = "$cmd -lf95"
+   endif
+   if ($debug == 1) then
+     echo $cmd
+   endif
+   $cmd     
+   breaksw
+ case HP-UX:                       # HP-UX
+   set cmd = "ld -b $ld_suffix"
+   if ($debug == 1) then
+     echo $cmd
+   endif
+   $cmd     
+   breaksw
+ default:                          # SunOS
+   if (-e /opt/SUNWspro/lib/libsunperf.so) then   # extra SUN libraries
+     set ld_suffix = "-L/opt/SUNWspro/lib -lsunmath -lfsu -lfui -lsunperf $ld_suffix"
+   else
+     set ld_suffix = "-L/opt/SUNWspro/lib $ld_suffix"
+   endif
+   if ($debug == 1) then
+     set cmd = "ld -V -G $ld_suffix"
+     echo $cmd
+   else
+     set cmd = "ld -G $ld_suffix"
+   endif
+   $cmd     
+   breaksw
+endsw
+
+if ($status) then
+  echo FATAL ERROR: load command for creation of shared object failed
+  exit 1
+endif
+
+# clean up
+if ($debug == 0) then
+ 'rm' $object_files
+ 'rm' objects
+ 'rm' WRAPIT.c
+ 'rm' WRAPIT.stub
+endif
+echo END WRAPIT
+echo " "
+
+exit 0

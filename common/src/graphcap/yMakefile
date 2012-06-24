@@ -1,0 +1,71 @@
+#
+#	$Id: yMakefile,v 1.21 2008-12-28 13:22:05 haley Exp $
+#
+
+MYNAME	= graphcap
+
+OBJECTS = \
+	 capchg.o binput.o bndcls.o capast.o capdat.o cappar.o dascls.o\
+	 devcls.o devcol.o devmap.o fndchr.o grinit.o gtflt.o gtint.o\
+	 gtlog.o gtstr.o intcnv.o lincls.o marcls.o mtchit.o plgcls.o\
+	 rascls.o rdline.o skpblk.o txtcls.o
+
+SOURCES = \
+	 capchg.f binput.f bndcls.f capast.f capdat.f cappar.f dascls.f\
+	 devcls.f devcol.f devmap.f fndchr.f grinit.f gtflt.f gtint.f\
+	 gtlog.f gtstr.f intcnv.f lincls.f marcls.f mtchit.f plgcls.f\
+	 rascls.f rdline.f skpblk.f txtcls.f
+
+#if defined(Darwin)
+PROG_LIBS	=	$(NCARGCLIB) $(CTOFLIBS)
+#else
+PROG_LIBS	=	$(NCARGCLIB)
+#endif
+
+#
+# NOTE:		"t4006.gc" is not installed because it requires
+#		an internal code change to graphc.
+#
+#		"form.gc" is just an example and not installed.
+
+GRAPHCAPS = \
+	adm5 aed.a aed.b balsml hpgl \
+	hp150 hp2648a hp7475a hp7510a \
+	hpgl2 hpgl2.dual hpgl2pe hpgl2pe.dual \
+	imagen imagen.port pc.mono \
+	ps.color ps.land.color ps.land.mono ps.mono qms800 \
+	r6211 s100 t4010 t4025 t4105 t4107 \
+	t4107.seg t4115 t4115.seg tal1590 tekalike \
+	versaterm vt100 vt125 vt220 vt240 vt330 vt340 \
+	vt340w ditroff
+
+FortranTarget(graphc,$(OBJECTS))
+InstallTarget($(GRAPHCAPS),$(INSTALL_DB),$(GRAPHCAPPATH))
+
+#if defined(Linux) || defined(LINUX)
+#define linux
+#endif
+
+#ifdef BuildPyNGL
+InstallTarget($(GRAPHCAPS),$(INSTALL_LIB),$(PYNGLNCARGPATH)/$(GRAPHCAPDIR))
+#endif
+CleanFilesTarget($(GRAPHCAPS))
+
+# rule for processing graphcaps
+.SUFFIXES: .gc
+.gc:
+	@echo "	Processing graphcap $@"
+	@$(GRAPHC) $< $@
+
+#if defined(AIX) || defined(linux) || defined(Darwin) || defined(IRIX) || defined(IRIX64) || defined(i386) || defined(FreeBSD)
+aed.a: aed.a.gc
+	@$(GRAPHC) < aed.a.gc > aed.a
+aed.b: aed.b.gc
+	@$(GRAPHC) < aed.b.gc > aed.b
+#endif
+
+# graphc suffers from optimization, so optimization flags are
+# overridden. - commented out incase this is not a prob anymore.
+/* #define	DisableOptimize	YES */
+
+

@@ -1,0 +1,20 @@
+#
+#
+#	$Id: yMakefile,v 1.4 2001-04-12 15:55:41 haley Exp $
+#
+#
+#	Makefile for rasls
+#
+#
+MYNAME		= rasls
+
+PROG_LIBS	=	$(NCARGRASLIB) $(NCARGCLIB)
+DEPLIBS		=	$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+EXTRA_LIBS	=	$(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	=	-lm
+
+OBJS		= rasls.o
+SRCS		= rasls.c
+
+CProgram($(MYNAME),$(OBJS),$(DEPLIBS))
+DependTarget($(SRCS))

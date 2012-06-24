@@ -1,0 +1,16 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:02:14 haley Exp $
+#
+MYNAME	= fsurface
+SRCS = fsrezsrf.f fsrpwrzs.f fsrsrfac.f
+OBJS = fsrezsrf.o fsrpwrzs.o fsrsrfac.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fsrezsrf,fsrezsrf.o)
+FExampleTarget(fsrpwrzs,fsrpwrzs.o)
+FExampleTarget(fsrsrfac,fsrsrfac.o)

@@ -1,0 +1,42 @@
+#
+#   $Id: yMakefile,v 1.10 1999-03-25 03:48:01 haley Exp $
+#
+#   Makefile for HLU VectorPlot examples
+#
+
+MYNAME      = streamlineplot
+
+PROG_LIBS   = $(HLULIBS) $(NCARGLIBS)
+EXTRA_LIBS  = $(XMOTIFCLIENTLIBS) -lnetcdf
+SYS_LIBS    = $(CTOFLIBS) -lm
+
+CSRCS       = st01c.c st02c.c st03c.c st04c.c
+FSRCS       = st01f.f st02f.f st03f.f st04f.f
+NSRCS       = st01n.ncl st02n.ncl st03n.ncl st04n.ncl
+
+COBJS       = st01c.o st02c.o st03c.o st04c.o
+FOBJS       = st01f.o st02f.o st03f.o st03f.o
+SRCS        = $(CSRCS) $(FSRCS)
+OBJS        = $(COBJS) $(FOBJS)
+
+RESFILES    = st01.res st02.res st03.res st04.res
+EXFILES     = $(SRCS) $(INCLUDES)
+
+InstallTarget($(EXFILES),$(INSTALL_LIB),$(HLUEXROOT)/$(MYNAME))
+InstallTarget($(RESFILES),$(INSTALL_LIB),$(RESFILEROOT)/$(MYNAME))
+#if !defined(CRAY)
+InstallTarget($(NSRCS),$(INSTALL_LIB),$(NCLEXROOT)/$(MYNAME))
+#endif
+
+CExampleTarget(st01c,st01c.o)
+CExampleTarget(st02c,st02c.o)
+CExampleTarget(st03c,st03c.o)
+CExampleTarget(st04c,st04c.o)
+
+FExampleTarget(st01f,st01f.o)
+FExampleTarget(st02f,st02f.o)
+FExampleTarget(st03f,st03f.o)
+FExampleTarget(st04f,st04f.o)
+
+CleanFilesTarget($(OBJS))
+DependTarget($(CSRCS))

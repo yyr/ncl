@@ -1,0 +1,283 @@
+/*
+ *      $Id: yMakefile,v 1.45 2010-04-30 23:17:54 huangwei Exp $
+ */
+/************************************************************************
+*									*
+*			     Copyright (C)  1993			*
+*	     University Corporation for Atmospheric Research		*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+ *	File:		yMakefile
+ *
+ *	Author:		Jeff W. Boote
+ *			National Center for Atmospheric Research
+ *			PO 3000, Boulder, Colorado
+ *
+ *	Date:		Tue May 4 12:31:14 MDT 1993
+ *
+ *	Description:	This is the yMakefile for the TOP of the ncarg
+ *			distribution.
+ */
+
+#define IHaveSubdirs
+
+#ifdef BuildNCL
+SUBDIRS	= config external common ncarg2d ngmath ncarview ni
+#else
+SUBDIRS	= config common ncarg2d ngmath ncarview
+#endif
+
+#ifdef	YMAKEDEVFILE
+Info::
+	@echo;\
+	echo -n "**WARNING**";\
+	echo -n " Using YMAKE_DEV_FILE - This is not a regular build! ";\
+	echo "**WARNING**";
+#endif
+
+Info::
+	@echo;\
+	echo "	NCL/NCAR Graphics - Version $(NCLVERSION) Installation Configuration";\
+	echo;\
+	echo "System File		"$(SYSTEM_INCLUDE);\
+	echo "Binary Install Directory	"$(BINPATH);\
+	echo "Library Install Directory	"$(LIBPATH);\
+	echo "Include Install Directory	"$(INCPATH);\
+	echo "Manpage Install Directory	"$(MANPATH);\
+	echo "Config Install Directory	"$(CONFIGPATH);\
+	echo "Data Base Directory	"$(DBPATH);\
+	echo "Programmer Doc Dir	"$(DOCPATH);\
+	echo "Reloc Obj. Directory	"$(ROBJPATH);\
+	echo "Examples Directory	"$(EXAMPLESPATH);\
+	echo "Tutorial Directory	"$(TUTORIALPATH);\
+	echo "Test Directory		"$(TESTSPATH);\
+	echo "X App. Def. Directory	"$(XAPPPATH);\
+	echo "f77 Compiler		"$(F77);\
+	echo "f77 Flags		"$(FFLAGS);\
+	echo "C Compiler		"$(CC);\
+	echo "cc Flags		"$(CFLAGS);
+
+# The "All" target rebuilds the Makefile hierarchy, rearhives
+# all libraries, rebuilding all out-of-date objects and executables.
+# It *does not* clean out the object code.  Its intended use is for
+# rebuilding the system once you have made changes to your configuration file.
+
+All:
+	@echo ""
+	@echo "Making <All>."
+	@$(MAKE) $(MFLAGS) me
+	@$(MAKE) $(MFLAGS) Info
+	@date
+	@$(MAKE) $(MFLAGS) Makefiles
+	@$(MAKE) $(MFLAGS) includes
+	@$(MAKE) $(MFLAGS) depend
+	@$(MAKE) $(MFLAGS) all
+	@date
+	@echo "Finished making <All>."
+
+# The Build target is a *complete* build.  Makefiles
+# are completely rebuilt for the current installation, object
+# code is removed (clean target), and all binaries and libraries
+# are rebuilt from the ground up.
+
+Build:
+	@echo ""
+	@echo "Making <Build>."
+	@$(MAKE) $(MFLAGS) me
+	@$(MAKE) $(MFLAGS) Info
+	@date
+	@$(MAKE) $(MFLAGS) Makefiles
+	@$(MAKE) $(MFLAGS) clean
+	@$(MAKE) $(MFLAGS) includes
+	@$(MAKE) $(MFLAGS) depend
+	@$(MAKE) $(MFLAGS) all
+	@date
+	@echo "Finished making <Build>."
+
+# The Everything target is a *complete* build.  Makefiles
+# are completely rebuilt for the current installation, object
+# code is removed (clean target), and all binaries and libraries
+# are rebuilt from the ground up.  It also installs everything.
+
+Everything:
+	@echo ""
+	@echo "Making <Everything>."
+	@$(MAKE) $(MFLAGS) me
+	@$(MAKE) $(MFLAGS) Info
+	@date
+	@$(MAKE) $(MFLAGS) Makefiles
+	@$(MAKE) $(MFLAGS) clean
+	@$(MAKE) $(MFLAGS) includes
+	@$(MAKE) $(MFLAGS) depend
+	@$(MAKE) $(MFLAGS) all
+	@$(MAKE) $(MFLAGS) install
+	@date
+	@echo "Finished making and Installing <Everything>."
+
+includes::
+	$(RM) -r include
+
+dist-clean::
+	$(RM) -r include
+
+ROOT:
+	@echo "$(YMAKEROOT)"
+
+TROOT:
+	@echo "$(TMPROOT)"
+
+LSEARCH:
+	@echo "$(LIBSEARCH)"
+
+ISEARCH:
+	@echo "$(INCSEARCH)"
+
+PYTHONDIR:
+	@echo "$(PYTHONDIR)"
+
+PYTHONVERS:
+	@echo "$(PYTHONVERSION)"
+
+#ifdef	BuildNCL
+NCLSTUFF:
+	@echo "y"
+#else
+NCLSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildXlibDependentCode
+XSTUFF:
+	@echo "y"
+#else
+XSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildRasterHDF
+RASTERHDFSTUFF:
+	@echo "y"
+#else
+RASTERHDFSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildTRIANGLE
+TRIANGLESTUFF:
+	@echo "y"
+#else
+TRIANGLESTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildUdunits
+UDUNITSSTUFF:
+	@echo "y"
+#else
+UDUNITSSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildNetCDF4
+NETCDF4STUFF:
+	@echo "y"
+#else
+NETCDF4STUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildHDF
+HDFSTUFF:
+	@echo "y"
+#else
+HDFSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildHDFEOS
+HDFEOSSTUFF:
+	@echo "y"
+#else
+HDFEOSSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildHDFEOS5
+HDFEOS5STUFF:
+	@echo "y"
+#else
+HDFEOS5STUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildHDF5
+HDF5STUFF:
+	@echo "y"
+#else
+HDF5STUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildCAIRO
+CAIROSTUFF:
+	@echo "y"
+#else
+CAIROSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildGDAL
+GDALSTUFF:
+	@echo "y"
+#else
+GDALSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildGRIDSPEC
+GRIDSPECSTUFF:
+	@echo "y"
+#else
+GRIDSPECSTUFF:
+	@echo "n"
+#endif
+
+#ifdef BuildGRIB2
+GRIB2STUFF:
+	@echo "y"
+#else
+GRIB2STUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildV5D
+V5DSTUFF:
+	@echo "y"
+#else
+V5DSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildDODS
+DODSSTUFF:
+	@echo "y"
+#else
+DODSSTUFF:
+	@echo "n"
+#endif
+
+#ifdef	BuildPyNGL
+PYNGLSTUFF:
+	@echo "y"
+#else
+PYNGLSTUFF:
+	@echo "n"
+#endif
+
+NGVERS:
+	@echo "$(NGVERSION)"
+
+NCLVERS:
+	@echo "$(NCLVERSION)"

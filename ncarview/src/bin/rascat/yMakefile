@@ -1,0 +1,22 @@
+#
+#
+#	$Id: yMakefile,v 1.14 2001-04-12 15:55:08 haley Exp $
+#
+#
+#	Makefile for rascat
+#
+#
+
+MYNAME		= rascat
+
+PROG_LIBS	=	$(NCARGRASLIB) $(NCARGCLIB)
+DEP_LIBS	=	$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+
+EXTRA_LIBS	=	$(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	=	-lm
+
+OBJS		= rascat.o
+SRCS		= rascat.c
+
+CProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+DependTarget($(SRCS))

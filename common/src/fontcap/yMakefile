@@ -1,0 +1,50 @@
+#
+#	$Id: yMakefile,v 1.19 2006-12-26 18:49:35 haley Exp $
+#
+
+MYNAME	= fontcap
+
+
+OBJECTS = \
+cfaamn.o  cfrdln.o  cfwrit.o  ffgttk.o  ffinfo.o  ffphol.o  ffppkt.o  ffprcf.o \
+ffprsa.o  fftbkd.o  fftkin.o  sffndc.o  sfgtin.o  sfgtkw.o  sfprcf.o  sfskbk.o \
+sftbkd.o
+
+SOURCES = \
+cfaamn.f  cfrdln.f  cfwrit.f  ffgttk.f  ffinfo.f  ffphol.f  ffppkt.f  ffprcf.f \
+ffprsa.f  fftbkd.f  fftkin.f  sffndc.f  sfgtin.f  sfgtkw.f  sfprcf.f  sfskbk.f \
+sftbkd.f
+
+#if defined(Darwin)
+PROG_LIBS	=	$(NCARGCLIB) $(CTOFLIBS)
+#else
+PROG_LIBS	=	$(NCARGCLIB)
+#endif
+
+DEPLIBS		=	$(DEPNCARGCLIB)
+
+FONTCAPS = \
+	font1 font2 font3 font4 font5 \
+	font6 font7 font8  font9 font10 \
+	font11 font12 font13 font14 font15 \
+	font16 font17 font18 font19 font20 \
+	font21 font22 font25 font26 font29 \
+	font30 font33 font34 font35 font36 \
+        font37
+
+
+FortranProgram(fontc,$(OBJECTS),$(DEPLIBS))
+InstallTarget($(FONTCAPS),$(INSTALL_LIB),$(FONTCAPPATH))
+#ifdef BuildPyNGL
+InstallTarget($(FONTCAPS),$(INSTALL_LIB),$(PYNGLNCARGPATH)/$(FONTCAPDIR))
+#endif
+CleanFilesTarget($(FONTCAPS))
+
+# Rule for processing fontcaps
+.SUFFIXES: .fc
+
+.fc:
+	@echo "	Processing fontcap $@"
+	@$(FONTC) $< $@
+
+

@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.5 1997-04-11 18:50:13 haley Exp $
+#
+
+SRCS = c_ppex01.c
+OBJS = c_ppex01.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+CExampleTarget(c_ppex01,c_ppex01.o)

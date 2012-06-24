@@ -1,0 +1,22 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:43:24 boote Exp $
+#
+
+MYNAME	= dashchar
+
+GENERIC_SRCS = \
+	dashdc.f dashdb.f drawpv.f dashbd.f cfvld.f frstd.f vectd.f \
+	lastd.f curved.f lined.f reset.f
+
+GENERIC_OBJS = \
+	dashdc.o dashdb.o drawpv.o dashbd.o cfvld.o frstd.o vectd.o \
+	lastd.o curved.o lined.o reset.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS	= $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGllu.a,$(OBJECTS))

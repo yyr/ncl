@@ -1,0 +1,26 @@
+#
+#	$Id: yMakefile,v 1.6 2004-08-03 16:37:09 haley Exp $
+#
+MYNAME	= pwritx
+
+GENERIC_SRCS = \
+	 ccheck.f dcheck.f gethol.f gtdgts.f gtnum.f gtnumb.f gtsign.f\
+	 htable.f mkmsk.f pwritx.f pwrx.f pwrxbd.f xtch.f openpw.f
+
+GENERIC_OBJS = \
+	 ccheck.o dcheck.o gethol.o gtdgts.o gtnum.o gtnumb.o gtsign.o\
+	 htable.o mkmsk.o pwritx.o pwrx.o pwrxbd.o xtch.o openpw.o
+
+SOURCES = $(GENERIC_SRCS)
+OBJECTS = $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+CleanFilesTarget(openpw.f.sed)
+
+PartialLibraryTarget(libNGmisc2.a,$(OBJECTS))
+
+openpw.f.sed: openpw.f.2.sed Makefile
+	@sed \
+	-e 's+SED_DBDIR+$(DBDIR)+' \
+	<openpw.f.2.sed >openpw.f.sed

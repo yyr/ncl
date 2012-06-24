@@ -1,0 +1,61 @@
+/*
+ *      $Id: yMakefile,v 1.20 2003-11-26 21:59:33 grubin Exp $
+ */
+/************************************************************************
+*									*
+*			     Copyright (C)  1993			*
+*	     University Corporation for Atmospheric Research		*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+ *	File:		yMakefile
+ *
+ *	Author:		Jeff W. Boote
+ *			National Center for Atmospheric Research
+ *			PO 3000, Boulder, Colorado
+ *
+ *	Date:		Tue May 4 12:31:14 MDT 1993
+ *
+ *	Description:	This is the yMakefile for the config area of the ncarg
+ *			distribution.
+ */
+SRCS	=	ymake-filter.c
+OBJS	=	ymake-filter.o
+CONFIG-PROGRAMS	= ymake-filter fcpp callconv ymake-install ldrel
+
+ARCHFILES	=	AIX_RS6000 AlphaOSF1 Cray \
+			HPUX_snake Sun4 SGI_IRIX \
+			Sun4Solaris Darwin LINUX FreeBSD SystemV
+LIBFILES	=	SGILib LinuxLib
+YMAKEFILES	=	Project Rules SiteFileName Template
+CONFIGFILES	=	$(ARCHFILES) $(LIBFILES) $(YMAKEFILES)
+
+#if	UseCatDirs
+EXTENSION	=	.cat
+#else
+EXTENSION	=	.man
+#endif	/* UseCatDirs */
+
+
+CNotInstalledTarget(ymake-filter,$(OBJS))
+
+FormatManPages(ymake,.man,.cat)
+
+#ifdef	InstallYmake
+InstallTarget($(CONFIGFILES),$(INSTALL_INC),$(CONFIGPATH))
+InstallTarget($(CONFIG-PROGRAMS),$(INSTALL_BIN),$(CONFIGPATH))
+InstallTarget(ymake ymkmf,$(INSTALL_BIN),$(BINPATH))
+InstallManPages(ymake,$(EXTENSION),$(MAN1PATH),$(MAN1_SECTION))
+#endif	/* InstallYmake */
+
+CleanFilesTarget(.home_made)
+
+#
+# This rule insures that ymake-filter gets remade with the real Makefile
+# once it is created.
+#
+.home_made:
+	touch .home_made
+
+ymake-filter.o: .home_made

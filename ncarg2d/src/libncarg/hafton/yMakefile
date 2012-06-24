@@ -1,0 +1,19 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:44:06 boote Exp $
+#
+MYNAME	= hafton
+
+GENERIC_SRCS = \
+	 hafton.f zlset.f gray.f bound.f ezhftn.f hfinit.f
+
+GENERIC_OBJS = \
+	 hafton.o zlset.o gray.o bound.o ezhftn.o hfinit.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS = $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc2.a,$(OBJECTS))

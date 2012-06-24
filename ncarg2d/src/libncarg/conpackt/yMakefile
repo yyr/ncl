@@ -1,0 +1,62 @@
+#
+#       $Id: yMakefile,v 1.10 2004-08-12 22:19:19 haley Exp $
+#
+
+MYNAME  = conpackt
+
+SOURCES = \
+	ctabgc.f ctback.f ctblda.f ctcflb.f ctchcf.f ctchcl.f ctchhl.f \
+	ctchil.f ctchll.f ctcica.f ctclam.f ctcldm.f ctcldr.f ctcltr.f \
+	ctcpag.f ctdrpl.f ctdrsg.f ctfran.f ctgetc.f ctgeti.f ctgetr.f \
+	ctgiws.f ctgrws.f ctgvai.f cthchm.f cthchr.f cthllb.f cthlso.f \
+	ctinlb.f ctinrc.f ctinrk.f ctlbam.f ctlbdr.f ctmesh.f ctmviw.f \
+	ctmvrw.f ctmxyz.f ctnumb.f ctpisb.f ctpitt.f ctpkcl.f ctpklb.f \
+	ctpklp.f ctplar.f ctplps.f ctranf.f ctrset.f ctsbst.f ctscae.f \
+	ctsetc.f ctseti.f ctsetr.f ctsort.f ctstls.f cttdbf.f cttdbm.f \
+	cttdca.f cttddm.f cttmrg.f cttmtl.f cttmtx.f cttrcl.f cttreg.f \
+	cttroe.f cttrve.f ctwlam.f hluctchcf.f hluctchcl.f hluctchhl.f \
+	hluctchil.f hluctchll.f hluctmxyz.f hluctscae.f icaedg.f       \
+	icapnt.f icapnx.f
+
+OBJECTS = \
+	ctabgc.o ctback.o ctblda.o ctcflb.o ctchcf.o ctchcl.o ctchhl.o \
+	ctchil.o ctchll.o ctcica.o ctclam.o ctcldm.o ctcldr.o ctcltr.o \
+	ctcpag.o ctdrpl.o ctdrsg.o ctfran.o ctgetc.o ctgeti.o ctgetr.o \
+	ctgiws.o ctgrws.o ctgvai.o cthchm.o cthchr.o cthllb.o cthlso.o \
+	ctinlb.o ctinrc.o ctinrk.o ctlbam.o ctlbdr.o ctmesh.o ctmviw.o \
+	ctmvrw.o ctmxyz.o ctnumb.o ctpisb.o ctpitt.o ctpkcl.o ctpklb.o \
+	ctpklp.o ctplar.o ctplps.o ctranf.o ctrset.o ctsbst.o ctscae.o \
+	ctsetc.o ctseti.o ctsetr.o ctsort.o ctstls.o cttdbf.o cttdbm.o \
+	cttdca.o cttddm.o cttmrg.o cttmtl.o cttmtx.o cttrcl.o cttreg.o \
+	cttroe.o cttrve.o ctwlam.o hluctchcf.o hluctchcl.o hluctchhl.o \
+	hluctchil.o hluctchll.o hluctmxyz.o hluctscae.o icaedg.o       \
+	icapnt.o icapnx.o
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGcn.a,$(OBJECTS))
+
+CleanFilesTarget($(SOURCES) IftranRun)
+
+$(SOURCES) : IftranRun
+
+IftranRun : CodeIftran
+	@$(IFTRAN) < CodeIftran > CodeFortran
+	@$(FSPLIT) -both CodeFortran
+	-@$(RM) CodeFortran
+	touch IftranRun
+
+#if defined(CRAY)
+cttroe.o: cttroe.f
+	$(F77) -g -c cttroe.f
+
+cttrcl.o: cttrcl.f
+	$(F77) -g -c cttrcl.f
+#endif
+
+#if defined(Darwin)
+ctplar.o: ctplar.f
+	$(F77) $(FCOPTIONS) -g -c ctplar.f
+#endif

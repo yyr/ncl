@@ -1,0 +1,24 @@
+/*
+ *	Description:	This file contains all the directives needed to
+ *			tell ymake how the Sun4 is different from a
+ *			default configuration.
+ *
+ * This is an old file, and probably not of much use. 
+ */
+
+#ifdef	TryCodeCenter
+#define	CCompiler	clcc
+#define CcOptions	-ansi
+#else
+#define	CCompiler	acc
+#define CcOptions	-Xa
+#define	ExtraSysLibraries	-lc
+#endif
+
+#define	Cdynamic	-Bdynamic
+#define	Cstatic		-Bstatic
+
+#define	HdfDefines	-DSUN
+#define CtoFLibraries	Cstatic -lF77 -lM77 Cdynamic
+#define	LintCommand	alint
+

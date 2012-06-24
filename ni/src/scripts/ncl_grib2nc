@@ -1,0 +1,76 @@
+#!/bin/csh -f
+#
+#       $Id: ncl_grib2nc,v 1.11 2006-09-05 15:26:37 grubin Exp $
+
+#       Copyright (C) 2005
+#       University Corporation for Atmospheric Research
+#       All Rights Reserved
+
+#       File:       ncl_grib2nc
+#       Author:     Rick Grubin
+#                   Original NCL code written by Dennis Shea
+#
+#       National Center for Atmospheric Research
+#       POB 3000, Boulder, Colorado
+
+# This script converts a GRIB file type to a netCDF-formatted file.
+#
+# THIS UTILITY IS DEPRECATED IN FAVOR OF ncl_convert2nc AS OF NCL Release 4.2.0.a034
+#
+#   ncl_grib2nc inputFile [-i input_directory] [-o output_directory] [-v var1[,...]] [-t] [-c comment] [-d] [-h]
+#       inputFile             name of file [required]
+#       [-i input_directory]  location of input file  [default: current directory]
+#       [-o output_directory] location of output file [default: current directory]
+#       [-u time_name]        name of the NCL-named time dimension to be UNLIMITED
+#       [-U new_time_name]    if -u is specified, will rename the NCL-named time dimension for netCDF 
+#       [-v var1[,...]]       user specified subset of variables [default: all variables]
+#       [-L]                  support for writing large (>2Gb) netCDF files [default: no largefile support]
+#       [-c comment]          text to be included in netCDF file attribute [default: no comment]
+#       [-d]                  upon exit: print contents of each netCDF file [like ncdump -h]
+#       [-B] <file>           suppress informational messages; redirect messages to <file> if present [default: /dev/null]
+#       [-h]                  usage message
+
+onintr CLEANUP
+
+set progname = `basename $0`
+if ($#argv < 1) then
+    goto USAGE
+endif
+
+
+#
+# Count the file arguments so we may emit a 'reminder' for each argument, per
+# Dennis' request.  Validity of file is irrelevant, only want a count.  Any
+# options ("-h" or similar) are ignored.
+#
+set nfiles = 0
+while ($#argv > 0)
+    set hasdash = `echo $1 | awk '{print substr($0, 1, 1)}'`
+    if ("$hasdash" != "-") then
+        @ nfiles += 1
+        shift
+    else
+        shift
+        continue
+    endif
+end
+
+
+#
+# DEPRECATED
+#
+# Issue a msg for each input file, informing user to use 'ncl_convert2nc' instead.
+#
+if ($nfiles == 0) then
+    goto USAGE
+else
+    while ($nfiles > 0)
+        echo "${progname} is deprecated.  Please use 'ncl_convert2nc' instead."
+        @ nfiles = ($nfiles - 1)
+    end
+    exit 1
+endif
+
+USAGE:
+echo "${progname} is deprecated.  Please use 'ncl_convert2nc' instead."
+exit 1

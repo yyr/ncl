@@ -1,0 +1,10 @@
+#
+#       $Id: yMakefile,v 1.2 2010-02-21 22:45:52 haley Exp $
+#
+FILES	= udunits2-accepted.xml udunits2-base.xml udunits2-common.xml \
+	udunits2-derived.xml udunits2-prefixes.xml udunits2.xml
+
+UDPATH	= $(LIBNCARGPATH)/udunits
+INSTALL_UD = $(INSTALL_DB)
+
+InstallTarget($(FILES),$(INSTALL_UD),$(UDPATH))

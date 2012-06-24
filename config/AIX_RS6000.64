@@ -1,0 +1,23 @@
+/*
+ *  Description:  This file contains all the directives needed to
+ *                tell ymake how to build NCARG/NCL on a 64-bit
+ *                AIX system using the native AIX compilers.
+ * 
+ *                Copy this file to the AIX_RS6000 file in this directory
+ *                before you start the NCL/NCARG build.
+ */
+#define HdfDefines    -DIBM6000 -DAIX5L64
+#define StdDefines    -DSYSV -D_POSIX_SOURCE -DRS6000 -D_XOPEN_SOURCE -D_XOPEN_SOURCE_EXTENDED=1 -DNGLONG2XINT
+#define CCompiler     xlc
+#define FCompiler     xlf
+#define CcOptions     -q64
+#define FcOptions     -q64
+#define LdCommand     ld -b64
+#define ArCommand     ar -X 64
+#define COptimizeFlag -O3 -qstrict
+#define FOptimizeFlag -O3 -qstrict
+#define Cstatic       -bnso
+#define Cdynamic      -bso
+#define CtoFLibraries -lm -lxlf90 -lxlopt
+#define ExtraExportFlags -bexpall -brtl
+#define NgCallF       reg

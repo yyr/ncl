@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.9 1997-04-11 18:50:07 haley Exp $
+#
+
+SRCS = c_tisosr.c
+OBJS = c_tisosr.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(TESTSPATH))
+
+CExampleTarget(c_tisosr,c_tisosr.o)

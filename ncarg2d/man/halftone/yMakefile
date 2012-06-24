@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.7 1994-04-08 22:13:35 haley Exp $
+#
+
+MAN =	ezhftn hafton halftone
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

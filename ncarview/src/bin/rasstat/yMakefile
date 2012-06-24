@@ -1,0 +1,22 @@
+#
+#
+#	$Id: yMakefile,v 1.10 2001-04-12 15:55:55 haley Exp $
+#
+#
+#	Makefile for rasstat
+#
+#
+
+MYNAME	= rasstat
+
+PROG_LIBS	=	$(NCARGRASLIB) $(NCARGCLIB)
+DEP_LIBS	=	$(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+
+EXTRA_LIBS	=	$(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	=	-lm
+
+OBJS		= rasstat.o
+SRCS		= rasstat.c
+
+CProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+DependTarget($(SRCS))

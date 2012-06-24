@@ -1,0 +1,50 @@
+/*
+ *	Description:	This file contains the configuration for a
+ *                      gfortran/gcc build on a PowerPC Mac system.
+ *
+ *                      If you want to use a different Fortran
+ *                      compiler, like Absoft's "f90", see the file 
+ *                      "Darwin_Intel.absoft" in this directory for help
+ *                      in modifying this file.
+ * 
+ *                      To use "g77" in place of "gfortran", change the
+ *                      the following lines:
+ * 
+ *        #define FCompiler   g77
+ *        #define CtoFLibraries   -lg2c -lgcc
+ *
+ *                      You may not need the second line if you have g77
+ *                      V4.x or later.
+ *
+ */
+#define HdfDefines  -DDARWIN
+#define StdDefines  -DSYSV -D_POSIX_SOURCE -D_XOPEN_SOURCE
+#define Cstatic
+#define Cdynamic
+#define CppCommand '/usr/bin/cpp -traditional'
+#define CCompiler   gcc
+#define FCompiler   gfortran
+#define CtoFLibraries   -lgfortran -lm
+#define CcOptions      -fPIC -ansi
+#define FcOptions      -fPIC
+
+#define XToolLibrary    -lXt -lSM -lICE
+#define BuildShared NO
+#define XLibrary -lXpm -lX11 -lXext
+
+#define ArchRecLibSearch    -L/usr/X11R6/lib -L/sw/lib
+#define ArchRecIncSearch    -I/usr/X11R6/include -I/sw/include
+
+FC = $(F77)
+
+/*************** Redefine Macros from Rules ********************************/
+
+/*
+ * Macro:	MakeDir
+ *
+ * Description:	This rule creates a directory - if a parent dir doesn't exist
+ *		it attempts to create it.
+ */
+#ifndef MakeDir
+#define MakeDir(dir)    @if (test ! -d dir); then ($(MKDIRHIER) dir); fi
+#endif

@@ -1,0 +1,23 @@
+#
+#	$Id: yMakefile,v 1.9 2000-10-25 22:27:38 kennison Exp $
+#
+MYNAME	= gridal
+
+GENERIC_SRCS = \
+	gabldt.f gacolr.f gagetc.f gageti.f gagetr.f gagtrn.f galbex.f \
+	gaplch.f gasetc.f gaseti.f gasetr.f grid.f gridal.f gridl.f halfax.f \
+	labmod.f perim.f periml.f tick4.f ticks.f
+
+GENERIC_OBJS = \
+	gabldt.o gacolr.o gagetc.o gageti.o gagetr.o gagtrn.o galbex.o \
+	gaplch.o gasetc.o gaseti.o gasetr.o grid.o gridal.o gridl.o halfax.o \
+	labmod.o perim.o periml.o tick4.o ticks.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS	= $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGllu.a,$(OBJECTS))

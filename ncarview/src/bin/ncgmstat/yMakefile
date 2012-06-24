@@ -1,0 +1,18 @@
+#
+#
+#	$Id: yMakefile,v 1.7 2001-04-12 15:54:29 haley Exp $
+#
+#	Makefile for ncgmstat
+#
+#
+
+MYNAME	= ncgmstat
+
+PROG_LIBS	=	$(CGMLIB) $(NCARGCLIB)
+DEP_LIBS	=	$(DEPCGMLIB) $(DEPNCARGCLIB)
+
+OBJS		= ncgmstat.o
+SRCS		= ncgmstat.c
+
+CProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+DependTarget($(SRCS))

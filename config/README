@@ -1,0 +1,186 @@
+
+This README file explains what the various files are in this
+directory, and which ones you might want to edit or copy in order to
+build NCL and/or NCAR Graphics on your system.
+
+If you see a file that needs correction, or if you want to add
+a configuration file of your own, post a message to ncarg-talk
+or ncl-talk:
+
+  http://mailman.ucar.edu/mailman/listinfo/ncl-talk
+  http://mailman.ucar.edu/mailman/listinfo/ncarg-talk
+
+----------------------------------------------------------------------
+
+AIX_RS6000 - This is the configuration file used for an
+   AIX system. Edit this file if you need to change compilation
+   options before building on an AIX system. It compiles in 64-bit
+   mode by default.  Look at the AIX_RS6000.32 file for information
+   on how to build in 32-bit format.
+
+AIX_RS6000.64 - Similar to the AIX_RS6000 file; slightly different
+   compile options.
+
+AlphaOSF1 - This is the configuration file used for a Compaq/OSF
+   system. We haven't build NCL or NCAR Graphics on one of these
+   in awhile, so we can't guarantee that the file is up-to-date.
+
+CYGWIN - This is the configuration file used to build on a
+   Windows/Cygwin system.  Edit this file if you need to change
+   compilation options before building on an Window/Cygwin system.
+
+Cray - This is the configuration file used to build on a Cray. This
+   file is old and was only ever tested for NCAR Graphics.
+
+DECRISC - This is the configuration file used to build on a
+   DECRISC system. This file is old and was only ever tested for NCAR
+   Graphics.
+
+Darwin - This is the configuration file used to build on a
+   Mac PPC (not Intel) system.  Edit this file if you need to change
+   compilation options before building on an MacOSX/non-Intel system.
+
+Darwin.absoft - This is a sample configuration file for building
+   on a Mac PPC system using the Absoft compilers. Use this
+   file only as a reference; make the changes to the Darwin file.
+   This file hasn't been used in awhile and may be out-of-date.
+
+Darwin_Intel -  This is the configuration file used to build on a
+   Mac Intel system, using the gcc/g95 compilers.  Edit this file if
+   you need to change compilation options before building on an
+   MacOSX/Intel system.
+
+FreeBSD - This is the configuration file used to build on a
+   FreeBSD system.
+
+HPUX_snake - This is the configuration file used to build on an
+   HP system. Edit this file if you need to change compilation
+   options before building on an HP system.
+
+LINUX - This is the configuration file used to build on a
+   LINUX system (i386, i686, x86_64). Use the other Linux.xxx
+   files as guidelines for making changes to this file, depending
+   on what kind of compilers and options you want to use.
+   Edit this file if you need to change compilation options before
+   building on a LINUX system.
+
+LINUX.32.PGI -  This is a sample configuration file used to build on a
+   LINUX 32-bit system using the PGI compilers.  Use this file as a
+   reference only;  make the changes to the LINUX file.
+
+LINUX.64.GNU -  This is a sample configuration file used to build on a
+   LINUX 64-bit system using the GNU compilers.  Use this file as a
+   reference only; make the changes to the LINUX file.
+
+LINUX.64.INTEL - This is a sample configuration file used to build on
+   a LINUX 64-bit system using the Intel compilers.  Use this file as
+   a reference only; make the changes to the LINUX file.
+
+LINUX.64.PGI - This is a sample configuration file used to build on a
+   LINUX 64-bit system using the PGI compilers.  Use this file as a
+   reference only; make the changes to the LINUX file.
+
+LINUX.GNU - This is a sample configuration file used to build on a
+   LINUX system using the GNU compilers; this file should be very
+   similar to the LINUX file.  Use this file as a reference only; make
+   the changes to the LINUX file.
+
+LINUX.IA64.INTEL - This is a sample configuration file used to build
+  on an Itanium LINUX system using the Intel compilers; this file
+  should be very similar to the LINUX file.  Use this file as a
+  reference only; make the changes to the LINUX file.
+
+LINUX.INTEL - This is a sample configuration file used to build on
+  a LINUX system using the Intel compilers.  Use this file as
+  reference only; make the changes to the LINUX file.
+
+LINUX.PGI - This is a sample configuration file used to build on a
+   LINUX system using the PGI compilers.  Use this file as a
+   reference only; make the changes to the LINUX file.
+
+LINUX.ppc32.GNU - This is a sample configuration file used to build on
+  a 32-bit ppc LINUX system using the GNU compilers.  Use this file as
+  a reference only; make the changes to the LINUX file.
+
+LINUX.ppc32.GNU - This is a sample configuration file used to build on
+  a 32-bit ppc LINUX system using the GNU compilers.  Use this file as
+  a reference only; make the changes to the LINUX file.
+
+LINUX.ppc64.xl - This is a sample configuration file used to build on
+  a 64-bit ppc LINUX system using the XL compilers.  Use this file as
+  a reference only; make the changes to the LINUX file.
+
+LinuxLib - No need to modify this file.
+
+Makefile.ini - No need to modify this file.
+
+Project - You shouldn't need to modify this file.
+
+README_YMAKE - A README file on some of the variables used
+  in the ymake system. Not very useful except for people who
+  really know this stuff.
+
+Rules - No need to modify this file
+
+SGILib - No need to modify this file
+
+SGI_IRIX - This is the configuration file used for an SGI
+   IRIX system. Edit this file if you need to change compilation
+   options before building on an SGI system. It compiles in 64-bit
+   mode by default.  Look at the SGI_IRIX.n32 file for information
+   on how to build in n32-bit format.
+
+SGI_IRIX.n32 - See SGI_IRIX above. Use this file only as a reference;
+  edit the SGI_IRIX file instead.
+
+Site - No need to modify this file
+
+Site.local - This file gets created when you run ./Configure.
+
+SolarisPC - This is the configuration file used for a little endian
+  system running Solaris X86.  Edit this file if you need to change
+   compilation options before building on a Solaris X86 system.
+   For building on a Sun system, see the Sun4Solaris file.
+
+Sun3 - This is an old configuration file that probably should never
+  be needed. See Sun4Solaris instead.
+
+Sun4 - This is also an old configuration file that probably should never
+  be needed. See Sun4Solaris instead.
+
+Sun4Solaris - This is the configuration file used for a Sun system
+  running Solaris. Edit this file if you need to change
+   compilation options before building on a Sun system.
+   See SolarisPC for building on a Solaris X86 system.
+
+SystemV - This is a generic configuration file to use as a reference
+  only.
+
+Template - No need to modify this file.
+
+YDLINUX - This is the configuration file used for a system running
+  Yellow Dog Linux. It hasn't been used in awhile, so it may be
+  out-of-date.
+
+callconv - This is an old file used at one time. I don't think it
+  is used anymore.
+
+fcpp - This is an old file used at one time. I don't think it
+  is used anymore.
+
+ldrel - I believe this file was only needed for Cray builds.
+
+yMakefile - no need to modify this file.
+
+ymake - The file that is executed to see if it recognizes
+  your system. You may need to edit this file if your system
+  isn't recognized by the NCL/NCARG build system.
+
+ymake-filter.c - No need to modify this file.
+
+ymake-install - No need to modify this file.
+
+ymkmf - No need to modify this file. It is used to help
+  generate the Makefiles in every directory.
+
+----------------------------------------------------------------------

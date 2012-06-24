@@ -1,0 +1,10 @@
+#
+#
+#	$Id: yMakefile,v 1.7 1993-10-19 17:44:43 boote Exp $
+#
+#	Makefile for NCAR Graphics source directories
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = libcgm libncarg_ras libctrans libictrans 

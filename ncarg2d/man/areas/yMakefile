@@ -1,0 +1,19 @@
+#
+#	$Id: yMakefile,v 1.10 1994-04-08 22:00:33 haley Exp $
+#
+
+MAN = ardbpa ardrln areas areas_params aredam argeti argetr argtai arinam \
+	armvam arpram arscam arseti arsetr
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+MPATH	= $(MAN3PATH)
+MSECT	= $(MAN3_SECTION)
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MPATH),$(MSECT))
+FormatManPages($(MAN),.m,.p)

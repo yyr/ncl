@@ -1,0 +1,5 @@
+#
+#	$Id: yMakefile,v 1.2 1997-03-08 16:47:12 haley Exp $
+#
+#define IHaveSubdirs
+SUBDIRS = src man

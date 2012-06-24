@@ -1,0 +1,25 @@
+/*
+ *  Description:    This file contains all the directives needed to
+ *                  tell ymake how to build NCARG/NCL on a Cray
+ *                  system. 
+ *
+ *  Note that Cray is no longer a support system by us, and NCARG/NCL
+ *  will not likely build on this system without significant changes.
+ */
+#define	HdfDefines	-DUNICOS
+#define	StdDefines	-DSYSV -DUNICOS -DUSG
+#define FCompiler	f90
+#define LdRelCommand	$(CONFIG_DIR)/ldrel
+#define	ArCommand	bld
+#define ArRegOpt        vr
+#define	FOptimizeFlag	-O 1
+#define CppCommand  /opt/ctl/bin/cpp
+#define FCppCommand  /opt/ctl/bin/cpp
+#define NgCallF  caps
+
+#define DoesRanlib	NO
+#define GksBufferSize	1024
+#define UseCatDirs	YES
+
+#define XToolLibrary      -lXt -lSM -lICE
+

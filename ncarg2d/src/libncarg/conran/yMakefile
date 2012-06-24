@@ -1,0 +1,18 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:43:05 boote Exp $
+#
+
+MYNAME	= conran
+
+GENERIC_SRCS = conran.f conpmm.f
+
+GENERIC_OBJS = conran.o conpmm.o
+
+OBJECTS	= $(GENERIC_OBJS)
+
+SOURCES = $(GENERIC_SRCS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGcn.a,$(OBJECTS))

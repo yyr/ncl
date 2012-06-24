@@ -1,0 +1,18 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:01:59 haley Exp $
+#
+
+MYNAME	= fsoftfill
+SRCS = fsfsgfa.f fsfwrld.f
+OBJS = fsfsgfa.o fsfwrld.o
+GENERIC_OBJS = fsfsgfa.o fsfwrld.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fsfsgfa,fsfsgfa.o)
+FExampleTarget(fsfwrld,fsfwrld.o)
+

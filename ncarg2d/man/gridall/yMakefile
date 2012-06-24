@@ -1,0 +1,16 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-08 22:12:52 haley Exp $
+#
+
+MAN =	gacolr gagetc gageti gagetr gasetc gaseti gasetr grid gridal gridall \
+	gridall_params gridl halfax labmod perim periml tick4 ticks
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

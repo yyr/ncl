@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.3 1999-03-23 14:44:30 haley Exp $
+#
+#
+# Makefile for "psplit" (splits multi-frame PostScript files into
+#                        EPS files).
+#
+
+MYNAME  = psplit
+
+SOURCES  = psplit.c
+
+OBJECTS  = psplit.o
+
+CTarget(psplit,$(OBJECTS))

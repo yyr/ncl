@@ -1,0 +1,128 @@
+C
+C $Id: perim3.f,v 1.7 2008-07-27 00:17:34 haley Exp $
+C
+C                Copyright (C)  2000
+C        University Corporation for Atmospheric Research
+C                All Rights Reserved
+C
+C The use of this Software is governed by a License Agreement.
+C
+      SUBROUTINE PERIM3 (MAGR1,MINI1,MAGR2,MINI2,IWHICH,VAR)
+      SAVE
+      COMMON /PWRZ1T/ UUMIN      ,UUMAX      ,VVMIN      ,VVMAX      ,
+     1                WWMIN      ,WWMAX      ,DELCRT     ,EYEU       ,
+     2                EYEV       ,EYEW
+      COMMON /PRM31/  Q          ,L
+      COMMON /TCK31/  TMAGU      ,TMINU      ,TMAGV      ,TMINV      ,
+     1                TMAGW      ,TMINW
+C
+C THRINT COMMON BLOCK IS USED FOR SETTING COLOR INTENSITY
+C
+      COMMON /THRINT/ ITHRMJ     ,ITHRMN     ,ITHRTX
+      DIMENSION       LASF(13)
+C
+      TICK(T) = MAX(UUMAX-UUMIN,VVMAX-VVMIN,WWMAX-WWMIN)*T/1024.
+C
+C INQUIRE LINE COLOR INDEX AND SET ASF TO INDIVIDUAL
+C
+      CALL GQPLCI (IERR, IPLCI)
+      CALL GQASF (IERR, LASF)
+      LSV3  = LASF(3)
+      LASF(3) = 1
+      CALL GSASF (LASF)
+C
+      MGR1 = MAGR1
+      MN1 = MINI1-1
+      MGR2 = MAGR2
+      MN2 = MINI2-1
+      MN1P1 = MAX(MN1+1,1)
+      MN2P1 = MAX(MN2+1,1)
+      L = MIN(3,MAX(1,IWHICH))
+      Q = VAR
+C
+C PICK BOUNDS
+C
+      GO TO ( 10, 30, 40),L
+   10 XMIN = VVMIN
+      XMAX = VVMAX
+      DELYL = TICK(TMAGV)
+      DELYS = TICK(TMINV)
+   20 YMIN = WWMIN
+      YMAX = WWMAX
+      DELXL = TICK(TMAGW)
+      DELXS = TICK(TMINW)
+      GO TO  50
+   30 XMIN = UUMIN
+      XMAX = UUMAX
+      DELYL = TICK(TMAGU)
+      DELYS = TICK(TMINU)
+      GO TO  20
+   40 XMIN = UUMIN
+      XMAX = UUMAX
+      DELYL = TICK(TMAGU)
+      DELYS = TICK(TMINU)
+      YMIN = VVMIN
+      YMAX = VVMAX
+      DELXL = TICK(TMAGV)
+      DELXS = TICK(TMINV)
+C
+C PERIM
+C
+   50 CALL LINE3W (XMIN,YMIN,XMAX,YMIN)
+      CALL LINE3W (XMAX,YMIN,XMAX,YMAX)
+      CALL LINE3W (XMAX,YMAX,XMIN,YMAX)
+      CALL LINE3W (XMIN,YMAX,XMIN,YMIN)
+      IF (MGR1 .LT. 1) GO TO  90
+      DX = (XMAX-XMIN)/REAL(MAX(MGR1*(MN1P1),1))
+      DO  80 I=1,MGR1
+C
+C MINORS
+C
+         IF (MN1 .LE. 0) GO TO  70
+C
+         CALL GSPLCI (ITHRMN)
+C
+         DO  60 J=1,MN1
+            X = XMIN+REAL(MN1P1*(I-1)+J)*DX
+            CALL LINE3W (X,YMIN,X,YMIN+DELYS)
+            CALL LINE3W (X,YMAX,X,YMAX-DELYS)
+   60    CONTINUE
+   70    IF (I .GE. MGR1) GO TO  90
+C
+         CALL GSPLCI (ITHRMJ)
+C
+         X = XMIN+REAL(MN1P1*I)*DX
+C
+C MAJORS
+C
+         CALL LINE3W (X,YMIN,X,YMIN+DELYL)
+         CALL LINE3W (X,YMAX,X,YMAX-DELYL)
+   80 CONTINUE
+   90 IF (MGR2 .LT. 1) GO TO 130
+      DY = (YMAX-YMIN)/REAL(MAX(MGR2*(MN2P1),1))
+      DO 120 J=1,MGR2
+         IF (MN2 .LE. 0) GO TO 110
+C
+         CALL GSPLCI (ITHRMN)
+C
+         DO 100 I=1,MN2
+            Y = YMIN+REAL(MN2P1*(J-1)+I)*DY
+            CALL LINE3W (XMIN,Y,XMIN+DELXS,Y)
+            CALL LINE3W (XMAX,Y,XMAX-DELXS,Y)
+  100    CONTINUE
+  110    IF (J .GE. MGR2) GO TO 130
+C
+         CALL GSPLCI (ITHRMJ)
+C
+         Y = YMIN+REAL(MN2P1*J)*DY
+         CALL LINE3W (XMIN,Y,XMIN+DELXL,Y)
+         CALL LINE3W (XMAX,Y,XMAX-DELXL,Y)
+  120 CONTINUE
+C
+C RESTORE ASF AND COLOR INDEX TO ORIGINAL
+C
+  130 LASF(3) = LSV3
+      CALL GSASF (LASF)
+      CALL GSPLCI (IPLCI)
+      RETURN
+      END

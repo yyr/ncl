@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.6 1997-04-11 18:50:02 haley Exp $
+#
+
+SRCS = c_tgflas.c
+OBJS = c_tgflas.o
+
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(TESTSPATH))
+
+CExampleTarget(c_tgflas,c_tgflas.o)

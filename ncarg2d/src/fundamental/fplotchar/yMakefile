@@ -1,0 +1,18 @@
+#
+#	$Id: yMakefile,v 1.5 1995-06-14 14:01:52 haley Exp $
+#
+MYNAME	= fplotchar
+
+SRCS = fpcfonts.f fpchiqu.f fpcloqu.f
+OBJS = fpcfonts.o fpchiqu.o fpcloqu.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fpcfonts,fpcfonts.o)
+FExampleTarget(fpchiqu,fpchiqu.o)
+FExampleTarget(fpcloqu,fpcloqu.o)
+

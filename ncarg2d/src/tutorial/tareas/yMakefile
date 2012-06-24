@@ -1,0 +1,20 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:06:00 haley Exp $
+#
+MYNAME	= tareas
+
+SRCS = cardb1.f cardb2.f caredg.f carfill.f carline.f carmap.f
+OBJS = cardb1.o cardb2.o caredg.o carfill.o carline.o carmap.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(TUTORIALPATH))
+
+FExampleTarget(cardb1,cardb1.o)
+FExampleTarget(cardb2,cardb2.o)
+FExampleTarget(caredg,caredg.o)
+FExampleTarget(carfill,carfill.o)
+FExampleTarget(carline,carline.o)
+FExampleTarget(carmap,carmap.o)

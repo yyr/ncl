@@ -1,0 +1,20 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-19 14:50:56 haley Exp $
+#
+MYNAME	= conrcqck
+
+GENERIC_SRCS = conrec.f clgen.f quick.f maxmin.f calcnt.f ezcntr.f conbd.f
+
+GENERIC_OBJS = conrec.o clgen.o quick.o maxmin.o calcnt.o ezcntr.o conbd.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS = $(GENERIC_OBJS)
+
+#if defined(alpha) && (MAJOR==1)
+InstallTarget($(OBJECTS),$(INSTALL_LIB),$(ROBJPATH)/$(MYNAME))
+#else
+RelocatableTarget(libconrcqck.o,$(OBJECTS))
+#endif
+
+SourceLibraryTarget($(MYNAME),srcconrcqck.a,$(SOURCES))

@@ -1,0 +1,47 @@
+#
+#	$Id: yMakefile,v 1.31 2001-04-12 15:52:33 haley Exp $
+#
+
+
+MYNAME		= ctrans
+
+#if defined(alpha) && (MAJOR==1)
+#define COptOrDebugFlag -g3
+#endif
+
+#
+#	X11 libraries
+#
+#ifdef BuildXlibDependentCode
+X11LIBS		= $(XLIB)
+#endif BuildXlibDependentCode
+
+#
+#	Sun SunView libraries
+#
+#ifdef BuildSunViewctrans
+SUNLIBS		 = -lsuntool -lsunwindow -lpixrect
+#endif
+
+#
+#	local libraries
+#
+PROG_LIBS	= $(CTRANSLIB) $(CGMLIB) $(NCARGRASLIB) $(NCARGCLIB)
+DEP_LIBS	= $(DEPCTRANSLIB) $(DEPCGMLIB) $(DEPNCARGRASLIB) $(DEPNCARGCLIB)
+
+#ifdef	IRIX
+MORE_LIBRARIES	= -lmalloc
+#endif
+
+EXTRA_LIBS	= $(X11LIBS) $(SUNLIBS) $(NETCDFLIB) $(HDFLIB)
+SYS_LIBS	= -lm $(MORE_LIBRARIES)
+
+SRCS		=  main.c 
+OBJS		=  main.o 
+
+CProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+DependTarget($(SRCS))
+
+lint: $(HDR) $(SRCS)
+	lint $(CDEFINES) $(LINTLIBS) $(SRCS)  1> lint.out 2>&1
+#	lint $(SRCS) $(LIBS) > lint.out

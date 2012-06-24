@@ -1,0 +1,12239 @@
+;
+;      $Id: gsn_csm.ncl,v 1.245 2010/05/06 22:15:21 haley Exp $
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                                                                      ;
+;                Copyright (C)  1998                                   ;
+;        University Corporation for Atmospheric Research               ;
+;                All Rights Reserved                                   ;
+;                                                                      ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+;;  File:       gsn_csm.ncl
+;;
+;;  Author:     Mary Haley
+;;          National Center for Atmospheric Research
+;;          PO 3000, Boulder, Colorado
+;;
+;;  Date:       Tue Feb 11 14:08:49 MST 1999
+;;
+;;  Description: This script contains some specialized plotting functions
+;;               used by CGD for the CSM processor. To use the functions
+;;               and procedures in this script, you must have the lines:
+;;
+;;       load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/gsn_code.ncl"
+;;       load "$NCARG_ROOT/lib/ncarg/nclscripts/csm/gsn_csm.ncl"
+;; 
+;;               at the top of your NCL script, before the begin statement.
+;;
+
+;***********************************************************************;
+; Function : xy_ref_interp                                              ;
+;                  x1: numeric                                          ;
+;                  x2: numeric                                          ;
+;                  y1: numeric                                          ;
+;                  y2: numeric                                          ;
+;                                                                       ;
+; Given two points, (x1,y1) and (x2,y1) and a reference value (ref),    ;
+; this function interpolates where on the X axis the line from the 1st  ;
+; point to the 2nd point crosses the line y=ref.                        ;
+; plot to the workstation "wks" (the variable returned from a previous  ;
+; call to "gsn_open_wks").  "resources" is an optional list of          ;
+; resources. The Id of the map plot is returned.                        ;
+;***********************************************************************;
+undef("xy_ref_interp")
+function xy_ref_interp(x1:numeric,x2:numeric,y1:numeric,y2:numeric, \
+                       ref:numeric)
+begin
+ return(x2-((y2-ref)*(x2-x1))/(y2-y1))
+end
+
+;***********************************************************************;
+; Function : ref_line_interp                                            ;
+;                  x: numeric                                           ;
+;                  y: numeric                                           ;
+;            xinterp: numeric                                           ;
+;            yinterp: numeric                                           ;
+;           ref_line: numeric                                           ;
+;                                                                       ;
+; Given a set of points represented by x and y, add interpolated values ;
+; where the line crosses at y = ref_line. x and y must be the same      ;
+; length, and ref_line must either be a scalar or the same length as x  ;
+; and y. ref_line can be an array of reference values, as long as there ;
+; is only one X/Y curve.                                                ;
+;                                                                       ;
+; The dimension size of each interpolated set of points is returned.    ;
+;***********************************************************************;
+undef("ref_line_interp")
+function ref_line_interp(x,y,xinterp,yinterp,ref_line)
+local ncurves, nref_lines, nlines, i, j, location, xnew, ynew, npts
+begin
+;
+; Convert x and y into two dimensional arrays so we don't have to
+; test for whether we have one line or multiple lines.  Convert
+; ref_line to a 1-d array (if it isn't already).
+;
+  ndimsy = dimsizes(dimsizes(y))
+  ndimsx = dimsizes(dimsizes(x))
+  nref_lines = dimsizes(ref_line)
+
+  if(ndimsy.eq.1)
+    ncurves = 1
+    nptsy   = dimsizes(y)
+    ynew    = onedtond(y,(/nref_lines,nptsy/))
+  else
+    ncurves = dimsizes(y(:,0))
+    nptsy   = dimsizes(y(0,:))
+    ynew    = y
+  end if
+
+  nlines = max((/ncurves,nref_lines/))
+
+  if(ndimsx.eq.1)
+    xnew = onedtond(x,(/nlines,nptsy/))
+  else
+    xnew = x
+  end if
+
+  refnew  = new((/nlines/),typeof(ref_line))
+  refnew  = ref_line
+
+  xinterp(:,0) = xnew(:,0)
+  yinterp(:,0) = ynew(:,0)
+  npts         = new((/nlines/),integer)
+
+; Loop through the rest of the points and find out where the curve crosses
+; the reference line.  If it does, then do an interpolation.
+; Store the location of the previous point (-1 if it is below the reference
+; line, 0 if it is on the reference line, and 1 if it is above).
+
+  do j=0, nlines-1
+    num_crosses = 0
+    do i=1, nptsy-1
+      xinterp(j,i+num_crosses) = xnew(j,i)
+      yinterp(j,i+num_crosses) = ynew(j,i)
+
+      if(.not.ismissing(ynew(j,i)).and..not.ismissing(xnew(j,i)).and.\
+         .not.ismissing(ynew(j,i-1)).and..not.ismissing(xnew(j,i-1)))
+        if((ynew(j,i-1).lt.refnew(j).and.ynew(j,i).gt.refnew(j)).or.\
+           (ynew(j,i-1).gt.refnew(j).and.ynew(j,i).lt.refnew(j)))
+          xinterp(j,i+num_crosses)   = xy_ref_interp(xnew(j,i-1),xnew(j,i),\
+                                                     ynew(j,i-1),ynew(j,i),\
+                                                     refnew(j))
+          xinterp(j,i+num_crosses+1) = xnew(j,i)
+          yinterp(j,i+num_crosses)   = refnew(j)
+          yinterp(j,i+num_crosses+1) = ynew(j,i)
+          num_crosses = num_crosses + 1
+        end if
+      end if
+    end do
+    npts(j) = nptsy + num_crosses
+  end do
+  delete(xnew)
+  delete(ynew)
+  delete(refnew)
+  return(npts)
+end
+
+;***********************************************************************;
+; Function : get_bar_widths                                             ;
+;                  x: numeric                                           ;
+;               res2: logical                                           ;
+;                                                                       ;
+; Given a set of x points, return a bar width for filled bars later.    ;
+;                                                                       ;
+;***********************************************************************;
+undef("get_bar_widths")
+function get_bar_widths(x,ncurves,res2)
+local ncurves, npts, bar_widths, dx, nwidths
+begin
+;---Get number of curves and points.
+  dims = dimsizes(x)
+  rank = dimsizes(dims)
+  if(rank.eq.1)
+    npts = dims(0)
+  else
+    ncurves = dims(0)
+    npts    = dims(1)
+  end if
+
+;---If bar width is set explicitly, we have to check it first.
+  if(isatt(res2,"gsnXYBarChartBarWidth"))
+    bar_width = get_res_value_keep(res2,"gsnXYBarChartBarWidth",0.)
+    nwidths   = dimsizes(dimsizes(bar_width))
+    if(.not.(nwidths.eq.1.or.nwidths.eq.ncurves))
+      print("get_bar_widths: Fatal: You must either select one constant bar width, or the same number of bar widths as you have curves.")
+      return
+    end if
+  end if
+
+;---Get the distances between x values.
+  if(rank.eq.1)
+;---Special case if we only have one bar.
+    if(npts.eq.1)
+      if(isatt(res2,"gsnXYBarChartBarWidth")) then
+        b = get_res_value(res2,"gsnXYBarChartBarWidth",0.)
+        return(b)
+      else
+        print("get_bar_widths: Warning: You only have one element,")
+        print("and gsnXYBarChartBarWidth is not set.")
+        print("Will default to a bar width equal to x")
+        return(x)
+      end if
+    else
+      dx = min( x(1:npts-1) - x(0:npts-2) )
+    end if
+  else
+    x!0 = "ncurves"
+    x!1 = "npts"
+;---Special case if we only have one bar.
+    if(npts.eq.1) then
+      if(isatt(res2,"gsnXYBarChartBarWidth")) then
+        b = get_res_value(res2,"gsnXYBarChartBarWidth",0.)
+        return(b)
+      else
+        print("get_bar_widths: Warning: You only have one element in each set of curves,")
+        print("and gsnXYBarChartBarWidth is not set.")
+        print("Will default to bar widths equal to x")
+        b = new(ncurves,typeof(x))
+        b = x
+        return(b)
+      end if
+    end if
+;---Get the minimum dx for each set of curves.
+    dx = dim_min(x(:,1:npts-1)-x(:,0:npts-2))
+    delete(x!0)
+    delete(x!1)
+  end if
+;
+; If bar width is set explicitly, we have to check it first.
+;
+  if(isatt(res2,"gsnXYBarChartBarWidth"))
+    bar_width = get_res_value(res2,"gsnXYBarChartBarWidth",0.)
+    nwidths   = dimsizes(dimsizes(bar_width))
+    if(.not.(nwidths.eq.1.or.nwidths.eq.ncurves))
+      print("get_bar_widths: Fatal: You must either select one constant bar width, or the same number of bar widths as you have curves.")
+      return
+    end if
+    if(any(bar_width.gt.dx))
+      print("get_bar_widths: Warning: The bar width(s) you selected ("+bar_width+") is larger than the smallest delta x ("+dx+").")
+      print("Defaulting to " + dx + ".")
+      
+      if(nwidths.eq.1.and.ncurves.gt.1)
+        bar_widths = new(ncurves,typeof(dx))
+      end if
+      bar_widths = dx
+    else
+;
+; Make sure bar_widths is 1D array of length (/ncurves/).
+;
+      if(nwidths.eq.1)
+        bar_widths = new(ncurves,double)
+        bar_widths = bar_width
+      end if
+    end if
+  else
+    bar_widths = new(ncurves,double)
+    bar_widths = dx        ; Bar width is not being set.
+  end if
+
+  return(bar_widths)
+end
+
+
+;***********************************************************************;
+; Procedure : outlined_bars                                             ;
+;                  x: numeric                                           ;
+;                  y: numeric                                           ;
+;            xinterp: numeric                                           ;
+;            yinterp: numeric                                           ;
+;                                                                       ;
+; Given a set of points represented by x and y, represent the y values  ;
+; with bar outlines.                                                    ;
+;***********************************************************************;
+undef("outlined_bars")
+procedure outlined_bars(x,y,xinterp,yinterp)
+local ndimsx, ndimsy, ncurves, dims, npts, nyb, bar_width
+begin
+;
+; Convert x and y into two dimensional arrays so we don't have to
+; test for whether we have one line or multiple lines.
+;
+  ndimsx = dimsizes(dimsizes(x))
+  ndimsy = dimsizes(dimsizes(y))
+  
+  if(ndimsy.eq.1)
+    ncurves = 1
+    npts    = dimsizes(y)
+    ynew    = onedtond(y,(/ncurves,npts/))
+  else
+    ncurves = dimsizes(y(:,0))
+    npts    = dimsizes(y(0,:))
+    ynew    = y
+  end if
+
+  if(ndimsx.eq.1)
+    xnew = onedtond(x,(/ncurves,npts/))
+  else
+    xnew = x
+  end if
+;
+; For each old y point, we need two new y points to represent
+; the horizontal line. The new X values will be the width of the bars.
+;
+  nyb = 2 * (npts-1) + 1
+
+  yinterp(:,0:nyb-2:2) = ynew(:,:npts-2)
+  yinterp(:,1:nyb-1:2) = ynew(:,:npts-2)
+  yinterp(:,nyb-1)     = ynew(:,npts-1)   ; last point
+
+  bar_widths           = xnew(:,1:) - xnew(:,:npts-2)
+  xinterp(:,0:nyb-2:2) = xnew(:,:npts-2)
+  xinterp(:,1:nyb-2:2) = xnew(:,:npts-2) + bar_widths
+  xinterp(:,nyb-1)     = xnew(:,npts-1)     ; last point, no bar
+
+  delete(xnew)
+  delete(ynew)
+end
+
+;***********************************************************************;
+; procedure : filled_bars                                               ;
+;                  x: numeric                                           ;
+;                  y: numeric                                           ;
+;             xabove: numeric                                           ;
+;             yabove: numeric                                           ;
+;             xbelow: numeric                                           ;
+;             ybelow: numeric                                           ;
+;             xequal: numeric                                           ;
+;             yequal: numeric                                           ;
+;                nya: integer                                           ;
+;                nyb: integer                                           ;
+;                nye: integer                                           ;
+;                iya: integer                                           ;
+;                iyb: integer                                           ;
+;                iye: integer                                           ;
+;          yref_line: numeric                                           ;
+;         bar_widths: numeric                                           ;
+;                                                                       ;
+; Given a set of points represented by x and y, and y reference values, ;
+; represent the y values with bars above, below, and equal to the       ;
+; reference lines.                                                      ;
+;                                                                       ;
+; Bars aren't filled in this routine. They are returned as threes sets  ;
+; of polygons: those above, below, and equal to the reference lines.    ;
+;***********************************************************************;
+undef("filled_bars")
+procedure filled_bars(x,y,xabove,yabove,xbelow,ybelow,xequal,yequal,\
+                      nya,nyb,nye,iya,iyb,iye,yref_line,bar_widths)
+local ndimsx, ndimsy, ncurves, dims, npts
+begin
+;
+; Convert x and y into two dimensional arrays so we don't have to
+; test for whether we have one line or multiple lines.
+;
+  ndimsx = dimsizes(dimsizes(x))
+  ndimsy = dimsizes(dimsizes(y))
+  
+  if(ndimsy.eq.1)
+    ncurves = 1
+    npts    = dimsizes(y)
+    ynew    = new((/ncurves,npts/),double)
+    ynew    = onedtond(y,(/ncurves,npts/))
+  else
+    ncurves = dimsizes(y(:,0))
+    npts    = dimsizes(y(0,:))
+    ynew    = new(dimsizes(y),double)
+    ynew    = y
+  end if
+
+  if(ndimsx.eq.1)
+    xnew = new((/ncurves,npts/),double)
+    xnew = onedtond(x,(/ncurves,npts/))
+  else
+    xnew = new(dimsizes(x),double)
+    xnew = x
+  end if
+;
+; Make yref_line a 1D double array of length ncurves.
+;
+  yref_lines = new(ncurves,double)
+  yref_lines = yref_line
+;
+; Loop across ncurves.
+;
+  do i=0,ncurves-1
+;
+; Get the indices where the y curve is above, below, equal to the ref line.
+;
+    ya_ind = ind(ynew(i,:).gt.yref_lines(i))
+    yb_ind = ind(ynew(i,:).lt.yref_lines(i))
+    ye_ind = ind(ynew(i,:).eq.yref_lines(i))
+;
+; Create new array to hold bar charts.  For each old y point, we need
+; five new y points to represent the closed rectangle.
+;
+    if(.not.any(ismissing(ya_ind)))
+      nya(i) = 5*dimsizes(ya_ind)              ; # values above ref line
+      iya(i,0:dimsizes(ya_ind)-1) = ya_ind     ; indexes above ref line
+      yabove(i,0:nya(i)-5:5)  = yref_lines(i)
+      yabove(i,1:nya(i)-4:5)  = ynew(i,ya_ind)
+      yabove(i,2:nya(i)-3:5)  = ynew(i,ya_ind)
+      yabove(i,3:nya(i)-2:5)  = yref_lines(i)
+      yabove(i,4:nya(i)-1:5)  = yref_lines(i)
+
+      xabove(i,0:nya(i)-5:5) = xnew(i,ya_ind) - bar_widths(i)/2.
+      xabove(i,1:nya(i)-4:5) = xnew(i,ya_ind) - bar_widths(i)/2.
+      xabove(i,2:nya(i)-3:5) = xnew(i,ya_ind) + bar_widths(i)/2.
+      xabove(i,3:nya(i)-2:5) = xnew(i,ya_ind) + bar_widths(i)/2.
+      xabove(i,4:nya(i)-1:5) = xnew(i,ya_ind) - bar_widths(i)/2.
+    else
+      nya(i) = 0
+    end if  
+    if(.not.any(ismissing(yb_ind))) 
+      nyb(i) = 5*dimsizes(yb_ind)              ; # values below ref line
+      iyb(i,0:dimsizes(yb_ind)-1) = yb_ind     ; indexes below ref line
+
+      ybelow(i,0:nyb(i)-5:5) = yref_lines(i)
+      ybelow(i,1:nyb(i)-4:5) = ynew(i,yb_ind)
+      ybelow(i,2:nyb(i)-3:5) = ynew(i,yb_ind)
+      ybelow(i,3:nyb(i)-2:5) = yref_lines(i)
+      ybelow(i,4:nyb(i)-1:5) = yref_lines(i)
+
+      xbelow(i,0:nyb(i)-5:5) = xnew(i,yb_ind) - bar_widths(i)/2.
+      xbelow(i,1:nyb(i)-4:5) = xnew(i,yb_ind) - bar_widths(i)/2.
+      xbelow(i,2:nyb(i)-3:5) = xnew(i,yb_ind) + bar_widths(i)/2.
+      xbelow(i,3:nyb(i)-2:5) = xnew(i,yb_ind) + bar_widths(i)/2.
+      xbelow(i,4:nyb(i)-1:5) = xnew(i,yb_ind) - bar_widths(i)/2.
+    else
+      nyb(i) = 0
+    end if  
+    if(.not.any(ismissing(ye_ind))) 
+      nye(i) = 5*dimsizes(ye_ind)              ; # values equal ref line
+      iye(i,0:dimsizes(ye_ind)-1) = ye_ind     ; indexes equal ref line
+
+      yequal(i,0:nye(i)-1:5) = yref_lines(i)
+
+      xequal(i,0:nye(i)-5:5) = xnew(i,ye_ind) - bar_widths(i)/2.
+      xequal(i,1:nye(i)-4:5) = xnew(i,ye_ind) - bar_widths(i)/2.
+      xequal(i,2:nye(i)-3:5) = xnew(i,ye_ind) + bar_widths(i)/2.
+      xequal(i,3:nye(i)-2:5) = xnew(i,ye_ind) + bar_widths(i)/2.
+      xequal(i,4:nye(i)-1:5) = xnew(i,ye_ind) - bar_widths(i)/2.
+    else
+      nye(i) = 0
+    end if  
+    delete(ya_ind)
+    delete(yb_ind)
+    delete(ye_ind)
+  end do
+
+  delete(xnew)
+  delete(ynew)  
+end
+
+
+;***********************************************************************;
+; Function : find_cross_xy                                              ;
+;                  x1: numeric                                          ;
+;                  x2: numeric                                          ;
+;                 y11: numeric                                          ;
+;                 y12: numeric                                          ;
+;                 y21: numeric                                          ;
+;                 y22: numeric                                          ;
+;                                                                       ;
+; Given two points of two curves:                                       ;
+;                                                                       ;
+;       (x1,y11) & (x2,y12) and (x1,y21) & (x2,y22)                     ;
+;                                                                       ;
+; compute the point at which the two curves cross.                      ;
+;                                                                       ;
+;***********************************************************************;
+undef("find_cross_xy")
+function find_cross_xy(x1:numeric,x2:numeric,y11:numeric,y12:numeric, \
+                       y21:numeric,y22:numeric)
+begin
+  if((x2-x1).eq.0.or.(y12-y11+y21-y22).eq.0)
+    x0 = new(1,double)
+    y0 = new(1,double)
+  else
+    x0 = (x2*y21 - x2*y11 + x1*y12 - x1*y22)/(y12-y11+y21-y22)
+    y0 = (y11*y22 - y12*y21) / (y11-y12+y22-y21)
+;    y0 = (x0*(y22-y21)-x1*y22+x2*y21)/(x2-x1)
+  end if
+  return((/x0,y0/))
+end
+
+
+;***********************************************************************;
+; Function : get_valid_long_names()                                     ;
+;                                                                       ;
+; This function returns the list of valid names that can be used in     ;
+; place of "long_name". Note that these names are in the order that     ;
+; they should be used. I.e. if both "long_name" and "Description" are   ;
+; present, then long_name takes precedence over "Description".          ;
+;                                                                       ;
+;***********************************************************************;
+undef("get_valid_long_names")
+function get_valid_long_names()
+begin
+  return((/"long_name","standard_name","description","DESCRIPTION", \
+           "DataFieldName"/))
+end
+
+;***********************************************************************;
+; Function : get_valid_units()                                          ;
+;                                                                       ;
+; This function returns the list of valid names that can be used for    ;
+; "units".                                                              ;
+;                                                                       ;
+;***********************************************************************;
+undef("get_valid_units")
+function get_valid_units()
+begin
+  return((/"units","Units","UNITS","unit","Unit","UNIT"/))
+end
+
+;***********************************************************************;
+; Function : get_valid_long_name_value()                                ;
+;                                                                       ;
+; This function returns the attribute and the attribute value of the    ;
+; valid long_name, if it exists, and missing otherwise.                 ;
+;***********************************************************************;
+undef("get_valid_long_name_value")
+function get_valid_long_name_value(data)
+local data_atts, n, found_valid_name, data_atts
+begin
+  data_atts        = getvaratts(data)
+  found_valid_name = False
+  
+  if(.not.any(ismissing(data_atts))) then
+    valid_long_names = get_valid_long_names()
+    n = 0
+    do while(n.lt.dimsizes(valid_long_names).and..not.found_valid_name)
+      if (any(valid_long_names(n).eq.data_atts)) then
+;
+; Return both the attribute name and its value.
+;
+        return((/valid_long_names(n),data@$valid_long_names(n)$/))
+      end if
+      n = n + 1
+    end do
+  end if
+  
+  return(new(1,string))
+end
+
+;***********************************************************************;
+; Function : get_valid_units_value()                                    ;
+;                                                                       ;
+; This function returns the attribute and the attribute value of the    ;
+; valid units, if it exists, and missing otherwise.                     ;
+;***********************************************************************;
+undef("get_valid_units_value")
+function get_valid_units_value(data)
+local data_atts, n, found_valid_name, data_atts
+begin
+  data_atts        = getvaratts(data)
+  found_valid_name = False
+  
+  if(.not.any(ismissing(data_atts))) then
+    valid_units = get_valid_units()
+    n = 0
+    do while(n.lt.dimsizes(valid_units).and..not.found_valid_name)
+      if (any(valid_units(n).eq.data_atts)) then
+;
+; Return both the attribute name and its value.
+;
+        return((/valid_units(n),data@$valid_units(n)$/))
+      end if
+      n = n + 1
+    end do
+  end if
+  
+  return(new(1,string))
+end
+
+;***********************************************************************;
+; Function : get_csm_long_name_units_string                             ;
+;            data : numeric                                             ;
+;                                                                       ;
+; This function checks if a valid long_name and units attributes exist, ;
+; and if so, constructs a string using them. A missing value is returned;
+; otherwise.                                                            ;
+;***********************************************************************;
+undef("get_csm_long_name_units_string")
+function get_csm_long_name_units_string(data)
+local lname, uname
+begin
+  lu_string = new(1,string)
+  lname = get_valid_long_name_value(data)
+  uname = get_valid_units_value(data)
+
+  if(.not.any(ismissing(lname))) then
+    lu_string = lname(1)
+;
+; Comment out this code for now, because I'm not sure I want
+; the default behavior to change from just a long_name string
+; to a long_name (units) string for now.  This was added around
+; version a031 (Jan 2004).
+;
+;    if(.not.any(ismissing(uname)).and.uname(1).ne."") then
+;      lu_string = lu_string + " (" + uname(1) + ")"
+;    end if
+  end if
+  return(lu_string)
+end        
+
+
+;***********************************************************************;
+; Procedure : check_for_subtitles                                       ;
+;                 res: logical                                          ;
+;                left: logical                                          ;
+;              center: logical                                          ;
+;               right: logical                                          ;
+;                                                                       ;
+; This procedure checks if the resources gsnLeftString, gsnCenterString,;
+; and/or gsnRightString have been set. These resources provide three    ;
+; subtitles for the top of a plot.                                      ;
+;***********************************************************************;
+ 
+undef("check_for_subtitles")
+procedure check_for_subtitles(res:logical,left:logical,center:logical,\
+                              right:logical)
+begin
+; Initialize
+  left   = False
+  right  = False
+  center = False
+
+  if((res).and..not.any(ismissing(getvaratts(res)))) then
+;
+; Check for font setting.
+;
+    if(isatt(res,"gsnStringFont")) then
+      left@gsnStringFont   = res@gsnStringFont
+      center@gsnStringFont = res@gsnStringFont
+      right@gsnStringFont  = res@gsnStringFont
+      delete(res@gsnStringFont)
+    end if
+;
+; Check for left string.
+;
+    if(isatt(res,"gsnLeftString")) then
+      left            = True
+      left@sub_string = res@gsnLeftString
+;
+; Check for ParallelPosF/OrthogonalPosF setting.
+;
+      if(isatt(res,"gsnLeftStringParallelPosF")) then
+        left@gsnLeftStringParallelPosF = \
+                    get_res_value(res,"gsnLeftStringParallelPosF",0.0)
+      end if
+      if(isatt(res,"gsnLeftStringOrthogonalPosF")) then
+;
+; 0.0 is just a dummy value. It will not be used.
+;
+        left@gsnLeftStringOrthogonalPosF = \
+                     get_res_value(res,"gsnLeftStringOrthogonalPosF",0.0)
+      end if
+;
+; Check for font heights.
+;
+      if(isatt(res,"gsnLeftStringFontHeightF")) then
+        left@gsnLeftStringFontHeightF = get_res_value(res, \
+                                        "gsnLeftStringFontHeightF",0.0)
+      else
+        if(isatt(res,"gsnStringFontHeightF")) then
+          left@gsnLeftStringFontHeightF = get_res_value_keep(res, \
+                                          "gsnStringFontHeightF",0.0)
+        end if 
+      end if 
+;
+; Check for font color
+;
+      if(isatt(res,"gsnLeftStringFontColor")) then
+        left@gsnLeftStringFontColor = get_res_value(res, \
+                                        "gsnLeftStringFontColor",1)
+      else
+        if(isatt(res,"gsnStringFontColor")) then
+          left@gsnLeftStringFontColor = get_res_value_keep(res, \
+                                          "gsnStringFontColor",1)
+        end if 
+      end if 
+      delete(res@gsnLeftString)
+    end if
+;
+; Check for center string.
+;
+    if(isatt(res,"gsnCenterString"))
+      center            = True
+      center@sub_string = res@gsnCenterString
+;
+; Check for ParallelPosF/OrthogonalPosF setting.
+;
+      if(isatt(res,"gsnCenterStringParallelPosF")) then
+        center@gsnCenterStringParallelPosF =  \
+                        get_res_value(res,"gsnCenterStringParallelPosF",0.5)
+      end if
+
+      if(isatt(res,"gsnCenterStringOrthogonalPosF")) then
+;
+; 0.0 is just a dummy value. It will not be used.
+;
+        center@gsnCenterStringOrthogonalPosF = \
+                     get_res_value(res,"gsnCenterStringOrthogonalPosF",0.0)
+      end if
+;
+; Check for font heights.
+;
+      if(isatt(res,"gsnCenterStringFontHeightF")) then
+        center@gsnCenterStringFontHeightF = get_res_value(res, \
+                                           "gsnCenterStringFontHeightF",0.0)
+      else
+        if(isatt(res,"gsnStringFontHeightF")) then
+          center@gsnCenterStringFontHeightF = get_res_value_keep(res, \
+                                             "gsnStringFontHeightF",0.0)
+        end if 
+      end if 
+;
+; Check for font color
+;
+      if(isatt(res,"gsnCenterStringFontColor")) then
+        center@gsnCenterStringFontColor = get_res_value(res, \
+                                           "gsnCenterStringFontColor",1)
+      else
+        if(isatt(res,"gsnStringFontColor")) then
+          center@gsnCenterStringFontColor = get_res_value_keep(res, \
+                                             "gsnStringFontColor",1)
+        end if 
+      end if 
+      delete(res@gsnCenterString)
+    end if
+;
+; Check for right string.
+;
+    if(isatt(res,"gsnRightString"))
+      right            = True
+      right@sub_string = res@gsnRightString
+;
+; Check for ParallelPosF/OrthogonalPosF setting.
+;
+      if(isatt(res,"gsnRightStringParallelPosF")) then
+        right@gsnRightStringParallelPosF = \
+                     get_res_value(res,"gsnRightStringParallelPosF",1.0)
+      end if
+      if(isatt(res,"gsnRightStringOrthogonalPosF")) then
+;
+; 0.0 is just a dummy value. It will not be used.
+;
+        right@gsnRightStringOrthogonalPosF = \
+                     get_res_value(res,"gsnRightStringOrthogonalPosF",0.0)
+      end if
+;
+; Check for font heights.
+;
+      if(isatt(res,"gsnRightStringFontHeightF")) then
+        right@gsnRightStringFontHeightF = get_res_value(res, \
+                                         "gsnRightStringFontHeightF",0.0)
+      else
+        if(isatt(res,"gsnStringFontHeightF")) then
+          right@gsnRightStringFontHeightF = get_res_value_keep(res, \
+                                           "gsnStringFontHeightF",0.0)
+        end if 
+      end if 
+;
+; Check for font color
+;
+      if(isatt(res,"gsnRightStringFontColor")) then
+        right@gsnRightStringFontColor = get_res_value(res, \
+                                         "gsnRightStringFontColor",1)
+      else
+        if(isatt(res,"gsnStringFontColor")) then
+          right@gsnRightStringFontColor = get_res_value_keep(res, \
+                                           "gsnStringFontColor",1)
+        end if 
+      end if 
+      delete(res@gsnRightString)
+    end if
+  end if
+  if(isatt(res,"gsnStringFontHeightF")) then
+    delete(res@gsnStringFontHeightF)
+  end if
+  if(isatt(res,"gsnStringFontColor")) then
+    delete(res@gsnStringFontColor)
+  end if
+  return
+end
+
+;***********************************************************************;
+; Procedure : set_right_subtitle                                        ;
+;                data: numeric                                          ;
+;                 res: logical                                          ;
+;              newres: logical                                          ;
+;                                                                       ;
+; This procedure checks if gsnRightString is set.  If not, then uses    ;
+; data@units if it exists.                                              ;
+;***********************************************************************;
+undef("set_right_subtitle")
+procedure set_right_subtitle(data:numeric,res:logical,newres:logical)
+begin
+;
+; If gsnRightString hasn't been set, then use the valid units 
+; attribute if it exists.
+;
+  if(isatt(res,"gsnRightString"))
+    newres = True
+    newres@gsnRightString = res@gsnRightString
+  else
+    uname = get_valid_units_value(data)
+    if(.not.any(ismissing(uname)))    
+      newres = True
+      newres@gsnRightString = uname(1)
+    end if
+  end if
+  return
+end
+
+;***********************************************************************;
+; Procedure : set_left_subtitle                                         ;
+;                data: numeric                                          ;
+;                 res: logical                                          ;
+;              newres: logical                                          ;
+;                                                                       ;
+; This procedure checks if gsnLeftString is set.  If not, then uses     ;
+; one of the valid "long_name" attributes, if they exist.               ;
+;***********************************************************************;
+undef("set_left_subtitle")
+procedure set_left_subtitle(data:numeric,res:logical,newres:logical)
+begin
+;
+; If gsnLeftString hasn't been set, then use one of several valid "long
+; names" if they exist. Also have to delete the attribute used so it
+; doesn't get used in the title by gsn_code.ncl. But, be careful here
+; because you don't want to remove the attribute from the actual data. 
+; Before calling this routine, you should be using a copy of your
+; data.
+;
+  lname = get_valid_long_name_value(data)
+  if(.not.any(ismissing(lname)))    
+    newres = True
+    newres@gsnLeftString = get_res_value_keep(res,"gsnLeftString",lname(1))
+;
+; Delete so it doesn't get used for main title
+;
+    delete(data@$lname(0)$)
+  end if
+
+;
+; Of course, if gsnLeftString is set, use it. We had to do the test
+; above first to make sure the attribute got removed, if it existed,
+; so it doesn't get used again for another resource.
+;
+  if(isatt(res,"gsnLeftString"))
+    newres = True
+    newres@gsnLeftString = res@gsnLeftString
+  end if
+  return
+end
+
+;***********************************************************************;
+; Function : is_valid_coord                                             ;
+;                                                                       ;
+; Checks if the X or Y coordinate variable exist and if it is           ;
+; 1-dimensional.                                                       ; 
+;                                                                       ;
+;***********************************************************************;
+undef("is_valid_coord")
+function is_valid_coord(data:numeric,axis:string)
+local dims
+begin
+  dims = -1
+  if(axis.eq."x") then
+    if(isdimnamed(data,1).and.iscoord(data,data!1))
+      dims = dimsizes(dimsizes(data&$data!1$))
+    end if
+  else
+    if(isdimnamed(data,0).and.iscoord(data,data!0))
+      dims = dimsizes(dimsizes(data&$data!0$))
+    end if
+  end if
+  if(dims.eq.1) then
+    return(True)
+  else
+    return(False)
+  end if
+end
+
+;***********************************************************************;
+; Function : is_valid_latlon2d_attr                                     ;
+;                                                                       ;
+; Checks for a valid lon2d or lat2d attribute. This special attribute is;
+; used by the gsn_csm* scripts for cases where the data is represented  ;
+; by 2D  lat/lon arrays, instead of 1D coordinate arrays.               ;
+;                                                                       ;
+; The lat2d/lon2d arrays can be one element larger in both dimensions.  ;
+; This can mean that we are dealing with cell boundaries instead of cell;
+; centers.                                                              ;
+;***********************************************************************;
+undef("is_valid_latlon2d_attr")
+function is_valid_latlon2d_attr(data:numeric,lstring:string)
+local ldims, data_dims
+begin
+  if(isatt(data,lstring)) then
+    ldims     = dimsizes(data@$lstring$)
+    data_dims = dimsizes(data)
+    if(all(ldims.eq.data_dims).or.all(ldims.eq.(data_dims+1))) then
+      return(True)
+    else
+      print("is_valid_latlon2d_attr: Warning: The '" + lstring + "' attribute must either be the same dimension sizes as the data, or one element larger in both directions.  Your data will most likely not be overlaid on the map correctly.")
+    end if
+  end if
+  return(False)
+end 
+
+
+;***********************************************************************;
+; Function : is_tm_obj_valid                                            ;
+;                                                                       ;
+;          pobj : plot object to retrieve trGridType from               ;
+;                                                                       ;
+; This function checks to see if the given plot object is using a       ;
+; spherical or curvilinear transformation. If so, you can't have a      ;
+; tickmark objects. This function used to additionally check for 2D     ;
+; lat/lon coords, but Dave B and I decided this wasn't necessary.       ;
+;                                                                       ;
+;***********************************************************************;
+undef("is_tm_obj_valid")
+function is_tm_obj_valid(pobj)
+local tr_grid_type
+begin
+; trGridType == 3 --> Curvilinear
+; trGridType == 4 --> Spherical
+  getvalues pobj
+    "trGridType" : tr_grid_type
+  end getvalues
+  if(any(tr_grid_type.eq.(/3,4/))) then
+    return(False)
+  else
+    return(True)
+  end if
+end
+
+
+;***********************************************************************;
+; Procedure : set_axis_string                                           ;
+;                 res: logical                                          ;
+;                data: numeric                                          ;
+;                axis: string                                           ;
+;                                                                       ;
+; This procedure sets the tiXAxisString or tiYAxisString resource       ;
+; depending on current resource and/or attribute settings.              ;
+;***********************************************************************;
+undef("set_axis_string")
+procedure set_axis_string(plot:graphic,res:logical,data:numeric,axis:string)
+local title, tires, is_xyplot
+begin
+
+  tires = get_res_eq(res,(/"ti"/))  ; Get tickmark resources
+  is_xyplot = get_res_value_keep(res,"gsnXYPlot", False)
+
+  valid_coord = is_valid_coord(data,axis)
+  if(axis.eq."y") then
+    mode_res = "tmYLMode"
+    axis_res = "tiYAxisString"
+    if(valid_coord) then
+      coord_var = data&$data!0$
+    end if
+  else
+    mode_res = "tmXBMode"
+    axis_res = "tiXAxisString"
+    if(valid_coord) then
+      coord_var = data&$data!1$
+    end if
+  end if
+;
+; If the axis tickmarks are being labeled explicitly by the user, 
+; then don't put a label on that axis.
+;
+  if(check_attr(res,mode_res,"Explicit",True).or. \
+     check_attr(res,mode_res,2,True)) then
+    set_attr(tires,axis_res,"")
+  else
+    if(.not.is_xyplot) then
+      if(valid_coord) then
+        axis_string = get_csm_long_name_units_string(coord_var)
+        if(.not.ismissing(axis_string)) then
+          set_attr(tires,axis_res,axis_string)
+        end if
+      end if
+    else    
+      axis_string = get_csm_long_name_units_string(data)
+      if(.not.ismissing(axis_string)) then
+        set_attr(tires,axis_res,axis_string)
+      end if
+    end if
+  end if
+
+  attsetvalues_check(plot,tires)
+  return
+end
+
+;***********************************************************************;
+; Procedure : set_subtitles_res                                         ;
+;                 res: logical                                          ;
+;             plotres: logical                                          ;
+;                                                                       ;
+; This procedure checks if any of the gsn*String subtitle resources have;
+; been set. If so, it adds them to plotres as resources so they can     ;
+; be passed to another plotting function to be processed.               ;
+;***********************************************************************;
+undef("set_subtitles_res")
+procedure set_subtitles_res(res:logical,plotres:logical)
+local valid_string_res
+begin
+  valid_subttl_res = (/"gsnLeftString","gsnCenterString","gsnRightString",\
+                       "gsnStringFont","gsnStringFontHeightF", \
+                       "gsnStringFontColor","gsnLeftStringFontColor", \
+                       "gsnCenterStringFontColor","gsnRightStringFontColor", \
+                       "gsnLeftStringFontHeightF",      \
+                       "gsnCenterStringFontHeightF",    \
+                       "gsnRightStringFontHeightF",     \
+                       "gsnLeftStringParallelPosF",     \
+                       "gsnCenterStringParallelPosF",   \
+                       "gsnRightStringParallelPosF",    \
+                       "gsnLeftStringOrthogonalPosF",   \
+                       "gsnCenterStringOrthogonalPosF", \
+                       "gsnRightStringOrthogonalPosF"/)
+  if((res).and..not.any(ismissing(getvaratts(res))))
+    nstrings = dimsizes(valid_subttl_res)
+    do i=0,nstrings-1,1
+      if(isatt(res,valid_subttl_res(i)))
+        plotres = True
+        plotres@$valid_subttl_res(i)$ = res@$valid_subttl_res(i)$
+        delete(res@$valid_subttl_res(i)$)
+      end if
+    end do
+  end if
+  return
+end
+
+;***********************************************************************;
+; Procedure : check_for_coord_arrays                                    ;
+;                data: numeric                                          ;
+;                 res: logical                                          ;
+;                type: string                                           ;
+;                                                                       ;
+; This procedure checks if the data contains a coordinate variable in   ;
+; dimension 0 or 1.  If so, then it sets sf/vfX/YArray (depending on if ;
+; type equals "contour*" or "vector*" to these coordinate arrays.       ;
+;                                                                       ;
+; If no coordinate array exists, then this procedure checks for the     ;
+; special "lat2d"/"lon2d" *attributes*. This is an indicator that we    ;
+; have "2D coordinate" arrays, and we can set the sf/vfX/YArray         ;
+; resources to these values. These 2D coords only work if you plan to   ;
+; overlay the vectors/contours on a map, however.                       ;
+;                                                                       ;
+;***********************************************************************;
+undef("check_for_coord_arrays")
+procedure check_for_coord_arrays(data:numeric,res:logical,type:string)
+local prefix, xstart_name, xend_name, ystart_name, yend_name, \
+xarray_name, yarray_name, valid_2dcoord_types
+
+begin 
+;
+; If the data is 1D, no coord arrays should exist.
+;
+  if(dimsizes(dimsizes(data)).eq.1) then
+     return
+  end if
+
+  if(type.eq."vector".or.type.eq."vector_map")
+    prefix = "vf"
+  else
+    prefix = "sf"
+  end if
+
+  xarray_name = prefix + "XArray"
+  xstart_name = prefix + "XCStartV"
+  xend_name   = prefix + "XCEndV"
+  yarray_name = prefix + "YArray"
+  ystart_name = prefix + "YCStartV"
+  yend_name   = prefix + "YCEndV"
+  
+;
+; I originally thought that Only plots over maps could have
+; 2D lat/lon coordinates, but I don't believe this is the case.
+; So, I've commented out the valid_2dcoord_types stuff.
+;
+;  valid_2dcoord_types = (/"contour_map","vector_map"/)
+;
+; First check if a valid "lon2d" attribute is set and whether we are 
+; drawing over a map. If both conditions are not met, then
+; check for a regular coordinate array.  One of these will be used for 
+; sf/vf/XArray.
+;
+  if(.not.((isatt(res,xstart_name).and.isatt(res,xend_name)).or.\
+            isatt(res,xarray_name))) then
+;    if(any(type.eq.valid_2dcoord_types).and. \
+;       is_valid_latlon2d_attr(data,"lon2d")) then
+    if(is_valid_latlon2d_attr(data,"lon2d")) then
+      res@$xarray_name$ = data@lon2d
+    else 
+      if(is_valid_coord(data,"x")) then
+        res@$xarray_name$ = data&$data!1$
+      end if
+    end if
+  end if
+
+;
+; First check if a valid "lat2d" attribute is set. If not set, then
+; check for a regular coordinate array.  One of these will be used for 
+; sf/vf/YArray.
+;
+  if(.not.((isatt(res,ystart_name).and.isatt(res,yend_name)).or.\
+            isatt(res,yarray_name))) then
+;    if(any(type.eq.valid_2dcoord_types).and. \
+;       is_valid_latlon2d_attr(data,"lat2d")) then
+    if(is_valid_latlon2d_attr(data,"lat2d")) then
+      res@$yarray_name$ = data@lat2d
+    else
+      if(is_valid_coord(data,"y")) then
+        res@$yarray_name$ = data&$data!0$
+     end if
+    end if
+  end if
+
+  return
+end
+
+;***********************************************************************;
+; Function : check_class_name                                           ;
+;                  plot: graphic                                        ;
+;             plot_type: string                                         ;
+;                                                                       ;
+; This procedure checks what type "plot" is, and returns the plot from  ;
+; it (for example, if "plot" is an overlay, and you want the contour    ;
+; part of it, it will return the contour plot.                          ;
+;                                                                       ;
+;***********************************************************************;
+undef("check_class_name")
+function check_class_name(plot:graphic,plot_type:string)
+begin
+  class_name = NhlClassName(plot)
+
+  if(class_name.eq."logLinPlotClass".or.class_name.eq."irregularPlotClass")
+    new_plot = plot@$plot_type$
+  else
+    new_plot = plot
+  end if
+ return(new_plot)
+
+end
+
+;***********************************************************************;
+; Function : get_allowed_latnames                                       ;
+;                                                                       ;
+; Get list of names allowed for a latitude coordinate array.            ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_latnames")
+function get_allowed_latnames()
+begin
+  return((/"lat","Lat","Latitude","LAT","latitude","LATITUDE","hlat",\
+           "lat_u","lat_t","lat_98","lat1","lat2","yc"/))
+end
+
+;***********************************************************************;
+; Function : get_allowed_lonnames                                       ;
+;                                                                       ;
+; Get list of names allowed for a longitude coordinate array.           ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_lonnames")
+function get_allowed_lonnames()
+begin
+  return((/"lon","Lon","Longitude","LON","longitude","LONGITUDE","hlon",\
+           "long","lon_u","lon_t","lon_98","lon1","lon2","xc"/))
+end
+
+;***********************************************************************;
+; Function : get_allowed_pres_units_pa                                  ;
+;                                                                       ;
+; Get list of names allowed for pressure units in pascals.              ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_pres_units_pa")
+function get_allowed_pres_units_pa()
+begin
+  return((/"Pa","pa","PA","Pascals","pascals","PASCALS"/))
+end
+
+;***********************************************************************;
+; Function : get_allowed_pres_units_hpa                                 ;
+;                                                                       ;
+; Get list of names allowed for pressure units in hecto-pascals.        ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_pres_units_hpa")
+function get_allowed_pres_units_hpa()
+begin
+  return((/"hpa","hPa","HPA","hecto-pascals","HECTO-PASCALS"/))
+end
+
+;***********************************************************************;
+; Function : get_allowed_pres_units_mb                                  ;
+;                                                                       ;
+; Get list of names allowed for pressure units in millibars.            ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_pres_units_mb")
+function get_allowed_pres_units_mb()
+begin
+  return((/"mb","Mb","MB","millibar","millibars","MILLIBARS", \
+           "hybrid_sigma_pressure"/))
+end
+
+;***********************************************************************;
+; Function : get_allowed_pres_units                                     ;
+;                                                                       ;
+; Get list of names allowed for pressure units.                         ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_pres_units")
+function get_allowed_pres_units()
+begin
+  mb  = get_allowed_pres_units_mb()
+  pa  = get_allowed_pres_units_pa()
+  hpa = get_allowed_pres_units_hpa()
+  nmb  = dimsizes(mb)
+  npa  = dimsizes(pa)
+  nhpa = dimsizes(hpa)
+  all_pres = new(nmb+npa+nhpa,string)
+  all_pres(0:nmb-1)       = mb
+  all_pres(nmb:nmb+npa-1) = pa
+  all_pres(nmb+npa:)      = hpa
+  return(all_pres)
+end
+
+;***********************************************************************;
+; Function : get_allowed_lat_units                                      ;
+;                                                                       ;
+; Get list of names allowed for the units attribute of a latitude       ;
+; coordinate array.                                                     ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_lat_units")
+function get_allowed_lat_units()
+begin
+  return((/"degrees_north","degrees-north","degree_north","degrees north",\
+           "degrees_N","Degrees_north","degree_N","degreeN","degreesN", \
+           "deg north"/))
+end
+
+;***********************************************************************;
+; Function : get_allowed_lon_units                                      ;
+;                                                                       ;
+; Get list of names allowed for the units attribute of a longitude      ;
+; coordinate array.                                                     ; 
+;                                                                       ;
+;***********************************************************************;
+undef("get_allowed_lon_units")
+function get_allowed_lon_units()
+begin
+  return((/"degrees_east","degrees-east","degree_east","degrees east",\
+           "degrees_E","Degrees_east","degree_E","degreeE","degreesE",\
+           "deg east"/))
+end
+
+;***********************************************************************;
+; Function : is_valid_latlon_coord                                      ;
+;                                                                       ;
+; Checks if the X or Y coordinate variable contains real a valid lat or ;
+; lon coordinate array. It does this just by checking for a valid       ;
+; "units" attribute.                                                    ;
+;                                                                       ;
+; It used to be that we checked the name of the coordinate array as well;
+; as the units.  But, according to D. Shea, it is enough check for just ;
+; the units. So, as of Dec 2003, we are now just checking units.        ;
+;                                                                       ;
+; We don't print out any warning messages in this function, b/c         ;
+; sometimes the calling routine is just calling it for informational    ;
+; purposes. It is up to the calling routine to print an error if a False;
+; value is returned.                                                    ;
+;***********************************************************************;
+undef("is_valid_latlon_coord")
+function is_valid_latlon_coord(data:numeric,axis:string,latorlon:string,\
+                               res:logical)
+begin
+;
+; If tfDoNDCOverlay is set to True, then coordinate arrays shouldn't be
+; used in the first place, and hence the units don't need to be correct.
+; It is up to the user to do the right thing and *not* set coordinate
+; arrays.  Here, we check for the setting of this resource to True,
+; and if so, then the units attribute isn't even checked.
+;
+  if(get_res_value_keep(res,"tfDoNDCOverlay",False)) then
+    return(False)
+  end if
+
+  if(axis.eq."x") then
+    if(is_valid_coord(data,"x")) then
+      if(latorlon.eq."lat") then
+        if(isatt(data&$data!1$,"units").and. \
+           any(data&$data!1$@units.eq.get_allowed_lat_units)) then
+          return(True)
+        end if
+;
+; Otherwise, we must be dealing with longitudes.
+;
+      else
+        if(isatt(data&$data!1$,"units").and.\
+          any(data&$data!1$@units.eq.get_allowed_lon_units)) then
+          return(True)
+        end if
+      end if
+    end if
+;
+; We are dealing with the Y axis.
+;
+  else
+    if(is_valid_coord(data,"y")) then
+      if(latorlon.eq."lat") then
+        if(isatt(data&$data!0$,"units").and.\
+          any(data&$data!0$@units.eq.get_allowed_lat_units)) then
+          return(True)
+        end if
+;
+; Otherwise, we must be dealing with longitudes.
+;
+      else
+        if(isatt(data&$data!0$,"units").and.\
+          any(data&$data!0$@units.eq.get_allowed_lon_units)) then
+          return(True)
+        end if
+      end if
+    end if
+
+  end if
+  return(False)
+end
+
+
+;***********************************************************************;
+; Procedure : gsn_geop_hgt                                              ;
+;                                                                       ;
+; Returns geopotential height (in km) given array p (pressure in mb)    ;
+; p must lie between 1013.25 mb and 2.54e-06 mb.                        ;
+;                                                                       ;
+; Algorithm is simply logarithmic interpolation from Standard           ;
+; Atmosphere.                                                           ;
+; Intended to provide an ESTIMATE of geopotential height when           ;
+; temperature and geopotential data are lacking.                        ;
+;                                                                       ;
+; Values above 85km were obtained from the COSPAR International         ;
+; Reference Atmosphere: 1986 QB495 .A38 v.10 No.12  [FL]                ;
+;                                                                       ;
+;***********************************************************************;
+ 
+undef("gsn_geop_hgt")
+function gsn_geop_hgt( p[*]:numeric )
+local nsa,psa,zsa,ptmp,npres,found,i,j
+ 
+begin
+  if(isatt(p,"units").and.(any(p@units.eq.get_allowed_pres_units_pa())))
+    ptmp = p * 0.01  ; Convert to mb
+  else
+    if((.not.isatt(p,"units")).or. \
+       (isatt(p,"units").and. \
+        .not.(any(p@units.eq.get_allowed_pres_units_hpa()).or. \
+              any(p@units.eq.get_allowed_pres_units_mb()))))
+      print("gsn_geop_hgt: Warning: The 'units' attribute is either not set, or it is not set")
+      print("to the recognized names for 'hecto-pascals' or 'millibars', so")
+      print("assuming pressure values are already converted to millibars.")
+    end if
+    ptmp = tofloat_wunits(p)     ; Assume already converted to mb!
+  end if
+
+  nsa = 53
+  psa = new( (/nsa/), float, 1.e36 )
+  zsa = new( (/nsa/), float, 1.e36 )
+ 
+  zsa = (/ -0.3, \                      ; km
+            0.0,  0.5,  1.0,  1.5,  2.0,  2.5,  3.0, \
+            3.5,  4.0,  4.5,  5.0,  5.5,  6.0,  6.5, \
+            7.0,  7.5,  8.0,  8.5,  9.0,  9.5, 10.0, \
+           11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, \
+           18.0, 19.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, \
+           50.0, 60.0, 70.0, 80.0, 84.8, 87.7, 90.6, \
+           93.3, 96.1, 97.5,100.4,104.9, \
+          110.0,114.2,116.7,119.7/)
+
+  psa = (/ 1050., \                     ; mb (hPa)
+           1013.25, 954.61, 898.76, 845.59, 795.01, 746.91, 701.21,    \
+           657.80, 616.60, 577.52, 540.48, 505.39, 472.17, 440.75,     \
+           411.05, 382.99, 356.51, 331.54, 308.00, 285.84, 264.99,     \
+           226.99, 193.99, 165.79, 141.70, 121.11, 103.52, 88.497,     \
+           75.652, 64.674, 55.293, 25.492, 11.970, 5.746, 2.871, 1.491,\
+           0.798, 0.220, 0.052, 0.010, 0.00485,0.00294,0.000178, \
+           0.000108, 0.0000656, 0.0000511, 0.0000310, 0.0000146, \
+           0.00000691, 0.00000419, 0.00000327, 0.00000254 /)
+
+
+  if ( any(ptmp.lt.min(psa)) .or. any(ptmp.gt.max(psa))) then
+    print("gsn_geop_hgt: Fatal: The pressure values do not fall between")
+    print(min(psa) + " mb and " + max(psa) + " mb.")
+    print("Execution halted.")
+    exit
+  end if
+ 
+  npres = dimsizes(ptmp)
+  gph = new(npres,float)
+
+  do i = 0,npres-1
+    found = False
+    j = 0
+
+    do while(.not.found.and.j.le.nsa-2)
+     if ( ( ptmp(i) .le. psa(j) ) .and. ( ptmp(i) .ge. psa(j+1) ) ) then
+       gph(i) = zsa(j) + (zsa(j+1) - zsa(j)) * \
+                log( psa(j)/ptmp(i) )/log( psa(j)/psa(j+1) )
+       found = True 
+     end if
+     j = j + 1
+    end do
+
+  end do
+ 
+  delete(psa)
+  delete(zsa)
+  delete(ptmp)
+ 
+  return(gph)
+ 
+end
+ 
+
+;***********************************************************************;
+; This function calculates the zonal means.                             ;
+;***********************************************************************;
+undef("calculate_zonal_means")
+function calculate_zonal_means(data2,res2)
+local zms2, nmeans
+begin
+  zref  = get_res_value(res2,"gsnZonalMeanYRefLine",0.)
+  zmns2 = dim_avg(data2)
+;
+; The "if" code below was originally checking for le/ge "0.", rather
+; than "zref". I think this is a bug, because I think originally, 
+; the zref line was set to 0. no matter what.
+;
+  if(min(zmns2).le.zref.or.max(zmns2).ge.zref) then
+    nmeans    = dimsizes(zmns2)
+    zmns      = new((/2,nmeans/),typeof(zmns2))
+    zmns(0,:) = zmns2
+    zmns(1,:) = fspan(zref,zref,nmeans)
+  else
+    zmns = zmns2
+  end if
+  delete(zmns2)
+  return(zmns)
+end
+
+;***********************************************************************;
+; Procedure : check_for_y_lat_coord                                     ;
+;                data: numeric                                          ;
+;                 res: logical                                          ;
+;                type: string                                           ;
+;                                                                       ;
+; This procedure checks if the data contains a coordinate variable in   ;
+; dimension 0 of an allowable list of latnames                          ;
+;                                                                       ;
+; If so, then it sets sf/vfYArray (depending on if type equals          ;
+; "contour*" or "vector*" to this coordinate array.                     ;
+;                                                                       ;
+;***********************************************************************;
+undef("check_for_y_lat_coord")
+procedure check_for_y_lat_coord(data:numeric,res:logical,type:string)
+local latname, char_latname, array_name, start_name, end_name, \
+valid_2dcoord_types
+begin 
+;
+; If the data is 1D, no coord arrays should exist.
+;
+  if(dimsizes(dimsizes(data)).eq.1) then
+     return
+  end if
+
+;
+;
+; If tfDoNDCOverlay is set to True, then coordinate arrays shouldn't be
+; used in the first place.  It is up to the user to do the right thing
+; and *not* set coordinate arrays.  Here, we check for the setting
+; of this resource to True, and if so, then no warning messages are 
+; printed out if no coordinate arrays are set.
+;
+  if(get_res_value_keep(res,"tfDoNDCOverlay",False)) then
+    return(False)
+  end if
+;
+; Determine what kind of plot we need to set the data field resources for.
+; 
+  if(type.eq."vector".or.type.eq."vector_map")
+    array_name = "vfYArray"
+    start_name = "vfYCStartV"
+    end_name   = "vfYCEndV"
+  else
+    array_name = "sfYArray"
+    start_name = "sfYCStartV"
+    end_name   = "sfYCEndV"
+  end if
+
+;
+; I originally thought that Only plots over maps could have
+; 2D lat/lon coordinates, but I don't believe this is the case.
+; So, I've commented out the valid_2dcoord_types stuff.
+;
+;  valid_2dcoord_types = (/"contour_map","vector_map"/)
+;
+; Make sure user is not already setting own *Start* and *End*
+; or *Array resources. Then check if a valid "lat2d" attribute
+; is set or if a valid coordinate array is set.
+;
+  if(.not.((isatt(res,start_name).and.isatt(res,end_name)).or.\
+            isatt(res,array_name))) then
+;    if(any(type.eq.valid_2dcoord_types).and. \
+;       is_valid_latlon2d_attr(data,"lat2d")) then
+    if(is_valid_latlon2d_attr(data,"lat2d")) then
+      res@$array_name$ = data@lat2d
+      return
+    else 
+      if(is_valid_latlon_coord(data,"y","lat",res))
+        res@$array_name$ = data&$data!0$
+        return
+      else
+        print("check_for_y_lat_coord: Warning: Data either does not contain a valid latitude coordinate array or doesn't contain one at all.")
+        print("A valid latitude coordinate array should have a 'units' attribute equal to one of the following values: ")
+        print("    " + cat_strings(get_allowed_lat_units))
+      end if
+    end if
+  end if 
+
+  return
+end
+
+;***********************************************************************;
+; Procedure : check_for_x_lat_coord                                     ;
+;                data: numeric                                          ;
+;                 res: logical                                          ;
+;                type: string                                           ;
+;                                                                       ;
+; This procedure checks if the data contains a coordinate variable in   ;
+; dimension 1 of an allowable list of latnames                          ;
+;                                                                       ;
+; If so, then it sets sf/vfYArray (depending on if type equals          ;
+; "contour*" or "vector*" to this coordinate array.                     ;
+;                                                                       ;
+;***********************************************************************;
+undef("check_for_x_lat_coord")
+procedure check_for_x_lat_coord(data:numeric,res:logical,type:string)
+local latname, char_latname, array_name, start_name, end_name, \
+valid_2dcoord_types
+begin 
+;
+; If the data is 1D, no coord arrays should exist.
+;
+  if(dimsizes(dimsizes(data)).eq.1) then
+     return
+  end if
+
+;
+; If tfDoNDCOverlay is set to True, then coordinate arrays shouldn't be
+; used in the first place.  It is up to the user to do the right thing
+; and *not* set coordinate arrays.  Here, we check for the setting
+; of this resource to True, and if so, then no warning messages are 
+; printed out if no coordinate arrays are set.
+;
+  if(get_res_value_keep(res,"tfDoNDCOverlay",False)) then
+    return(False)
+  end if
+;
+; Determine what kind of plot we need to set the data field resources for.
+; 
+  if(type.eq."vector".or.type.eq."vector_map")
+    array_name = "vfXArray"
+    start_name = "vfXCStartV"
+    end_name   = "vfXCEndV"
+  else
+    array_name = "sfXArray"
+    start_name = "sfXCStartV"
+    end_name   = "sfXCEndV"
+  end if
+
+;
+; I originally thought that Only plots over maps could have
+; 2D lat/lon coordinates, but I don't believe this is the case.
+; So, I've commented out the valid_2dcoord_types stuff.
+;
+;  valid_2dcoord_types = (/"contour_map","vector_map"/)
+
+;
+; Make sure user is not already setting own *Start* and *End*
+; or *Array resources. Then check if a valid "lat2d" attribute
+; is set or if a valid coordinate array is set.
+;
+  if(.not.((isatt(res,start_name).and.isatt(res,end_name)).or. \
+            isatt(res,array_name))) then
+;    if(any(type.eq.valid_2dcoord_types).and. \
+;       is_valid_latlon2d_attr(data,"lat2d")) then
+    if(is_valid_latlon2d_attr(data,"lat2d")) then
+      res@$array_name$ = data@lat2d
+      return
+    else 
+      if(is_valid_latlon_coord(data,"x","lat",res))
+        res@$array_name$ = data&$data!1$
+        return
+      else
+        print("check_for_x_lat_coord: Warning: Data either does not contain a valid latitude coordinate array or doesn't contain one at all.")
+        print("A valid latitude coordinate array should have a 'units' attribute equal to one of the following values: ")
+        print("    " + cat_strings(get_allowed_lat_units))
+      end if
+    end if
+  end if
+
+  return
+end
+
+;***********************************************************************;
+; Procedure : check_for_lon_coord                                       ;
+;                data: numeric                                          ;
+;                 res: logical                                          ;
+;                type: string                                           ;
+;                                                                       ;
+; This procedure checks if the data contains a coordinate variable in   ;
+; dimension 1 of an allowable list of lonnames                          ;
+;                                                                       ;
+; If so, then it sets sf/vfXArray (depending on if type equals          ;
+; "contour*" or "vector*" to this coordinate array.                     ;
+;                                                                       ;
+;***********************************************************************;
+undef("check_for_lon_coord")
+procedure check_for_lon_coord(data:numeric,res:logical,type:string)
+local lonname, char_lonname, array_name, start_name, end_name, \
+valid_2dcoord_types
+begin 
+;
+; If the data is 1D, no coord arrays should exist.
+;
+  if(dimsizes(dimsizes(data)).eq.1) then
+     return
+  end if
+
+;
+; If tfDoNDCOverlay is set to True, then coordinate arrays shouldn't be
+; used in the first place.  It is up to the user to do the right thing
+; and *not* set coordinate arrays.  Here, we check for the setting
+; of this resource to True, and if so, then no warning messages are 
+; printed out if no coordinate arrays are set.
+;
+  if(get_res_value_keep(res,"tfDoNDCOverlay",False)) then
+    return(False)
+  end if
+
+;
+; Determine what kind of plot we need to set the data field resources for.
+; 
+  if(type.eq."vector".or.type.eq."vector_map")
+    array_name = "vfXArray"
+    start_name = "vfXCStartV"
+    end_name   = "vfXCEndV"
+  else
+    array_name = "sfXArray"
+    start_name = "sfXCStartV"
+    end_name   = "sfXCEndV"
+  end if
+
+;
+; I originally thought that Only plots over maps could have
+; 2D lat/lon coordinates, but I don't believe this is the case.
+; So, I've commented out the valid_2dcoord_types stuff.
+;
+;  valid_2dcoord_types = (/"contour_map","vector_map"/)
+
+;
+; Make sure user is not already setting his own *Start* and *End*
+; or *Array resources. If not, check for a valid lon2d attribute
+; or a valid coordinate array.
+;
+  if(.not.((isatt(res,start_name).and.isatt(res,end_name)).or.\
+            isatt(res,array_name))) then
+;    if(any(type.eq.valid_2dcoord_types).and. \
+;       is_valid_latlon2d_attr(data,"lon2d")) then
+    if(is_valid_latlon2d_attr(data,"lon2d")) then
+      res@$array_name$ = data@lon2d
+      return
+    else 
+      if(is_valid_latlon_coord(data,"x","lon",res))
+        res@$array_name$ = data&$data!1$
+        return
+      else
+        print("check_for_lon_coord: Warning: Data either does not contain a valid longitude coordinate array or doesn't contain one at all.")
+        print("A valid longitude coordinate array should have a 'units' attribute equal to one of the following values: ")
+        print("    " + cat_strings(get_allowed_lon_units))
+      end if
+    end if 
+  end if
+
+  return
+end
+
+;***********************************************************************;
+; Function : get_polar_type                                             ;
+;                 res: logical                                          ;
+;                                                                       ;
+; This function checks the resource list for gsnPolar, gsnPolarNH, or   ;
+; gsnPolarSH to and returns what kind of polar plot is desired.         ;
+;                                                                       ;
+; The default will be northern ("NH") if none is set.                   ;
+;***********************************************************************;
+undef("get_polar_type")
+function get_polar_type(res:logical)
+local polar_nh, polar_sh
+begin
+  polar_type = get_res_value(res,"gsnPolar","")
+  polar_nh   = get_res_value(res,"gsnPolarNH",False)
+  polar_sh   = get_res_value(res,"gsnPolarSH",False)
+
+  if(polar_type.eq."NH".or.polar_type.eq."nh")
+    return("NH")
+  end if
+  if(polar_type.eq."SH".or.polar_type.eq."sh")
+    return("SH")
+  end if
+  if(polar_type.ne."")
+    print("get_polar_type: Warning: Invalid option for gsnPolar. Defaulting to northern hemisphere.")
+    return("NH")
+  end if    
+;
+; Can't have polar_nh and polar_sh both False or both True.
+;
+  if(polar_nh.and.polar_sh) 
+    print("get_polar_type: Fatal: You have indicated you want both northern and southern polar projections.")
+    print("Only one of them can be selected, so please correct this.")
+    print("Execution halted.")
+    exit        
+  end if
+
+  if(.not.polar_nh.and..not.polar_sh) 
+    print("get_polar_type: Warning: No polar projection has been selected. Defaulting to northern hemisphere.")
+    return("NH")
+  end if
+
+  if(polar_nh) 
+    return("NH")
+  else
+    return("SH")
+  end if
+end
+
+;***********************************************************************;
+; Procedure : add_subtitles                                             ;
+;                wks: graphic                                           ;
+;               plot: graphic                                           ;
+;        left_string: logical                                           ;
+;      center_string: logical                                           ;
+;       right_string: logical                                           ;
+;                res: logical                                           ;
+;                                                                       ;
+; This procedure adds one to three subtitles to the top of the plot,    ;
+; depending on whether the special resources gsnLeftString,             ;
+; gsnCenterString, and/or gsnRightString had been set.                  ;
+;***********************************************************************;
+undef("add_subtitles")
+procedure add_subtitles(wks:graphic,plot:graphic,left_string:logical,\
+                        center_string:logical,right_string:logical,\
+                        res:logical)
+local text_object, parallel_pos, anno, just, strings, txres, amres, \
+num_res, ablank, chararray, string_len, colors, ss
+begin
+  amres = False   ; Annotation resources
+  txres = False   ; Text resources
+  txres = get_res_eq(res,"tx")
+  amres = get_res_eq(res,"am")
+;
+; Get the height, as we use this to calculate distance of strings
+; from top of plot.
+;
+  getvalues plot
+    "vpHeightF"  : vph
+  end getvalues
+
+  num_res  = 0
+  parallel_pos = new(3,float)
+  parallel_pos(0) = get_res_value(left_string, \
+                                  "gsnLeftStringParallelPosF",   0.0)
+  parallel_pos(1) = get_res_value(center_string, \
+                                  "gsnCenterStringParallelPosF", 0.5)
+  parallel_pos(2) = get_res_value(right_string, \
+                                  "gsnRightStringParallelPosF",  1.0)
+
+  zone    = get_res_value(amres,"amZone",3)
+  orthpos = get_res_value(amres,"amOrthogonalPosF",0.01*vph)
+  orthogonal_pos = new(3,float)
+  orthogonal_pos(0) = get_res_value(left_string, \
+                                  "gsnLeftStringOrthogonalPosF",  orthpos)
+  orthogonal_pos(1) = get_res_value(center_string, \
+                                  "gsnCenterStringOrthogonalPosF",orthpos)
+  orthogonal_pos(2) = get_res_value(right_string, \
+                                  "gsnRightStringOrthogonalPosF", orthpos)
+
+  just         = (/"left","center","right"/)
+  fhghts       = (/0.,0.,0./)
+  strings      = (/"","",""/)  
+  colors       = True  ;  We can't set to an array, because colors could
+                       ; be integers or strings. Instead, we'll use
+                       ; attributes to set the colors for each string.
+;
+; Set the three strings and their fonts, colors, and font heights. 
+;
+  if(left_string)
+    if(isatt(left_string,"gsnStringFont"))
+      txres@txFont = left_string@gsnStringFont
+    end if
+    strings(0) = left_string@sub_string
+    if(isatt(left_string,"gsnLeftStringFontHeightF")) then
+      fhghts(0) = get_res_value_keep(left_string,"gsnLeftStringFontHeightF",0.)
+    else
+      if(isatt(left_string,"gsnStringFontHeightF")) then
+        fhghts(0) = get_res_value_keep(left_string,"gsnStringFontHeightF",0.)
+      else
+        fhghts(0) = get_res_value_keep(txres,"txFontHeightF",0.0)
+      end if
+    end if
+    if(isatt(left_string,"gsnLeftStringFontColor")) then
+      colors@s0 = get_res_value_keep(left_string,"gsnLeftStringFontColor",1)
+    else
+      colors@s0 = get_res_value_keep(left_string,"gsnStringFontColor",1)
+    end if
+  end if
+  if(center_string) 
+    if(isatt(center_string,"gsnStringFont"))
+      txres@txFont = center_string@gsnStringFont
+    end if
+    strings(1) = center_string@sub_string
+    if(isatt(center_string,"gsnCenterStringFontHeightF")) then
+      fhghts(1) = get_res_value_keep(center_string,"gsnCenterStringFontHeightF",0.)
+    else
+      if(isatt(center_string,"gsnStringFontHeightF")) then
+        fhghts(1) = get_res_value_keep(center_string,"gsnStringFontHeightF",0.)
+      else
+        fhghts(1) = get_res_value_keep(txres,"txFontHeightF",0.0)
+      end if
+    end if
+    if(isatt(center_string,"gsnCenterStringFontColor")) then
+      colors@s1 = get_res_value_keep(center_string,"gsnCenterStringFontColor",1)
+    else
+      colors@s1 = get_res_value_keep(center_string,"gsnStringFontColor",1)
+    end if
+  end if
+  if(right_string)
+    if(isatt(right_string,"gsnStringFont"))
+      txres@txFont = right_string@gsnStringFont
+    end if
+    strings(2) = right_string@sub_string
+    if(isatt(right_string,"gsnRightStringFontHeightF")) then
+      fhghts(2) = get_res_value_keep(right_string,"gsnRightStringFontHeightF",0.)
+    else
+      if(isatt(right_string,"gsnStringFontHeightF")) then
+        fhghts(2) = get_res_value_keep(right_string,"gsnStringFontHeightF",0.)
+      else
+        fhghts(2) = get_res_value_keep(txres,"txFontHeightF",0.0)
+      end if
+    end if
+    if(isatt(right_string,"gsnRightStringFontColor")) then
+      colors@s2 = get_res_value_keep(right_string,"gsnRightStringFontColor",1)
+    else
+      colors@s2 = get_res_value_keep(right_string,"gsnStringFontColor",1)
+    end if
+  end if
+;
+; Remove the text font height and txString, so they don't get
+; applied at the end.
+;
+  if(isatt(txres,"txFontHeightF")) then
+    delete(txres@txFontHeightF)
+  end if
+  if(isatt(txres,"txString")) then
+    delete(txres@txString)
+  end if
+
+  ablank = stringtocharacter(" ")
+  do i=0,2
+    if(.not.ismissing(strings(i)).and.strings(i).ne."")
+;
+; Check to make sure the string doesn't contain only blanks.
+;
+      chararray = stringtocharacter(strings(i)) 
+      string_len = dimsizes(chararray)-1
+
+      if(any(chararray(0:string_len-1).ne.ablank(0)))
+        ss = "s" + i
+        text_object = create just(i)+"string" textItemClass wks
+          "txString"      : strings(i)
+          "txFontHeightF" : fhghts(i)
+          "txFontColor"   : colors@$ss$
+        end create
+
+        attsetvalues_check(text_object,txres)   ; Set some text resources.
+
+        anno = NhlAddAnnotation(plot,text_object)  ; Add annotation to plot.
+
+        setvalues anno
+          "amZone"          : zone          ; Outside plot area
+          "amSide"          : "top"         ; Subtitle at top.
+          "amParallelPosF"  : parallel_pos(i)
+          "amJust"          : "bottom"+just(i)
+          "amOrthogonalPosF": orthogonal_pos(i) ; Move away from top edge
+          "amResizeNotify"  : True          ; Resize subtitle if map resized.
+        end setvalues
+        attsetvalues_check(anno,amres)   ; Set some annotation resources.
+      end if
+      delete(chararray)
+    end if
+  end do
+  return
+end
+
+;***********************************************************************;
+; Procedure : add_labelbar                                              ;
+;                wks: graphic                                           ;
+;               plot: graphic                                           ;
+;               zone: integer                                           ;
+;        font_height: numeric                                           ;
+;               type: string                                            ;
+;                res: logical                                           ;
+;                                                                       ;
+; This procedure adds a labelbar to "plot" (which must be either a      ;
+; contour or vector plot). The default is to add the labelbar to the    ;
+; bottom of the plot, unless resources are set to change this. The zone ;
+; must be passed in, as well as the font height for the labelbar labels.;
+; "type" is the type of plot ("ce", "polar", and so on) so the labelbar ;
+; can be positioned differently depending on the plot.                  ;
+;***********************************************************************;
+undef("add_labelbar")
+procedure add_labelbar(wks:graphic,plot,zone:integer, \
+                       font_height:numeric,type:string,res:logical)
+local anno, num_res, amres, lbres, labelbar_object, lbar_orient, \
+lbar_side, lbar_just, fill_patterns, fill_scales, mono_fill_pat, \
+mono_fill_scl, mono_fill_col, levels
+begin
+;
+; If lbLabelBarOn is set to False, then don't bother with a labelbar.
+;
+  if(check_attr(res,"lbLabelBarOn",False,False))
+    return
+  end if
+
+  lbres = True   ; hold labelbar resources
+  amres = True   ; hold annomanager resources 
+
+  parallel = get_res_value(res,"pmLabelBarParallelPosF",0.5)
+
+; Check for annotation/labelbar resources
+
+  lbres = get_res_eq(res,(/"lb","vp"/))
+  amres = get_res_eq(res,"am")
+
+  set_attr(amres,"amZone",zone)
+  set_attr(amres,"amResizeNotify",True)
+  set_attr(amres,"amParallelPosF",parallel)
+  set_attr(lbres,"lbLabelFontHeightF",font_height)
+
+; Default is horizontal at the bottom.
+
+  lbar_orient = "horizontal"
+  lbar_side   = "bottom"
+  lbar_just   = "bottomcenter"
+
+  if(check_attr(lbres,"lbOrientation","vertical",True).or.\
+     check_attr(lbres,"lbOrientation",1,True)) then
+    lbar_orient = "vertical"
+    lbar_side   = "right"
+    lbar_just   = "centerright"
+  end if
+
+  set_attr(lbres,"lbOrientation",lbar_orient)
+  set_attr(amres,"amSide",lbar_side)
+  set_attr(amres,"amJust",lbar_just)
+
+; 
+; Determine what the default labelbar width and height should be depending
+; on shape of plot (this is for a horizontal labelbar).  For example, if
+; the plot is square, then make the labelbar the same width as the plot.
+; If the plot is 1:2, then make the labelbar .75 * width of the plot.
+;
+; For a vertical labelbar, make the height the same as the height of the
+; plot.
+;
+  getvalues plot
+    "vpWidthF"  : width    ; Width of plot
+    "vpHeightF" : height   ; Height of plot
+  end getvalues
+
+  ratio1 = width/height
+  ratio2 = height/width
+  ratio = min((/ratio1,ratio2/))
+  ratios  = (/0.50, 0.75, 1.00/)  ; viewport ratios
+
+  lwscale   = (/0.75, 0.90, 1.00/)
+  wh_ind    = ind(ratio.le.ratios)
+  def_lvpwf = lwscale(wh_ind(0))    ; default width scale for labelbar
+
+  amres = get_res_eq(res,"am")
+  if(lbar_orient.eq."vertical") then
+    if(type.eq."polar")
+      orth = get_res_value(res,"pmLabelBarOrthogonalPosF",0.05)
+    else
+      orth = get_res_value(res,"pmLabelBarOrthogonalPosF",0.03)
+    end if
+    height = get_res_value(res,"pmLabelBarHeightF",height)
+    width  = get_res_value(res,"pmLabelBarWidthF",0.2*width)
+  else
+    height = get_res_value(res,"pmLabelBarHeightF",0.3*height)
+    width  = get_res_value(res,"pmLabelBarWidthF",def_lvpwf*width)
+    if(zone.eq.2)
+      if(type.eq."polar")
+        orth = get_res_value(res,"pmLabelBarOrthogonalPosF",0.03)
+      else
+        orth = get_res_value(res,"pmLabelBarOrthogonalPosF",0.06)
+      end if
+    else
+      orth = get_res_value(res,"pmLabelBarOrthogonalPosF",0.0)
+    end if
+  end if
+  set_attr(lbres,"vpHeightF",height)
+  set_attr(lbres,"vpWidthF",width)
+  set_attr(amres,"amOrthogonalPosF",orth)
+
+  class_name = NhlClassName(plot)
+  if(class_name.eq."logLinPlotClass".or.class_name.eq."irregularPlotClass")
+    the_plot = plot@contour
+  else
+    the_plot = plot
+  end if
+  if(class_name.eq."contourPlotClass".or.class_name.eq."logLinPlotClass".or.\
+     class_name.eq."irregularPlotClass")
+    getvalues the_plot
+      "cnLevels"              : levels
+      "cnFillDotSizeF"        : dot_size
+      "cnFillColors"          : tmp_colors
+      "cnFillPatterns"        : tmp_fill_patterns
+      "cnFillPattern"         : fill_pattern
+      "cnFillScales"          : tmp_fill_scales
+      "cnFillScaleF"          : fill_scale
+      "cnFillMode"            : fill_mode
+      "cnMonoFillPattern"     : mono_fill_pat
+      "cnMonoFillScale"       : mono_fill_scl
+      "cnMonoFillColor"       : mono_fill_col
+      "cnLabelBarEndStyle"    : end_labelbar_style
+      "cnLabelBarEndLabelsOn" : end_labels_on
+      "lbLabelStrings"        : lbstrings
+    end getvalues
+;
+; cnLabelBarEndLabelsOn was deprecated in V5.0, but we still need to
+; check for it. It's been replaced by cnLabelBarEndStyle.
+;
+; The three styles are:
+;
+; 0 - IncludeOuterBoxes  (default)
+; 1 - IncludeMinMaxLabels (the equivalent of cnLabelBarEndLabelsOn=True)
+; 2 - ExcludeOuterBoxes
+; 
+; If the style is 0 (the default) *and* xxLabelBarEndLabelsOn is
+; True, then set the style to 1. If the style is 1 or 2 (the only
+; other valid values), then xxLabelBarEndLabelsOn should be set True.
+;
+    if(end_labelbar_style.eq.0) then
+      if(end_labels_on) then
+        end_labelbar_style = 1
+      end if
+    else
+      end_labels_on = True
+    end if
+    if(end_labelbar_style.eq.2) then
+; Don't use the first fill color, scale, or pattern.
+      nc2 = dimsizes(tmp_colors)
+      end_labels_on = True
+      colors        = tmp_colors(1:nc2-2)
+      fill_scales   = tmp_fill_scales(1:nc2-2)
+      fill_patterns = tmp_fill_patterns(1:nc2-2)
+    else
+      colors        = tmp_colors
+      fill_scales   = tmp_fill_scales
+      fill_patterns = tmp_fill_patterns
+    end if
+    delete(tmp_colors)
+    delete(tmp_fill_scales)
+    delete(tmp_fill_patterns)
+;
+; Check if the fill mode is "RasterFill". If so, be sure to 
+; set lbRasterFillOn to True
+;
+    if(.not.isatt(lbres,"lbRasterFillOn").and.fill_mode.eq.1)
+      lbres@lbRasterFillOn = True
+    end if
+;
+; Check if we want different fill patterns or fill scales.  If so, we
+; have to pass these on to the labelbar.
+;
+    lbres@lbMonoFillColor = mono_fill_col
+    if(.not.mono_fill_pat)
+      lbres@lbMonoFillPattern = False
+      lbres@lbFillPatterns    = fill_patterns
+      lbres@lbFillDotSizeF    = dot_size
+    else
+      lbres@lbFillPattern = fill_pattern
+    end if
+    if(.not.mono_fill_scl)
+      lbres@lbMonoFillScale = False
+      lbres@lbFillScales    = fill_scales
+      lbres@lbFillDotSizeF  = dot_size
+    else
+      lbres@lbFillScaleF    = fill_scale
+    end if
+  else
+    getvalues the_plot
+      "vcLevels"              : levels
+      "vcLevelColors"         : colors
+      "vcLabelBarEndLabelsOn" : end_labels_on
+      "lbLabelStrings"        : lbstrings
+    end getvalues
+  end if
+;
+; Vector and Streamline don't have the xxLabelBarEndStyle resource
+; implemented yet. So, based on setting of xxLabelBarEndLabelsOn,
+; we can set the style.
+;
+  if(.not.isvar("end_labelbar_style")) then
+    if(end_labels_on) then
+      end_labelbar_style = 1
+    else
+      end_labelbar_style = 0
+    end if
+  end if
+;
+; If user set cn/vcLabelBarEndLabelsOn to True or the LabelBarStyle
+; resource to 1, then we need to add min/max labels. Use lbstrings (rather
+; than actual min/max of data) because the labels will already be 
+; formatted correctly.
+;
+  nlev = dimsizes(levels)
+  if(end_labels_on.and.end_labelbar_style.eq.1.and. \
+      (lbstrings(0).eq."".or.lbstrings(nlev+1).eq."")) then
+    print("Warning:add_labelbar: invalid end labels, turning them off.")
+    end_labels_on = False
+  end if
+  if(end_labels_on) then
+    if(end_labelbar_style.eq.1) then
+      newlevels         = new(nlev+2,typeof(levels))
+      newlevels(1:nlev) = levels
+      newlevels(0)      = stringtoxxx(lbstrings(0),typeof(newlevels))
+      newlevels(nlev+1) = stringtoxxx(lbstrings(nlev+1),typeof(newlevels))
+      delete(levels)
+      levels = newlevels
+      delete(newlevels)
+    end if
+    set_attr(lbres,"lbLabelAlignment","ExternalEdges")
+  end if
+
+  levels = fix_zero_contour(levels)
+
+  labelbar_object = create_labelbar(wks,dimsizes(colors),colors,levels,lbres)
+
+  anno = NhlAddAnnotation(plot,labelbar_object)
+
+  attsetvalues_check(anno,amres)   ; Set annotation resources.
+
+  delete(levels)
+
+  return
+end
+
+;***********************************************************************;
+; Procedure : set_pres_hgt_axes                                         ;
+;               pres: numeric                                           ;
+;                res: logical                                           ;
+;            add_hgt: logical                                           ;
+;                                                                       ;
+; This procedure sets some resources necessary to label the left and    ;
+; right Y axis with "nice" pressure and height values. The left axis is ;
+; values, and the right for height values. The pressure values are      ;
+; assumed to be in millibars.                                           ;
+;***********************************************************************;
+undef("set_pres_hgt_axes")
+procedure set_pres_hgt_axes(pres:numeric,res:logical,add_hgt:logical)
+local hgt, hnice, pnice, ptmp
+begin
+  if(pres(0).lt.pres(dimsizes(pres)-1))
+    ptmp = tofloat_wunits(pres(::-1))    ; reverse values so descending order
+  else
+    ptmp = tofloat_wunits(pres)          ; Make sure values are floating point.
+  end if
+
+  if(.not.(isatt(res,"sfYCStartV").and.isatt(res,"sfYCEndV")))
+    set_attr(res,"sfYArray",ptmp)
+  end if
+
+;
+; Set up the "nice" pressure values for which to label the left axis.
+;
+  if(.not.isatt(res,"tmYLMode"))
+    res@tmYLMode   = "Explicit" ; Define own tick mark labels.
+    res@tmYLValues = (/1000.,  850., 700., 500., 400., 300., 250.,\
+                         200., 150., 100.,  70., 50., 30., 10./)
+    res@tmYLLabels = (/"1000","850","700","500","400","300","250",\
+                         "200","150","100", "70", "50", "30", "10"/)
+    res@tmYLMinorOn= False        ; No minor tick marks.
+    set_attr(res,"tiYAxisString","Pressure (mb)")
+  end if
+
+;
+; Calculate "nice" height values for which to label the right axis
+;
+  if(.not.isatt(res,"tmYRMode"))
+    add_hgt = True
+    hgt    = gsn_geop_hgt(ptmp)     ; Calculate hgts as a fcn of pres.
+    hrange = fabs(hgt(0)-hgt(dimsizes(hgt)-1))
+    if(hrange.le.35) then
+      step = 4
+    else
+      if(hrange.le.70) then
+        step = 7
+      else
+        step = 10
+      end if
+    end if
+;
+; If user has set the resource "tmYRTickSpacingF", then use this for
+; the value of the height spacing, instead of our calculated values
+; above.  This value must be a "nice" value, like 1, 2, 4, etc.
+;
+    step = tointeger(get_res_value(res,"tmYRTickSpacingF",step))
+                                            ; Set range of "nice" hgt values.
+    hnice = tofloat(ispan(tointeger(floor(hgt(0))), \
+                    tointeger(ceil(hgt(dimsizes(hgt)-1))),step))
+    pnice = ftcurv(hgt,ptmp,hnice)  ; Get pres vals at nice hgt vals.
+
+    use_left    = get_res_value_keep(res,"tmYUseLeft",False)
+    yrvalues    = get_res_value_keep(res,"tmYRValues",pnice)
+    yrlabels    = get_res_value_keep(res,"tmYRLabels",hnice)
+    yron        = get_res_value_keep(res,"tmYROn",True)
+    yrlabelson  = get_res_value_keep(res,"tmYRLabelsOn",True )
+    yrminoron   = get_res_value_keep(res,"tmYRMinorOn",False)
+;
+; At each "nice" pressure value put a "height" value label, unless
+; the user has specified own labels.  The user has to know what he's
+; doing if he specifies own labels, because the values must be in pressure
+; units, not height units.
+;
+    if(.not.isatt(res,"tmYRValues")) then
+      res@tmYRValues  = yrvalues
+    end if
+    if(.not.isatt(res,"tmYRLabels")) then
+      res@tmYRLabels  = yrlabels
+    end if
+    res@tmYRMode      = "Explicit"
+    res@tmYUseLeft    = use_left
+    res@tmYROn        = yron
+    res@tmYRLabelsOn  = yrlabelson
+    res@tmYRMinorOn   = yrminoron
+    delete(hnice)
+    delete(hgt)
+    delete(pnice)
+  else
+    add_hgt = False
+  end if
+  delete(ptmp)
+  return
+end
+
+;***********************************************************************;
+; Function : fill_xy_ref                                                ;
+;                    wks: graphic                                       ;
+;                     xy: graphic                                       ;
+;                 xin[*]: numeric                                       ;
+;                 yin[*]: numeric                                       ;
+;                    ref: numeric                                       ;
+;   ref_line_above_color: integer or string or RGB value                ;
+;   ref_line_below_color: integer or string or RGB value                ;
+;                                                                       ;
+; Take a set of X and Y points, and fill the Y points in one color if   ;
+; they are above the ref line, and in another color if they are below   ;
+; the ref line.                                                         ;
+;***********************************************************************;
+undef("fill_xy_ref")
+function fill_xy_ref(wks:graphic,xy:graphic,xin[*]:numeric,yin[*]:numeric,\
+                     ref:numeric,ref_line_above_color,ref_line_below_color)
+local npts, yabove_gon, ybelow_gon, i, gsresa, gsresb, gsresr, \
+fill_above, fill_below
+begin
+
+  npts = dimsizes(yin)
+
+  anumgons = 0  ; Count the number of polygons
+  bnumgons = 0
+  if(ref_line_above_color.ne.-1)
+    gsresa             = True
+    gsresa@gsFillColor = ref_line_above_color
+;
+; First count the number of the above-the-y-reference-line polygons we
+; need to create.
+;
+    igon       = 0
+    create_gon = False
+    do i=0,npts-1
+      if(.not.ismissing(yin(i)).and..not.ismissing(xin(i)))
+        if(yin(i).ge.ref)
+          if(igon.eq.0)
+            igon = 1
+          else
+            igon = igon + 1
+          end if
+          if(i.eq.npts-1)      ; On the last point.
+            create_gon = True
+          end if
+        else
+          create_gon = True
+        end if
+      else
+        create_gon = True
+      end if   ; not ismissing
+      if(create_gon)
+        if(igon.gt.1)
+          anumgons = anumgons + 1 
+        end if
+        igon       = 0
+        create_gon = False
+      end if
+    end do
+  end if
+
+  if(ref_line_below_color.ne.-1)
+    gsresb             = True
+    gsresb@gsFillColor = ref_line_below_color
+;
+; First count the number of the above-the-y-reference-line polygons we
+; need to create.
+;
+    igon       = 0
+    create_gon = False
+    do i=0,npts-1
+      if(.not.ismissing(yin(i)).and..not.ismissing(xin(i)))
+        if(yin(i).le.ref)
+          if(igon.eq.0)
+            igon = 1
+          else
+            igon = igon + 1
+          end if
+          if(i.eq.npts-1)      ; On the last point.
+            create_gon = True
+          end if
+        else
+          create_gon = True
+        end if
+      else
+        create_gon = True
+      end if   ; not ismissing
+      if(create_gon)
+        if(igon.gt.1)
+          bnumgons = bnumgons + 1 
+        end if
+        igon       = 0
+        create_gon = False
+      end if
+    end do
+  end if
+  if(anumgons.gt.0.or.bnumgons.gt.0) then
+    polygons = new(anumgons+bnumgons,graphic) 
+  else
+    polygons = new(1,graphic) 
+  end if
+;
+; Loop through and add above-ref-line polygons.
+;
+  ngons = 0
+  if(ref_line_above_color.ne.-1.and.anumgons.gt.0)
+    igon       = 0
+    create_gon = False
+    do i=0,npts-1
+      if(.not.ismissing(yin(i)).and..not.ismissing(xin(i)))
+        if(yin(i).ge.ref)
+          if(igon.eq.0)
+            xabove_line = new(npts+2,typeof(xin))
+            yabove_line = new(npts+2,typeof(yin))
+            yabove_line(0) = yin(i)
+            xabove_line(0) = xin(i)
+            igon = 1
+          else
+            xabove_line(igon) = xin(i) 
+            yabove_line(igon) = yin(i) 
+            igon = igon + 1
+          end if
+          if(i.eq.npts-1)      ; On the last point.
+            create_gon = True
+          end if
+        else
+          create_gon = True
+        end if
+      else
+        create_gon = True
+      end if   ; not ismissing
+      if(create_gon)
+        if(igon.gt.1)
+          yabove_gon = new((/igon+3/),typeof(yin))
+          xabove_gon = new((/igon+3/),typeof(xin))
+; Close up and draw polygon
+          if(yabove_line(0).ne.ref)
+            xabove_gon(0) = xabove_line(0)
+            yabove_gon(0) = ref
+            xabove_gon(1:igon) = xabove_line(0:igon-1)
+            yabove_gon(1:igon) = yabove_line(0:igon-1)
+            newgon = igon + 1
+          else
+            xabove_gon(0:igon-1) = xabove_line(0:igon-1)
+            yabove_gon(0:igon-1) = yabove_line(0:igon-1)
+            newgon = igon
+          end if
+          if(yabove_line(igon-1).ne.ref)
+            xabove_gon(newgon) = xabove_line(igon-1)
+            yabove_gon(newgon) = ref
+            newgon = newgon + 1
+          end if
+
+          polygons(ngons) = gsn_add_polygon(wks,xy,xabove_gon(0:newgon-1),\
+                                            yabove_gon(0:newgon-1),gsresa)
+          ngons = ngons + 1 
+; Delete temporary arrays so we can recreate them.
+          delete(xabove_line)
+          delete(yabove_line)
+          delete(xabove_gon)
+          delete(yabove_gon)
+        end if
+        igon       = 0
+        create_gon = False
+      end if
+    end do
+  end if
+
+;
+; Loop through and add below-ref-line polygons.
+;
+  if(ref_line_below_color.ne.-1.and.bnumgons.gt.0) then
+    igon       = 0
+    create_gon = False
+
+    do i=0,npts-1
+      if(.not.ismissing(yin(i)).and..not.ismissing(xin(i)))
+        if(yin(i).le.ref)
+          if(igon.eq.0)
+            xbelow_line = new(npts+2,typeof(xin))
+            ybelow_line = new(npts+2,typeof(yin))
+            ybelow_line(0) = yin(i)
+            xbelow_line(0) = xin(i)
+            igon = 1
+          else
+            xbelow_line(igon) = xin(i) 
+            ybelow_line(igon) = yin(i) 
+            igon = igon + 1
+          end if
+          if(i.eq.npts-1)      ; On the last point.
+            create_gon = True
+          end if
+        else
+          create_gon = True
+        end if
+      else
+        create_gon = True
+      end if   ; not ismissing
+      if(create_gon)
+        if(igon.gt.1)
+          ybelow_gon = new((/igon+3/),typeof(yin))
+          xbelow_gon = new((/igon+3/),typeof(xin))
+; Close up and draw polygon
+          if(ybelow_line(0).ne.ref)
+            xbelow_gon(0) = xbelow_line(0)
+            ybelow_gon(0) = ref
+            xbelow_gon(1:igon) = xbelow_line(0:igon-1)
+            ybelow_gon(1:igon) = ybelow_line(0:igon-1)
+            newgon = igon + 1
+          else
+            xbelow_gon(0:igon-1) = xbelow_line(0:igon-1)
+            ybelow_gon(0:igon-1) = ybelow_line(0:igon-1)
+            newgon = igon
+          end if
+          if(ybelow_line(igon-1).ne.ref)
+            xbelow_gon(newgon) = xbelow_line(igon-1)
+            ybelow_gon(newgon) = ref
+            newgon = newgon + 1
+          end if
+
+          polygons(ngons) = gsn_add_polygon(wks,xy,xbelow_gon(0:newgon-1), \
+                                            ybelow_gon(0:newgon-1),gsresb)
+          ngons = ngons + 1 
+; Delete temporary arrays so we can recreate them.
+          delete(xbelow_line)
+          delete(ybelow_line)
+          delete(xbelow_gon)
+          delete(ybelow_gon)
+        end if
+        igon       = 0
+        create_gon = False
+      end if
+    end do
+  end if
+  return(polygons)
+end
+
+;***********************************************************************;
+; Function : fill_bw_xy                                                 ;
+;                                                                       ;
+; This function takes "n" Y or X curves, defined on the same set of X   ;
+; or Y points, and fills the area between each adjacent curves with     ;
+; some given color. Depending on options set by the user, the areas     ;
+; between curves can be filled differently if one is greater than       ;
+; another.                                                              ;
+;                                                                       ;
+;***********************************************************************;
+undef("fill_bw_xy")
+function fill_bw_xy(wks,plot,xx:numeric,yy:numeric,res:logical)
+local y1_gt_y2, y1, y2, i, ab, bpt, ept, x, y, color, first, last, \
+dsizes_y, rank_y, ncurves, npts, ppts, ppts2, res2, above_fill_colors, \
+below_fill_colors, gsres, dum, fill_x, xi, yi
+begin
+;
+; Determine whether we're filling between Y curves or X curves.
+;
+  ndimsx = dimsizes(xx)
+  ndimsy = dimsizes(yy)
+  rankx  = dimsizes(ndimsx)
+  ranky  = dimsizes(ndimsy)
+
+  if(rankx.eq.1.and.ranky.eq.2) then
+    fill_x = False
+    xi = xx
+    yi = yy
+  else
+    if(rankx.eq.2.and.ranky.eq.1) then
+      fill_x = True
+      xi = yy
+      yi = xx
+    else
+      print("fill_bw_xy: Error: If filling between two curves, one set must be 2D, and the other 1D.")
+      return(plot)
+    end if
+  end if
+
+; Check length of arrays.
+;
+  dsizes_y = dimsizes(yi)
+  npts     = dimsizes(xi)
+  ncurves  = dsizes_y(0)
+
+  if(dsizes_y(1).ne.npts) then
+    print("fill_bw_xy: Error: The rightmost dimension of both arrays must be the same.")
+    return(plot)
+  end if
+
+  if(ncurves.le.1) then
+    print("fill_bw_xy: Error: The leftmost dimension of input array must be at least 2.")
+    return(plot)
+  end if
+
+  if(any(ismissing(xi)))
+    print("fill_bw_xy: Error: The input array cannot contain any missing values")
+    return(plot)
+  end if
+
+  if(.not.res) then
+    return(plot)     ; No resources set, so just return.
+  end if
+
+  if(.not.isatt(res,"gsnXYFillColors").and. \
+     .not.isatt(res,"gsnXYAboveFillColors").and. \
+     .not.isatt(res,"gsnXYBelowFillColors").and. \
+     .not.isatt(res,"gsnXYRightFillColors").and. \
+     .not.isatt(res,"gsnXYLeftFillColors")) then
+    return(plot)     ; No resources set, so just return.
+  end if
+;
+; Check resources. There are five possible resources:
+;    gsnXYFillColors
+;    gsnXYAboveFillColors
+;    gsnXYBelowFillColors
+;    gsnXYRightFillColors
+;    gsnXYLeftFillColors
+;
+; If the first one is set, it overwrites the others. If
+; none of them are set, then no fill color will be used.
+;
+; To make things a little easier, above==right and below==left
+;
+  res2 = res       ; Make a copy
+  if(res2) then
+    if(isatt(res2,"gsnXYFillColors")) then
+      above_fill_colors = get_res_value(res2,"gsnXYFillColors",-1)
+      below_fill_colors = above_fill_colors
+      dum               = get_res_value(res2,"gsnXYAboveFillColors",-1)
+      dum               = get_res_value(res2,"gsnXYBelowFillColors",-1)
+      dum               = get_res_value(res2,"gsnXYRightFillColors",-1)
+      dum               = get_res_value(res2,"gsnXYLeftFillColors",-1)
+    else
+      if(fill_x) then
+        above_fill_colors = get_res_value(res2,"gsnXYRightFillColors",-1)
+        below_fill_colors = get_res_value(res2,"gsnXYLeftFillColors",-1)
+      else
+        above_fill_colors = get_res_value(res2,"gsnXYAboveFillColors",-1)
+        below_fill_colors = get_res_value(res2,"gsnXYBelowFillColors",-1)
+      end if
+    end if
+  end if
+
+  nacol = dimsizes(above_fill_colors)
+  nbcol = dimsizes(below_fill_colors)
+
+;
+; Convert input arrays to double.
+;
+  x  = new(npts,double)
+  y  = new(dsizes_y,double,1.e36)
+  x  = (/xi/)
+  y  = (/yi/)
+
+;
+; Create arrays for storing polygon points.
+;
+  first     = new(2,double)
+  last      = new(2,double)
+  polygon_x = new(2*npts+3,double)
+  polygon_y = new(2*npts+3,double)
+
+;
+; Loop through each set of two curves, filling them as we go.
+;
+  gsres = True
+  do n=0,ncurves-2
+    y1 = yi(n,:)    ; Grab the current curve
+    y2 = yi(n+1,:)  ; and the next curve.
+  
+    iacol = n % nacol
+    ibcol = n % nbcol
+;
+; Compute a delta that will be used to determine if two points are
+; actually the same point. 
+;
+    range_y1 = max(y1) - min(y1)
+    range_y2 = max(y2) - min(y2)
+
+    delta_y1 = 0.01 * range_y1
+    delta_y2 = 0.01 * range_y2
+    if(delta_y1.eq.0)
+      delta = delta_y2
+    else
+      if(delta_y2.eq.0)
+        delta = delta_y1
+      else
+        delta = min((/delta_y1,delta_y2/))
+      end if
+    end if
+
+    npoly = 0     ; Number of polygons
+;
+; First fill in polygons where y1 is above y2, and then fill in
+; polygons where y2 is above y1.
+;
+    do ab = 0,1
+      gsres@gsFillColor = above_fill_colors(iacol)
+      if(ab.eq.1)
+        y1 = (/yi(n+1,:)/)
+        y2 = (/yi(n,:)/)
+; Color for when first curve is > second curve
+        delete(gsres@gsFillColor)    ; just in case
+        gsres@gsFillColor = below_fill_colors(ibcol)
+      end if
+;
+; Get areas where y1 > y2.
+;
+      y1_gt_y2 = y1.gt.y2
+
+      bpt = -1    ; Index of first point of polygon.
+      ept = -1    ; Index of last point of polygon.
+;
+; Loop through points.
+;
+      do i=0,npts-1
+        if(bpt.lt.0)
+          if(.not.ismissing(y1_gt_y2(i)).and.y1_gt_y2(i))
+            bpt = i
+            ept = i
+          end if
+        else
+          if(.not.ismissing(y1_gt_y2(i)).and.y1_gt_y2(i))
+            ept = i
+          end if
+          if(ismissing(y1_gt_y2(i)).or..not.y1_gt_y2(i).or.ept.eq.(npts-1))
+;
+; Draw polygon. If bpt is the very first point or ept is the
+; very last point, then these are special cases we have to
+; handle separately.
+;
+            if(bpt.eq.0.or.(bpt.gt.0.and.(ismissing(y1(bpt-1)).or.\
+                                          ismissing(y2(bpt-1)).or.\
+                                          ismissing(x(bpt-1)))))
+              first(0) = (/ x(bpt) /)
+              first(1) = (/ y2(bpt)/)
+            else
+              if(fabs(y1(bpt-1)-y2(bpt-1)).le.delta)
+;
+; If the two points are within delta of each other, then we'll
+; consider them to be the same point.
+;
+                first(0) = (/  x(bpt-1) /)
+                first(1) = (/ y1(bpt-1) /)
+              else
+;
+; Otherwise, find the intersection where the two curves cross.
+;
+                first = find_cross_xy(x(bpt-1),x(bpt),y1(bpt-1), \
+                                      y1(bpt),y2(bpt-1),y2(bpt))
+              end if
+            end if
+            if(ept.eq.(npts-1).or.(ept.lt.(npts-1).and.(ismissing(y1(ept+1)).or.\
+                                                    ismissing(y2(ept+1)).or.\
+                                                    ismissing(x(ept+1)))))
+              last(0) = (/  x(ept) /)
+              last(1) = (/ y2(ept) /)
+            else
+              if(fabs(y1(ept+1)-y2(ept+1)).le.delta)
+;
+; If the two points are within delta of each other, then we'll
+; consider them to be the same point.
+;
+                last(0) = (/  x(ept+1) /)
+                last(1) = (/ y1(ept+1) /)
+              else
+;
+; Otherwise, find the intersection where the two curves cross.
+;
+                last = find_cross_xy(x(ept),x(ept+1),y1(ept),y1(ept+1), \
+                                     y2(ept),y2(ept+1))
+              end if
+            end if
+;
+; Initialize polygon.
+;
+            ppts  = ept - bpt + 1
+            ppts2 = ppts * 2
+            polygon_x(0)              = (/first(0)/)
+            polygon_y(0)              = (/first(1)/)
+            polygon_x(1:ppts)         = x(bpt:ept)
+            polygon_y(1:ppts)         = y1(bpt:ept)
+            polygon_x(ppts+1)         = (/last(0)/)
+            polygon_y(ppts+1)         = (/last(1)/)
+            polygon_x(ppts+2:ppts2+1) = x(ept:bpt)
+            polygon_y(ppts+2:ppts2+1) = y2(ept:bpt)
+            polygon_x(ppts2+2)        = (/first(0)/)
+            polygon_y(ppts2+2)        = (/first(1)/)
+;
+; Make sure polygons get drawn *after* the plot gets drawn.
+;
+            if(npoly.eq.0)
+              setvalues plot
+                "tfPolyDrawOrder" : "Predraw"
+              end setvalues
+            end if
+;
+; Add polygon to XY plot.
+;
+            var_string = unique_string("fill_polygon"+npoly)
+
+            if(fill_x) then
+              plot@$var_string$ = gsn_add_polygon(wks,plot, \
+                                                  polygon_y(0:ppts2+2), \
+                                                  polygon_x(0:ppts2+2),gsres)
+            else
+              plot@$var_string$ = gsn_add_polygon(wks,plot, \
+                                                  polygon_x(0:ppts2+2), \
+                                                  polygon_y(0:ppts2+2),gsres)
+            end if
+;
+; Advance polygon counter.
+;
+            npoly = npoly + 1
+            bpt = -1            ; Reinitialize
+            ept = -1
+          end if
+        end if
+      end do
+    end do
+  end do
+  return(plot)
+end
+
+;***********************************************************************;
+; Function : fill_xy2                                                   ;
+;                                                                       ;
+; This function is obsolete. Use resources gsnXYFillColors,             ;
+;    gsnXYAboveFillColors, gsnXYBelowFillColors, gsnXYLeftFillColors,   ;
+;    gsnXYRightFillColors.                                              ;
+;                                                                       ;
+; This function takes as input two Y curves, defined on the same set    ;
+; of X points, and fills the area between the two curves with two       ;
+; different colors, depending on which curve is above the other one.    ;
+;                                                                       ;
+;***********************************************************************;
+undef("fill_xy2")
+function fill_xy2(wks,plot,xi[*]:numeric,yi1[*]:numeric,yi2[*]:numeric, \
+                  colora,colorb)
+local res, nx, ny1, ny2
+begin
+;
+; Check length of arrays.
+;
+  nx  = dimsizes(xi)
+  ny1 = dimsizes(yi1)
+  ny2 = dimsizes(yi2)
+
+  if(nx.ne.ny1.or.nx.ne.ny2.or.nx.lt.2) 
+    print("fill_xy2: Error: x and y arrays must be the same length and at least two elements")
+    return 
+  end if
+
+  res = True
+  res@gsnXYAboveFillColors = colora
+  res@gsnXYBelowFillColors = colorb
+  return(fill_bw_xy(wks,plot,xi,(/yi1,yi2/),res))
+end
+
+;***********************************************************************;
+; Function : get_lon_values                                             ;
+;             min_lon: numeric                                          ;
+;             max_lon: numeric                                          ;
+;         lon_spacing: numeric                                          ;
+;        mlon_spacing: numeric                                          ;
+;                                                                       ;
+; Calculate "nice" longitude values to use for placing longitude labels ;
+; an axis. min_lon and max_lon are the min/max longitude values, and    ;
+; lon_spacing and mlon_spacing are the spacings to use for major and    ;
+; minor tickmarks.                                                      ;
+;***********************************************************************;
+undef("get_lon_values")
+function get_lon_values(min_lon:numeric,max_lon:numeric,lon_spacing:numeric,\
+                        mlon_spacing:numeric,range_array,lonspacing_array, \
+                        mlonspacing_array)
+local lon_range, lcheck_arr, lspcng_arr, mlspcng_arr, lon_spcng, mlon_spcng, \
+start_lon, end_lon, xstart_lon, xend_lon
+begin
+
+; Initialize
+
+  if(all(range_array.eq.0))
+    lcheck_arr = (/ 20, 40, 60, 360/) ; lon range will determine
+                                      ; spacing of minor/major ticks
+  else
+    lcheck_arr = range_array
+  end if
+    
+  if(all(lonspacing_array.eq.0))
+    lspcng_arr = (/ 5, 10, 20, 30/)  ; spacings for major ticks
+  else
+    lspcng_arr = lonspacing_array
+  end if
+
+  if(all(mlonspacing_array.eq.0))
+    mlspcng_arr = (/ 1,  2,  5, 10/)  ; spacings for minor ticks
+  else
+    mlspcng_arr = mlonspacing_array
+  end if
+
+; Longitude range, will help determine longitude spacing.
+
+  lon_range = max_lon - min_lon   ; lat/lon range
+
+  if(lon_range.gt.360)
+    print("get_lon_values: Warning: The range your of longitude values is greater than 360.")
+    lon_ind = dimsizes(lcheck_arr)-1
+  else
+    lon_ind = ind(lon_range.le.lcheck_arr)
+  end if
+
+
+  if(lon_spacing.le.0)
+    lon_spcng  = lspcng_arr(lon_ind(0))  ; spacing for lon major tickmarks
+  else
+    lon_spcng = tointeger(lon_spacing)
+  end if
+
+  if(mlon_spacing.le.0)
+    mlon_spcng = mlspcng_arr(lon_ind(0)) ; spacing for lon minor tickmarks
+  else
+    mlon_spcng = tointeger(mlon_spacing)
+  end if
+  delete(lon_ind)
+;
+; This code will find the first integer value that is divisible
+; by the major lon spacing value.  This will end up being the first
+; labeled longitude value.
+;
+   start_lon = floattointeger(ceil(tofloat(min_lon)))
+   end_lon   = floattointeger(floor(tofloat(max_lon)))
+   lon = start_lon
+   found = False
+   do while(lon.le.end_lon.and..not.found)
+     if((lon % lon_spcng).eq.0)
+       start_lon = lon
+       found = True
+     end if
+     lon = lon + 1
+  end do
+
+; Calculate values for major and minor lon tickmark locations.
+  lon_values       = ispan(start_lon,end_lon,lon_spcng)
+  lon_values@minor = ispan(min(lon_values)-lon_spcng,max(lon_values)+lon_spcng,mlon_spcng)
+  return(lon_values)
+end
+
+;***********************************************************************;
+; Function : get_lat_values                                             ;
+;             min_lat: numeric                                          ;
+;             max_lat: numeric                                          ;
+;         lat_spacing: numeric                                          ;
+;        mlat_spacing: numeric                                          ;
+;                                                                       ;
+; Calculate "nice" latitude values to use for placing latitude labels   ;
+; an axis. min_lat and max_lat are the min/max latitude values, and     ;
+; lat_spacing and mlat_spacing are the spacings to use for major and    ;
+; minor tickmarks.                                                      ;
+;***********************************************************************;
+undef("get_lat_values")
+function get_lat_values(min_lat:numeric,max_lat:numeric,lat_spacing:numeric,\
+                        mlat_spacing:numeric)
+local lat_range, lcheck_arr, lspcng_arr, mlspcng_arr, lat_spcng, mlat_spcng, \
+start_lat, end_lat, lat, found
+begin
+
+; Initialize
+
+  if(min_lat.lt.-90.or.max_lat.gt.90) then
+    print("get_lat_values: Warning: Your latitude values do not fall between -90 and 90 inclusive.")
+    print("You will not get 'nice' latitude labels.")
+    lat_values = new(1,float)
+    return(lat_values)
+  end if
+
+  lcheck_arr  = (/ 20, 40, 60, 180/) ; lat range will determine
+                                     ; spacing of minor/major ticks
+  lspcng_arr  = (/  5, 10, 20, 30/)  ; spacings for major ticks
+  mlspcng_arr = (/  1,  2,  5, 10/)  ; spacings for minor ticks
+
+; Latitude range, will help determine latitude spacing.
+
+  lat_range = max_lat - min_lat   ; lat/lat range
+
+  lat_ind    = ind(lat_range.le.lcheck_arr)
+  if(lat_spacing.le.0)
+    lat_spcng = lspcng_arr(lat_ind(0))  ; spacing for lat major tickmarks
+  else
+    lat_spcng = tointeger(lat_spacing)
+  end if
+
+  if(mlat_spacing.le.0)
+    mlat_spcng = mlspcng_arr(lat_ind(0)) ; spacing for lat minor tickmarks
+  else
+    mlat_spcng = tointeger(mlat_spacing)
+  end if
+  delete(lat_ind)
+  
+;
+; This code will find the first integer value that is divisible
+; by the major lat spacing value.  This will end up being the first
+; labeled latitude value.
+;
+   start_lat = floattointeger(ceil(tofloat(min_lat)))
+   end_lat   = floattointeger(floor(tofloat(max_lat)))
+   lat = start_lat
+   found = False
+   do while(lat.le.end_lat.and..not.found)
+     if((lat % lat_spcng).eq.0)
+       start_lat = lat
+       found = True
+     end if
+     lat = lat + 1
+  end do
+
+; Calculate values for major and minor lat tickmark locations.
+  lat_values       = ispan(start_lat,end_lat,lat_spcng)
+  lat_values@minor = ispan(min(lat_values)-lat_spcng,max(lat_values)+lat_spcng,mlat_spcng)
+  return(lat_values)
+end
+
+;***********************************************************************;
+; Function : get_lon_labels                                             ;
+;                lon_values[*]: numeric                                 ;
+;                                                                       ;
+; Return some nice longitude labels given longitude values "lon_values".;
+;***********************************************************************;
+undef("get_lon_labels")
+function get_lon_labels(lon_values:numeric)
+local lon_index
+begin
+  lon_labels  = new(dimsizes(lon_values),string)
+
+; -180 < lon < 0 (west)
+
+  lon_index = ind((lon_values).lt.0)
+  if(.not.all(ismissing(lon_index)))
+    lon_labels(lon_index) = fabs(lon_values(lon_index)) + "W"  ; west
+  end if
+  delete(lon_index)
+
+; 0 < lon < 180 (east)
+
+  lon_index = ind(lon_values.gt.0.and.lon_values.lt.180)
+  if(.not.all(ismissing(lon_index)))
+    lon_labels(lon_index) = lon_values(lon_index) + "E"  ; east
+  end if
+  delete(lon_index)
+
+; 180 < lon < 360 (west)
+
+  lon_index = ind(lon_values.gt.180.and.lon_values.lt.360)
+  if(.not.all(ismissing(lon_index)))
+    lon_labels(lon_index) = 360-lon_values(lon_index) + "W"  ; west
+  end if
+  delete(lon_index)
+
+; 360 < lon < 540 (east)
+
+  lon_index = ind(lon_values.gt.360.and.lon_values.lt.540)
+  if(.not.all(ismissing(lon_index)))
+    lon_labels(lon_index) = lon_values(lon_index)-360 + "E" ; east
+  end if
+  delete(lon_index)
+
+; 540 < lon < 720 (west)
+
+  lon_index = ind(lon_values.gt.540.and.lon_values.lt.720)
+  if(.not.all(ismissing(lon_index)))
+    lon_labels(lon_index) = 540-lon_values(lon_index) + "W"  ; west
+  end if
+  delete(lon_index)
+
+; lon = +/-180 or lon=540 (180)
+
+  lon_index = ind(fabs(lon_values).eq.180.or.lon_values.eq.540)
+  if(.not.all(ismissing(lon_index)))
+    lon_labels(lon_index) = "180"
+  end if
+  delete(lon_index)
+
+; lon=0, lon=360, or lon=720 (0)
+
+  lon_index = ind(lon_values.eq.0.or.lon_values.eq.360.or.lon_values.eq.720)
+  if(.not.all(ismissing(lon_index)))
+      lon_labels(lon_index) = "0"
+  end if
+  delete(lon_index)
+
+  return(lon_labels)
+end
+
+;***********************************************************************;
+; Function : get_lat_labels                                             ;
+;                lat_values[*]: numeric                                 ;
+;                                                                       ;
+; Return some nice latitude labels given latitude values "lat_values".  ;
+;***********************************************************************;
+undef("get_lat_labels")
+function get_lat_labels(lat_values:numeric)
+local lat_index
+begin
+
+; Create labels for latitude tick marks.
+  lat_labels = new(dimsizes(lat_values),string)
+
+  lat_index = ind(lat_values.lt.0)
+  if(.not.all(ismissing(lat_index)))
+     lat_labels(lat_index) = fabs(lat_values(lat_index)) + "S"    ; south
+  end if
+  delete(lat_index)
+
+  lat_index = ind(lat_values.gt.0)
+  if(.not.all(ismissing(lat_index)))
+    lat_labels(lat_index) = lat_values(lat_index) + "N"    ; north
+  end if
+  delete(lat_index)
+
+  lat_index = ind(lat_values.eq.0)
+  if(.not.all(ismissing(lat_index)))
+    lat_labels(lat_index) = lat_values(lat_index)          ; equator
+  end if
+  delete(lat_index)
+ 
+  return(lat_labels)
+end
+
+;***********************************************************************;
+; Function : add_lon_labels                                             ;
+;               plot: graphic                                           ;
+;             min_lon: numeric                                          ;
+;             max_lon: numeric                                          ;
+;         lon_spacing: numeric                                          ;
+;        mlon_spacing: numeric                                          ;
+;                 res: logical                                          ;
+;                                                                       ;
+; Add "nice" longitude labels ("120W", "60E", etc) to the X axis.       ;
+;***********************************************************************;
+undef("add_lon_labels")
+procedure add_lon_labels(plot:graphic,min_lon:numeric,max_lon:numeric,\
+                         lon_spacing:numeric,mlon_spacing:numeric,\
+                         range_array,lonspacing_array,mlonspacing_array, \
+                         res:logical)
+local tmres, lonvalues, lonlabels
+begin
+  tmres = get_res_eq(res,(/"tm","ti"/))  ; Get tickmark resources
+
+  lon_spacing2 = get_res_value(tmres,"tmXBTickSpacingF",lon_spacing)
+  lonvalues   = get_lon_values(min_lon,max_lon,lon_spacing2,mlon_spacing,\
+                             range_array,lonspacing_array,mlonspacing_array)
+  if(.not.any(ismissing(lonvalues)))
+    lonlabels   = get_lon_labels(lonvalues)
+
+    tmres = True
+    set_attr(tmres,"tmXBMode"         , "Explicit")
+    set_attr(tmres,"tmXBLabels"       , lonlabels)
+    set_attr(tmres,"tmXBValues"       , lonvalues)
+    set_attr(tmres,"tmXBMinorValues"  , lonvalues@minor)
+;
+; If the user has set tiXAxisString explicitly, then don't set tiXAxisOn
+; to False.
+;
+    if(.not.(isatt(tmres,"tiXAxisString").and.tmres@tiXAxisString.ne.""))
+      set_attr(tmres,"tiXAxisOn"      , False)
+    end if
+    attsetvalues(plot,tmres)
+  end if
+  return
+end
+
+;***********************************************************************;
+; Procedure : add_lat_labels_xaxis                                      ;
+;               plot: graphic                                           ;
+;             min_lat: numeric                                          ;
+;             max_lat: numeric                                          ;
+;         lat_spacing: numeric                                          ;
+;        mlat_spacing: numeric                                          ;
+;                 res: logical                                          ;
+;                                                                       ;
+;                                                                       ;
+; Add "nice" latitude labels ("90S", "30N", etc) to the X axis in       ;
+; "plot".                                                               ;
+;***********************************************************************;
+undef("add_lat_labels_xaxis")
+procedure add_lat_labels_xaxis(plot:graphic,min_lat:numeric,max_lat:numeric,\
+                               lat_spacing:numeric,mlat_spacing:numeric, \
+                               res:logical)
+local tmres, latvalues, latlabels
+begin
+  tmres = get_res_eq(res,(/"tm","ti"/))  ; Get tickmark resources
+
+  lat_spacing2 = get_res_value(tmres,"tmXBTickSpacingF",lat_spacing)
+  latvalues    = get_lat_values(min_lat,max_lat,lat_spacing2,mlat_spacing)
+  if(.not.any(ismissing(latvalues)))
+    latlabels    = get_lat_labels(latvalues)
+
+    tmres = True
+    set_attr(tmres,"tmXBMode"         , "Explicit")
+    set_attr(tmres,"tmXBLabels"       , latlabels)
+    set_attr(tmres,"tmXBValues"       , latvalues)
+    set_attr(tmres,"tmXBMinorValues"  , latvalues@minor)
+;
+; If the user has set tiXAxisString explicitly, then don't set tiXAxisOn
+; to False.
+;
+    if(.not.(isatt(tmres,"tiXAxisString").and.tmres@tiXAxisString.ne.""))
+      set_attr(tmres,"tiXAxisOn"      , False)
+    end if
+
+    attsetvalues(plot,tmres)
+  end if
+
+  return
+end
+
+;***********************************************************************;
+; Procedure : add_lat_labels_yaxis                                      ;
+;               plot: graphic                                           ;
+;             min_lat: numeric                                          ;
+;             max_lat: numeric                                          ;
+;         lat_spacing: numeric                                          ;
+;        mlat_spacing: numeric                                          ;
+;                 res: logical                                          ;
+;                                                                       ;
+; Add "nice" latitude labels ("90S", "30N", etc) to the Y axis in       ;
+; "plot".                                                               ;
+;***********************************************************************;
+undef("add_lat_labels_yaxis")
+procedure add_lat_labels_yaxis(plot:graphic,min_lat:numeric,max_lat:numeric,\
+                               lat_spacing:numeric,mlat_spacing:numeric, \)
+                               res:logical)
+local tmres, latvalues, latlabels
+begin
+  tmres = get_res_eq(res,(/"tm","ti"/))  ; Get tickmark resources
+
+  lat_spacing2 = get_res_value(tmres,"tmYLTickSpacingF",lat_spacing)
+  latvalues    = get_lat_values(min_lat,max_lat,lat_spacing2,mlat_spacing)
+  if(.not.any(ismissing(latvalues)))
+    latlabels    = get_lat_labels(latvalues)
+
+    tmres = True
+    set_attr(tmres,"tmYLMode"         , "Explicit")
+    set_attr(tmres,"tmYLLabels"       , latlabels)
+    set_attr(tmres,"tmYLValues"       , latvalues)
+    set_attr(tmres,"tmYLMinorValues"  , latvalues@minor)
+;
+; If the user has set tiYAxisString explicitly, then don't set tiYAxisOn
+; to False.
+;
+    if(.not.(isatt(tmres,"tiYAxisString").and.tmres@tiYAxisString.ne.""))
+      set_attr(tmres,"tiYAxisOn"      , False)
+    end if
+    attsetvalues(plot,tmres)
+  end if
+  return
+end
+
+;***********************************************************************;
+; Procedure : add_latlon_labels                                         ;
+;               plot: graphic                                           ;
+;               data: numeric                                           ;
+;                res: logical                                           ;
+;                                                                       ;
+; Add "nice" latitude/longitude labels ("90S", "30N", etc) to the X/Y   ;
+; axes if the appropriate lat/lon coordinate arrays exist.              ;
+;                                                                       ;
+;***********************************************************************;
+undef("add_latlon_labels")
+procedure add_latlon_labels(plot:graphic,data:numeric,res:logical)
+local min_lat, max_lat, min_lon, max_lon, lat_spacing
+begin
+;
+; If the plot coming in is an XY plot, then it won't have 
+; coordinate variables associated with it.  Instead, we have
+; to determine if it's the X or Y data coming in, and then see
+; if the data contains a valid "units" attribute.
+;
+  is_xyplot = get_res_value_keep(res,"gsnXYPlot", False)
+  is_xaxis  = get_res_value_keep(res,"gsnXAxis", False)
+  is_yaxis  = get_res_value_keep(res,"gsnYAxis", False)
+
+  if((is_xyplot.and.is_xaxis.and.isatt(data,"units").and. \
+      any(data@units.eq.get_allowed_lat_units)).or. \
+     (.not.is_xyplot.and.is_valid_latlon_coord(data,"x","lat",res))) then
+
+; Label X axis with nice latitude labels.
+
+    getvalues plot
+      "trXMinF"   : min_lat
+      "trXMaxF"   : max_lat
+    end getvalues
+
+    add_lat_labels_xaxis(plot,min_lat,max_lat,0,0,res)
+  else
+    if((is_xyplot.and.is_xaxis.and.isatt(data,"units").and. \
+        any(data@units.eq.get_allowed_lon_units)).or. \
+       (.not.is_xyplot.and.is_valid_latlon_coord(data,"x","lon",res))) then
+
+; Label X axis with nice longitude labels.
+
+      getvalues plot
+        "trXMinF"   : min_lon
+        "trXMaxF"   : max_lon
+      end getvalues
+;
+; We want different defaults for longitude spacing, so set them up here.
+;
+      lon_range        = (/ 20,  40,  60, 180, 360/)
+      lon_spacing_arr  = (/ 10,  20,  30,  45,  60/)
+      mlon_spacing_arr = (/  5,   5,  10,  15,  30/)
+
+      add_lon_labels(plot,min_lon,max_lon,0,0,lon_range, \
+                   lon_spacing_arr,mlon_spacing_arr,res)
+    else
+;
+; Only set a X axis label if it is not a lon axis.
+;
+      if((is_xyplot.and.is_xaxis).or..not.is_xyplot) then
+        set_axis_string(plot,res,data,"x")
+      end if
+    end if
+  end if
+
+  if((is_xyplot.and.is_yaxis.and.isatt(data,"units").and. \
+      any(data@units.eq.get_allowed_lat_units)).or. \
+     (.not.is_xyplot.and.is_valid_latlon_coord(data,"y","lat",res))) then
+
+; Label Y axis with nice latitude labels.
+
+    getvalues plot
+      "trYMinF"   : min_lat
+      "trYMaxF"   : max_lat
+    end getvalues
+
+    add_lat_labels_yaxis(plot,min_lat,max_lat,0,0,res)
+  else
+;
+; Only set a Y axis label if it is not a lat axis.
+;
+    if((is_xyplot.and.is_yaxis).or..not.is_xyplot) then
+      set_axis_string(plot,res,data,"y")
+    end if
+  end if
+end
+
+;***********************************************************************;
+; Procedure : add_map_tickmarks                                         ;
+;              plot:object                                              ;
+;               res:logical                                             ;
+;              font_height:numeric                                      ;
+;                                                                       ;
+; This procedure adds tickmarks to a C.E. map projection.               ;
+;***********************************************************************;
+undef("add_map_tickmarks")
+procedure add_map_tickmarks(wks:graphic,map:graphic,tmres:logical, \
+                            lon_spacing,mlon_spacing,lat_spacing,\
+                            mlat_spacing,point_outward)
+local vpxf, vpyf, vpwf, vphf, min_lon, max_lon, min_lat, max_lat, \
+center_lon, lonvalues, latvalues, lonlabels, latlabels, tickmark
+begin
+; Retrieve the view port location of the map plot so we know where
+; to put lat/lon labels.
+
+    getvalues map
+      "vpXF"         : vpxf
+      "vpYF"         : vpyf
+      "vpWidthF"     : vpwf
+      "vpHeightF"    : vphf
+      "mpLimitMode"  : limit_mode
+    end getvalues
+;
+; We allow either mpLimitMode to be "LatLon" (1) or "Corners" (5)
+;
+    if(limit_mode.eq.1)
+      getvalues map
+        "mpMinLonF"    : min_lon
+        "mpMaxLonF"    : max_lon
+        "mpMinLatF"    : min_lat
+        "mpMaxLatF"    : max_lat
+        "mpCenterLonF" : center_lon
+      end getvalues
+    else
+      if(limit_mode.eq.5)
+        getvalues map
+          "mpLeftCornerLonF"  : min_lon
+          "mpRightCornerLonF" : max_lon
+          "mpLeftCornerLatF"  : min_lat
+          "mpRightCornerLatF" : max_lat
+          "mpCenterLonF"      : center_lon
+        end getvalues
+      else
+        print("add_map_tickmarks: Warning: you cannot use mpLimitMode=" + limit_mode + " with the gsm_csm_map routines")
+        return 
+      end if
+    end if
+
+; Create tickmark values for lat/lon labels.
+
+    lonvalues = get_lon_values(min_lon,max_lon,lon_spacing,mlon_spacing,0,0,0)
+    latvalues = get_lat_values(min_lat,max_lat,lat_spacing,mlat_spacing)
+
+; Create labels for lat/lon tick marks.
+
+    latlabels  = get_lat_labels(latvalues)
+    lonlabels  = get_lon_labels(lonvalues)
+
+; Create a TickMark object to label lat/lon grid.
+
+    tickmark = create "tickmarks" tickMarkClass wks
+       "vpXF"            : vpxf       ; Set the viewport location of the
+       "vpYF"            : vpyf       ; tick marks to be the same as 
+       "vpWidthF"        : vpwf       ; the map.
+       "vpHeightF"       : vphf
+
+       "tmYLDataBottomF" : min_lat    ; Use the lat/lon limits
+       "tmYLDataTopF"    : max_lat    ; from the coordinate variables.
+       "tmXBDataLeftF"   : min_lon
+       "tmXBDataRightF"  : max_lon
+
+       "tmXBMode"         : "Explicit" ; Indicate that we want to 
+       "tmXBLabels"       : lonlabels  ; explicitly label the X axis.
+       "tmXBValues"       : lonvalues
+       "tmXBMinorValues"  : lonvalues@minor
+
+       "tmYLMode"         : "Explicit" ; Indicate that we want to 
+       "tmYLLabels"       : latlabels  ; explicitly label the Y axis.
+       "tmYLValues"       : latvalues
+       "tmYLMinorValues"  : latvalues@minor
+    end create
+
+    attsetvalues_check(tickmark,tmres)
+
+; Point tick marks outward and make labels the same size.
+
+    gsnp_point_tickmarks_outward(tickmark,tmres,-1.,-1.,-1.,-1.,-1.,-1.,\
+                                 point_outward)
+    gsnp_uniform_tickmark_labels(tickmark,tmres,0.)
+
+;
+; Add the tick mark object as an annotation of the map object, so that
+; whenever the map object is drawn the tick mark object will also be
+; drawn.  It will also be rescaled automatically.
+;
+    anno = NhlAddAnnotation(map,tickmark)
+    setvalues anno
+      "amZone"         : 0     ; Zone 0 centers tick marks over map.
+      "amResizeNotify" : True  ; Resize tick marks if map resized.
+    end setvalues
+
+    map@tickmarks = tickmark
+
+    return
+end
+
+;***********************************************************************;
+; Function : gsn_add_cyclic_point                                       ;
+;                  data : numeric                                       ;
+;                                                                       ;
+; Add a cyclic point in "x" to the 2D array "data".                     ;
+; For a lat/lon plot "x"  corresponds to "lon"                          ;
+;                    "ny" corresponds to "nlat"                         ;
+;                    "mx" corresponds to "mlon"                         ;
+;                                                                       ;
+; If a lat/lon coordinate doesn't exist, then the data is tested to see ;
+; if it contains a lat2d/lon2d attribute, and uses this instead.        ;
+;***********************************************************************;
+undef("gsn_add_cyclic_point")
+function gsn_add_cyclic_point(data:numeric)
+local dims, newdata, ny, mx, mx1, range, delta, first_val, second_val, \
+last_val
+begin
+;
+; If the data is 1D, no cyclic point should be added.
+;
+    dims  = dimsizes(data)
+    if(dimsizes(dims).eq.1) then
+       return(data)
+    end if
+
+    ny      = dims(0)
+    mx      = dims(1)
+    mx1     = mx+1
+
+    newdata = new((/ny, mx1/),typeof(data))
+    newdata(:,0:mx-1) = data             ; pass everything
+    newdata(:,mx)     = (/ data(:,0) /)  ; value only
+;
+; Only check the longitude values if we are dealing with a 1D coordinate
+; array. It is possible that if we have a 2D longitudate "coordinate"
+; array, it will not be 360 in range, so we don't want to check 2D arrays.
+;
+    res = False
+    if(is_valid_latlon_coord(newdata,"x","lon",res)) then
+      first_val  = newdata&$newdata!1$(0)
+      second_val = newdata&$newdata!1$(1)
+      last_val   = newdata&$newdata!1$(mx-1)
+      delta      = second_val - first_val
+      range      = last_val - first_val
+
+      if(range.ge.360.)
+        print("gsn_add_cyclic: Warning: The range of your longitude coordinate array is at least 360.")
+        print("You may want to set gsnAddCyclic to False to avoid a warning")
+        print("message from the spline function.")
+      end if
+      if(any((range+delta).lt.359.))
+        print("gsn_add_cyclic: Warning: The range of your longitude data is not 360.")
+        print("You may want to set gsnAddCyclic to False to avoid a warning")
+        print("message from the spline function.")
+      end if
+    else
+      if(.not.(isatt(newdata,"lon2d").and.isatt(newdata,"lat2d"))) then
+        return(newdata)
+      else 
+        if(.not.all(dimsizes(newdata@lon2d).eq.dimsizes(newdata@lat2d))) then
+          print("gsn_add_cyclic: Warning: Your lat2d/lon2d attributes must have the same dimension sizes.")
+        end if
+      end if
+    end if
+
+    if(is_valid_latlon_coord(newdata,"x","lon",res)) then
+      newdata&$newdata!1$(mx) = newdata&$newdata!1$(0) + 360
+    else 
+;
+; Have to store lat2d/lon2d to a local variable, because NCL
+; doesn't let you subscript attributes that are greater than
+; one dimension.
+;
+      lon2d                 = newdata@lon2d
+      lat2d                 = newdata@lat2d
+      lon_dims              = dimsizes(lon2d)
+      nlat                  = lon_dims(0)
+      nlon                  = lon_dims(1)
+      nlon1                 = nlon+1
+      new_lon2d             = new((/nlat,nlon1/),typeof(lon2d))
+      new_lat2d             = new((/nlat,nlon1/),typeof(lat2d))
+      new_lon2d(:,0:nlon-1) = lon2d
+      new_lon2d(:,nlon)     = lon2d(:,0)
+      new_lat2d(:,0:nlon-1) = lat2d
+      new_lat2d(:,nlon)     = lat2d(:,0)
+
+      delete(newdata@lon2d)
+      delete(newdata@lat2d)
+      newdata@lon2d       = new_lon2d
+      newdata@lat2d       = new_lat2d
+
+      delete(lon2d)
+      delete(lat2d)
+    end if
+
+    return(newdata)
+end
+ 
+;***********************************************************************;
+; Function : pop_tick_locs                                              ;
+;             lonorlat : numeric                                        ;
+;                 locs : numeric                                        ;
+;                                                                       ;
+; This function calculates tickmark values for placing tick marks on a  ;
+; plot that has a POP grid overlaid on it.                              ;
+;                                                                       ;
+;***********************************************************************;
+undef("pop_tick_locs")
+function pop_tick_locs(lonorlat,locs)
+local ret, i, in, j1, j0
+begin
+    ret = new(dimsizes(locs),typeof(lonorlat))
+    do i =0 , dimsizes(locs)-1
+        in = ind(lonorlat.gt.locs(i))
+        j1 = in(0)
+        j0 = in(0)-1
+        delete(in)
+        ret(i) = j0 + (lonorlat(j1)-locs(i))/(lonorlat(j1) -lonorlat(j0))
+    end do
+    return(ret)
+end
+
+;***********************************************************************;
+; Procedure : pop_latlon_grid                                           ;
+;                  wks: graphic                                         ;
+;                 plot: graphic                                         ;
+;              popgrid: string                                          ;
+;                                                                       ;
+; This procedure overlays a POP grid on a plot.                         ;
+;***********************************************************************;
+undef("pop_latlon_grid")
+procedure pop_latlon_grid(wks:graphic,plot:graphic,popgrid:string)
+local latlon_res, tmplon, lat_object, lon_object, valid_popgrids, \
+popgrid_dir, popgrid_files, i, found 
+begin
+;
+; Open POP grid that contains lat/lon information.
+;
+    popgrid_dir = "/fs/cgd/data0/shea/pop/"
+    valid_popgrids = (/"POP23"/)       ; list of valid POP grids
+    popgrid_files  = (/"POP23PCM.nc"/) ; list of corresponding POP files
+
+    if(.not.any(popgrid.eq.valid_popgrids))
+      print("pop_latlon_grid: "+popgrid+" is not a supported POP grid.")
+      print("                 Supported POP grids include: " + valid_popgrids)
+      print("                 No grid will be overlaid.")
+      return
+    end if
+
+    i = 0
+    found = False
+    do while(i.lt.dimsizes(valid_popgrids).and..not.found)
+      if(popgrid.eq.valid_popgrids(i))
+        a = addfile(popgrid_dir + popgrid_files(i),"r")
+        found = True
+      end if
+      i = i + 1
+    end do
+;
+; Set up list of latitude and longitude resources.
+;
+    latlon_res = True
+    latlon_res@gsnDraw              = False
+    latlon_res@gsnFrame             = False
+    latlon_res@cnInfoLabelOn        = False
+    latlon_res@cnLineLabelsOn       = False
+    latlon_res@cnLevelSelectionMode = "ManualLevels"
+    latlon_res@cnMinLevelValF       = -90
+    latlon_res@cnMaxLevelValF       = 90
+    latlon_res@cnLevelSpacingF      = 15
+    latlon_res@cnLineDashPattern    = 10
+
+    lat_object = gsn_contour(wks,a->LAT,latlon_res)
+
+    tmplon            = a->LON - 360.0
+    tmplon(242:,190)  = default_fillvalue("float")
+    tmplon@_FillValue = default_fillvalue("float")
+
+    latlon_res@cnMinLevelValF     = -90
+    latlon_res@cnMaxLevelValF     = 270
+    lon_object = gsn_contour(wks,tmplon,latlon_res)
+
+    setvalues plot
+      "tmXBMode"              : "Explicit"
+      "tmXBValues"            : pop_tick_locs((a->LON(0,:)-360.0),\
+                                   (/-90,-45,0.0,45,90,135,180,225/))
+      "tmXBLabels"            : (/"90W","45W","0","45E","90E","135E",\
+                                  "180E","135W"/)
+      "tmYLMode"              : "EXPLICIT"
+      "tmYLValues"            : pop_tick_locs(a->LAT(:,0),\
+                                   (/-75,-60,-45,-30,-15,0,15,30/))
+      "tmYLLabels"            : (/"75S","60S","45S","30S","15S","EQ",\
+                                  "15N","30N"/)      
+      "tmXBLabelFontHeightF"  : 0.015
+      "tmYLLabelFontHeightF"  : 0.015
+      "tmXBMajorLengthF"      : 0.0001
+      "tmYLMajorLengthF"      : 0.0001
+    end setvalues
+
+    overlay(plot,lat_object)    ; Overlay latitude/longitude
+    overlay(plot,lon_object)    ; lines on plot.
+    return
+end
+
+;***********************************************************************;
+; Function : mask_lambert_conformal                                     ;
+;                 wks: graphic                                          ;
+;               maplc: graphic                                          ;
+;              minlat: numeric                                          ;
+;              maxlat: numeric                                          ;
+;              minlon: numeric                                          ;
+;              maxlon: numeric                                          ;
+;           maskoutln: logical                                          ;
+;                 res: logical                                          ;
+;                                                                       ;
+;   Given a lambert conformal projection, and min/max lat/lon coords,   ;
+;   this function will mask the map outside the boundaries defined by   ;
+;   the coords. maskoutln determines whether the area will be outlined  ;
+;   in the foreground color. "res" is an optional list of resources.    ;
+;                                                                       ;
+;   Note, due to the nature of Lambert Conformal plots, lon labels      ;
+;   cannot be automatically drawn on this type of plot.                 ;
+;                                                                       ;
+;   Programming Note: The function expects longitude input data to      ;
+;   range from -360:180E. If this is not the case, the function         ;
+;   will alter the min/max to be in that range.                         ;
+;                                                                       ;
+;***********************************************************************;
+undef("mask_lambert_conformal")
+function mask_lambert_conformal(wks:graphic, maplc:graphic, minlat:numeric,\
+                                maxlat:numeric, minlon:numeric, \
+                                maxlon:numeric, maskoutln, res)
+local pres, var_string, maplc, mpres, tmplat, vpx, vpy, vpw, vph, \
+xlft, xrgt, ytop, ybot, nscirc, nncirc, nxpoly, nypoly, sxpoly, sypoly, \
+var_string, scirc_xndc, scirc_yndc, ncirc_xndc, ncirc_yndc, mask_outline, \
+xmnlnmnlt, ymnlnmnlt, xmnlnmxlt, ymnlnmxlt, \
+xmxlnmnlt, ymxlnmnlt, xmxlnmxlt, ymxlnmxlt, is_nh
+begin
+;
+; Some error checking.
+;
+  if(maxlat.gt.0.and.minlat.lt.0) then
+    print("mask_lambert_conformal: warning: you are not authorized to specify.")
+    print("  a maxlat that is above the equator and a minlat that is below")
+    print("  the equator. No masking will take place.")
+    return(maplc)
+  end if
+
+  if (minlon.gt.maxlon) then
+     print("mask_lambert_conformal: warning: Minimum longitude is greated than")
+     print("  maximum, subtracting 360 from minumum.")
+     minlon = minlon - 360
+     print("minlon = "+minlon+", maxlon = "+maxlon)
+  end if
+  if (minlat.gt.maxlat) then
+     print("mask_lambert_conformal: warning: Minimum latitude is greater than")
+     print("  maximum, swapping the two.")
+     tmplat = minlat
+     minlat = maxlat
+     maxlat = tmplat
+     print("minlat = "+minlat+", maxlat = "+maxlat)
+  end if
+  if (minlon.ge.180.and.maxlon.gt.180) then
+     minlon = minlon - 360
+     maxlon = maxlon - 360  
+  end if
+  if (minlon.lt.180.and.maxlon.ge.180) then
+     minlon = minlon - 360
+     maxlon = maxlon - 360  
+  end if
+;
+; Set up list of map resources. The user should have already created a 
+; lambert conformal map, but just in case  he/she didn't, it will be done
+; here. Some of these resources may have already been set by the user, so
+; be sure to use these values.
+;
+  meridian = minlon + (maxlon - minlon)/2.
+  mpres = True
+  if(isatt(res,"mpProjection")) then
+    iproj = res@mpProjection
+    if((typeof(iproj).eq."integer".and.iproj.ne.9).or.\
+       (typeof(iproj).eq."string".and. \
+        lower_case(iproj).ne."lambertconformal")) then
+      print("mask_lambert_conformal: warning: you are using a projection other")
+      print("  than LambertConformal. Unexpected results will likely occur.")
+    end if
+    delete(iproj)
+  end if
+
+  mpres@mpProjection = get_res_value_keep(res,"mpProjection", \
+                                          "LambertConformal")
+
+  if(isatt(res,"mpLimitMode")) then
+    need_to_set_limits = False
+  else
+    need_to_set_limits = True
+    mpres@mpLimitMode  = "LatLon"
+  end if
+  mpres@mpLambertMeridianF     = get_res_value_keep(res, \
+                                 "mpLambertMeridianF",meridian)
+  if (minlat.lt.0) then
+     mpres@mpLambertParallel1F = get_res_value_keep(res, \
+                                 "mpLambertParallel1F",-0.001)
+     mpres@mpLambertParallel2F = get_res_value_keep(res, \
+                                 "mpLambertParallel2F",-89.999  )
+  else
+     mpres@mpLambertParallel1F = get_res_value_keep(res, \
+                                 "mpLambertParallel1F", 0.001)
+     mpres@mpLambertParallel2F = get_res_value_keep(res, \
+                                 "mpLambertParallel2F",89.999  )
+  end if
+;
+; Determine whether we are in the southern or northern hemisphere.
+;
+  if(minlat.ge.0) then
+    is_nh = True
+  else
+    is_nh = False
+  end if
+
+;
+; If the user hasn't already set the limits of the map, then set them
+; here. Make sure there's some space around the area we want to mask.
+;
+  if(need_to_set_limits) then
+    if(is_nh)
+      mpres@mpMinLatF = max((/minlat-0.5,  0/))
+      mpres@mpMaxLatF = min((/maxlat+0.5, 90/))
+    else
+      mpres@mpMinLatF = max((/minlat-0.5,-90/))
+      mpres@mpMaxLatF = min((/maxlat+0.5,  0/))
+    end if
+    mpres@mpMinLonF = minlon-0.5
+    mpres@mpMaxLonF = maxlon+0.5
+  end if
+
+;
+; These draw order resources are necessary to make sure the map
+; outlines, lat/lon lines, and perimeter gets drawn *after* the
+; masking polygons are drawn.
+;
+  mpres@mpOutlineDrawOrder     = get_res_value_keep(res, \
+                                 "mpOutlineDrawOrder","PostDraw")
+  mpres@mpGridAndLimbDrawOrder = get_res_value_keep(res, \
+                                 "mpGridAndLimbDrawOrder","PostDraw")
+  mpres@mpPerimDrawOrder       = get_res_value_keep(res, \
+                                 "mpPerimDrawOrder","PostDraw")
+
+;
+; This section is to get rid of some of the remnants that appear around the
+; edges of the plot, even after the masking is done. To accomplish this,
+; tickmarks are being turned on, but only the border is being drawn in the
+; background color.  Since things like streamlines can *still* leave 
+; remnants, even with this extra code, we have put in a hook to allow the
+; user to specify the thickness of the border line.
+; 
+  mpres@pmTickMarkDisplayMode = "Always"
+  mpres@tmXBLabelsOn          = False
+  mpres@tmXTLabelsOn          = False
+  mpres@tmYLLabelsOn          = False
+  mpres@tmYRLabelsOn          = False
+  mpres@tmYLOn                = False
+  mpres@tmYROn                = False
+  mpres@tmXBOn                = False
+  mpres@tmXTOn                = False
+  mpres@tmBorderLineColor     = "background"
+  mpres@tmBorderThicknessF    = get_res_value_keep(res, \
+                                "tmBorderThicknessF",2.0)
+;
+; Now that we've set all these resources, apply them to the map.
+;
+  attsetvalues(maplc,mpres)
+
+;
+; Thus begins the section for creating the two masking polygons.
+; The polygons must be drawn in NDC, because trying to draw them in
+; lat/lon space is not a good use of time and produces unpredictable
+; results.
+;
+; Get viewport coordinates and calculate NDC positionsd of the
+; four corners of the plot.
+;
+  getvalues maplc
+    "vpXF"      : vpx
+    "vpYF"      : vpy
+    "vpWidthF"  : vpw
+    "vpHeightF" : vph
+  end getvalues
+
+  xlft = vpx
+  xrgt = vpx + vpw
+  ytop = vpy
+  ybot = vpy - vph
+
+;
+; Calculate NDC coordinates of four corners of area defined by min/max
+; lat/lon coordinates.
+;
+  xmnlnmnlt = new(1,float)       ; (minlon,minlat)
+  ymnlnmnlt = new(1,float)
+  xmxlnmnlt = new(1,float)       ; (maxlon,minlat)
+  ymxlnmnlt = new(1,float)
+  xmnlnmxlt = new(1,float)       ; (minlon,maxlat)
+  ymnlnmxlt = new(1,float)
+  xmxlnmxlt = new(1,float)       ; (maxlon,maxlat)
+  ymxlnmxlt = new(1,float)
+
+  datatondc(maplc, tofloat(minlon), tofloat(minlat), xmnlnmnlt, ymnlnmnlt)
+  datatondc(maplc, tofloat(maxlon), tofloat(minlat), xmxlnmnlt, ymxlnmnlt)
+  datatondc(maplc, tofloat(minlon), tofloat(maxlat), xmnlnmxlt, ymnlnmxlt)
+  datatondc(maplc, tofloat(maxlon), tofloat(maxlat), xmxlnmxlt, ymxlnmxlt)
+
+;
+; Calculate NDC coordinates of southern hemisphere semi-circle.
+;
+  nscirc     = 100
+  scirc_xndc = new(nscirc,float) 
+  scirc_yndc = new(nscirc,float) 
+  scirc_lon  = new(nscirc,float) 
+  scirc_lat  = new(nscirc,float) 
+  scirc_lon  = fspan(maxlon,minlon,nscirc)
+  scirc_lat  = minlat
+  datatondc(maplc,scirc_lon,scirc_lat,scirc_xndc,scirc_yndc)
+
+;
+; Calculate NDC coordinates of northern hemisphere semi-circle.
+;
+  nncirc     = 100
+  ncirc_xndc = new(nncirc,float) 
+  ncirc_yndc = new(nncirc,float) 
+  ncirc_lon  = new(nncirc,float) 
+  ncirc_lat  = new(nncirc,float) 
+  ncirc_lon  = fspan(maxlon,minlon,nncirc)
+  ncirc_lat  = maxlat
+  datatondc(maplc,ncirc_lon,ncirc_lat,ncirc_xndc,ncirc_yndc)
+
+;
+; Create two polygons in NDC space (northern and southern hemisphere),
+; using all the coordinates we gathered above. The two polygons will be
+; set differently depending on whether we're in the northern or 
+; southern hemisphere.  Yes, we could do this with one polygon, but it's
+; a little cleaner this way, trust me.
+;
+  if(is_nh) then
+    nxpoly = new(nncirc+7,float)
+    nypoly = new(nncirc+7,float)
+    sxpoly = new(nscirc+5,float)
+    sypoly = new(nscirc+5,float)
+  else
+    nxpoly = new(nncirc+5,float)
+    nypoly = new(nncirc+5,float)
+    sxpoly = new(nscirc+7,float)
+    sypoly = new(nscirc+7,float)
+  end if
+;
+; Define masking polygons for map that is in the northern hemisphere.
+;
+  if(is_nh) then
+    nxpoly(0)          = xrgt
+    nypoly(0)          = ymxlnmnlt
+    nxpoly(1)          = xmxlnmnlt
+    nypoly(1)          = ymxlnmnlt
+    nxpoly(2:nncirc+1) = ncirc_xndc
+    nypoly(2:nncirc+1) = ncirc_yndc
+    nxpoly(nncirc+2)   = xmnlnmnlt
+    nypoly(nncirc+2)   = ymnlnmnlt
+    nxpoly(nncirc+3)   = xlft
+    nypoly(nncirc+3)   = ymnlnmnlt
+    nxpoly(nncirc+4)   = xlft
+    nypoly(nncirc+4)   = ytop
+    nxpoly(nncirc+5)   = xrgt
+    nypoly(nncirc+5)   = ytop
+    nxpoly(nncirc+6)   = xrgt
+    nypoly(nncirc+6)   = ymxlnmnlt
+
+    sxpoly(0)        = xrgt
+    sypoly(0)        = ymxlnmnlt
+    sxpoly(1:nscirc) = scirc_xndc
+    sypoly(1:nscirc) = scirc_yndc
+    sxpoly(nscirc+1) = xlft
+    sypoly(nscirc+1) = ymnlnmnlt
+    sxpoly(nscirc+2) = xlft
+    sypoly(nscirc+2) = ybot
+    sxpoly(nscirc+3) = xrgt
+    sypoly(nscirc+3) = ybot
+    sxpoly(nscirc+4) = xrgt
+    sypoly(nscirc+4) = ymxlnmnlt
+  else
+;
+; Define masking polygons for plot that is in the southern hemisphere.
+;
+    nxpoly(0)        = xrgt
+    nypoly(0)        = ymxlnmxlt
+    nxpoly(1:nncirc) = ncirc_xndc
+    nypoly(1:nncirc) = ncirc_yndc
+    nxpoly(nncirc+1) = xlft
+    nypoly(nncirc+1) = ymnlnmxlt
+    nxpoly(nncirc+2) = xlft
+    nypoly(nncirc+2) = ytop
+    nxpoly(nncirc+3) = xrgt
+    nypoly(nncirc+3) = ytop
+    nxpoly(nncirc+4) = xrgt
+    nypoly(nncirc+4) = ymxlnmxlt
+
+    sxpoly(0)          = xrgt
+    sypoly(0)          = ymxlnmxlt
+    sxpoly(1)          = xmxlnmxlt
+    sypoly(1)          = ymxlnmxlt
+    sxpoly(2:nscirc+1) = scirc_xndc
+    sypoly(2:nscirc+1) = scirc_yndc
+    sxpoly(nscirc+2)   = xmnlnmxlt
+    sypoly(nscirc+2)   = ymnlnmxlt
+    sxpoly(nscirc+3)   = xlft
+    sypoly(nscirc+3)   = ymnlnmxlt
+    sxpoly(nscirc+4)   = xlft
+    sypoly(nscirc+4)   = ybot
+    sxpoly(nscirc+5)   = xrgt
+    sypoly(nscirc+5)   = ybot
+    sxpoly(nscirc+6)   = xrgt
+    sypoly(nscirc+6)   = ymxlnmxlt
+  end if
+;
+; Attach the two polygons (and optionally, the outline polyline) 
+; to the map.  Fill the polygons in the background color.
+;
+  pres             = True
+  pres@gsFillColor = "background"
+
+;
+; Northern hemisphere polygon
+;
+  var_string         = unique_string("lamb_polygon")
+  maplc@$var_string$ = gsn_add_primitive(wks,maplc,nxpoly,nypoly,True, \
+                                         "polygon",pres)
+;
+; Southern hemisphere polygon
+;
+  var_string         = unique_string("lamb_polygon")
+  maplc@$var_string$ = gsn_add_primitive(wks,maplc,sxpoly,sypoly,True, \
+                                         "polygon",pres)
+;
+; For debugging purposes only.  This draws outlines around the two
+; polygons, in case you need to see what areas are being masked.
+;
+;  pres@gsLineThicknessF = 3.0
+;  pres@gsLineColor      = "red"
+;  var_string            = unique_string("lamb_polyline")
+;  maplc@$var_string$    = gsn_add_primitive(wks,maplc,nxpoly,nypoly,True, \
+;                                            "polyline",pres)
+;  pres@gsLineColor   = "blue"
+;  var_string         = unique_string("lamb_polyline")
+;  maplc@$var_string$ = gsn_add_primitive(wks,maplc,sxpoly,sypoly,True, \
+;                                         "polyline",pres)
+;
+;
+; Outline the area we are looking at (optional).
+;
+   if(maskoutln) then
+     pres@gsLineColor      = "foreground"
+     pres@gsLineThicknessF = 3.0
+     var_string         = unique_string("lamb_polyline")
+     outline_lon        = (/ minlon, maxlon, maxlon, minlon, minlon /)
+     outline_lat        = (/ minlat, minlat, maxlat, maxlat, minlat /)
+     maplc@$var_string$ = gsn_add_polyline(wks,maplc,outline_lon, \
+                                                     outline_lat,pres)
+  end if
+
+  return(maplc)
+end             
+
+
+;***********************************************************************;
+; Function : gsn_csm_blank_plot                                         ;
+;               wks : workstation                                       ;
+;               res : optional resources                                ;
+;                                                                       ;
+; This function creates a blank tickmark object that can be used for    ;
+; drawing primitives. This function is similar to gsn_blank_plot        ;
+; except the tickmarks point outward and the gsnXXXString resources are ;
+; recognized.                                                           ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_blank_plot")
+function gsn_csm_blank_plot(wks:graphic,res:logical)
+local calldraw, callframe, center_string, font_height, height, left_string, \
+main_zone, major_length, maxbb, minor_length, point_outward, ratio, \
+res2, right_string, scale, shape, subres, ticks, title, tmres, width, \
+xfontf, xlength, xmlength, yfontf, ylength, ymlength
+begin
+  res2          = res    ; Copy of resources.
+
+  point_outward = get_res_value(res2,"gsnTickMarksPointOutward",True)
+
+  calldraw      = get_res_value(res2,"gsnDraw", True)
+  callframe     = get_res_value(res2,"gsnFrame",False)
+  shape         = get_res_value(res2,"gsnShape",False)
+  scale         = get_res_value(res2,"gsnScale",shape)
+  ticks         = get_res_value(res2,"pmTickMarkDisplayMode","Always")
+  title         = get_res_value(res2,"pmTitleDisplayMode","Always")
+  maxbb         = get_bb_res(res2)
+
+; Check for existence of the left, center, and right subtitles.
+
+  left_string   = new(1,logical)
+  center_string = new(1,logical)
+  right_string  = new(1,logical)
+
+  check_for_subtitles(res2,left_string,center_string,right_string)
+  if(left_string.or.center_string.or.right_string)
+    main_zone = 4
+  else
+    main_zone = 3
+  end if
+
+  canvas = create "canvas" irregularPlotClass wks
+    "pmTickMarkDisplayMode" : ticks
+    "pmTitleDisplayMode"    : title
+    "pmTitleZone"           : main_zone    ; Zone for main title
+  end create
+
+  attsetvalues_check(canvas,res2)
+
+; If gsnShape was set to True, then resize the X or Y axis so that
+; the scales are proportionally correct.
+
+  if(shape)
+    gsnp_shape_plot(canvas)
+  end if
+
+; If gsnScale was set to True, then make sure the X and Y axis labels
+; and tick marks are the same size.
+
+  if(scale)
+    gsnp_scale_plot(canvas,"",False)
+  end if
+
+; Get title label sizes and tickmark lengths.
+  getvalues canvas
+    "vpWidthF"             : width
+    "vpHeightF"            : height
+    "tiXAxisFontHeightF"   : xfontf
+    "tiYAxisFontHeightF"   : yfontf
+
+    "tmYLMajorLengthF"     : ylength
+    "tmXBMajorLengthF"     : xlength
+    "tmYLMinorLengthF"     : ymlength
+    "tmXBMinorLengthF"     : xmlength
+  end getvalues
+
+  font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                        ; the size of the X/Y axis labels.
+  major_length = min((/ylength,xlength/))
+  minor_length = min((/ymlength,xmlength/))
+
+; If the plot is close to square in size, then make the 
+; three top titles smaller.
+
+  ratio = height/width
+  if(ratio.gt.1) 
+    ratio = 1./ratio
+  end if
+  if(ratio.gt.0.5)
+    font_height  = 0.75 * font_height
+    major_length = 0.75 * major_length
+    minor_length = 0.75 * minor_length
+  end if
+
+  tmres = get_res_eq(res2,"tm")
+  gsnp_point_tickmarks_outward(canvas,tmres,xlength,ylength,xmlength, \
+                               ymlength,major_length,minor_length, \
+                               point_outward)
+
+; Set up three subtitles at top, if they exist.
+  subres = get_res_eq(res2,(/"tx","am"/))  ; Get textitem resources
+  subres                  = True
+  set_attr(subres,"txFontHeightF",font_height)
+  add_subtitles(wks,canvas,left_string,center_string,\
+                right_string,subres)
+
+  draw_and_frame(wks,canvas,calldraw,callframe,False,maxbb)
+
+  return(canvas)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_xy                                                 ;
+;                     wks: workstation object                           ;
+;                       x: X values                                     ;
+;                       y: X values                                     ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled XY plot to the workstation   ;
+; "wks" (the variable returned from a previous call to "gsn_open_wks"). ;
+; "resources" is an optional list of  resources. The Id of the map plot ;
+; is returned.                                                          ;
+;                                                                       ;
+; This function behaves differently from gsn_xy in that it will         ;
+; add additional titles to the top of the plot if any of the special    ;
+; GSUN resources "gsnLeftString," "gsnCenterString," and/or             ;
+; "gsnRightString" are set, They are used to title the top left, center,;
+; and right of the plot (in addition, the regular resource              ;
+; "tiMainString" can be set to create a regular title).                 ;
+;                                                                       ;
+; If gsnYRefLine is set to some value(s), then reference line(s) will be;
+; drawn at this value(s). In addition, if gsnAboveYRefLineColor and/or  ;
+; gsnBelowYRefLineColor is set, the polygons above and below the        ;
+; reference line will be filled in these colors.                        ;
+;                                                                       ;
+; If gsnXRefLine is set to some value, then a reference line will be    ;
+; drawn at this value.                                                  ;
+;                                                                       ;
+; If gsnXYBarChart is set to True, then a bar chart will be drawn       ;
+; instead of a line plot. You can also set gsnYRefLine to have your     ;
+; bars point up or down from the reference line.                        ;
+;                                                                       ;
+; The resource gsnXYBarChartColors can be used to specify an array of   ;
+; bar colors. This resource was not implemented very smartly. These     ;
+; colors will apply independently to both the above ref line bars, and  ;
+; the below ref line bars. So, if you give this resource the colors     ;
+; "red", "green", and "blue", then all the colors above the ref line    ;
+; will cycle b/w these three colors, and independently, the colors below;
+; the ref line will cycle b/w these colors. If you want to have one     ;
+; resource that specifies the color for each bar, not caring whether it ;
+; is above or below the ref line, use the "gsnXYBarChartColors2"        ;
+; resource.                                                             ;
+;                                                                       ;
+; Same for the gsnXYBarChartPatterns/gsnXYBarChartPatterns2 resource.   ;
+;                                                                       ;
+; The resource gsnXYBarChartBarWidth can be used to specify the width   ;
+; of each bar. The smallest dx is used by default.                      ;
+;                                                                       ;
+; The resource gsnAbove/BelowYRefLineBarColors can be used to specify   ;
+; an array of bar colors.                                               ;
+;                                                                       ;
+; Tick marks will be made to point outwards.                            ;
+;                                                                       ;
+; If the user sets lgLabelFontHeightF to change the size of the legend  ;
+; labels, then lgAutoManage will be set to False (unless it is being    ;
+; set explicitly by the user.                                           ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_xy")
+function gsn_csm_xy(wks:graphic,x:numeric,y:numeric,resources:logical)
+local res, xy_object, res2, xfontf, yfontf, font_height, calldraw, nlines, \
+callframe, left_string, center_string, right_string, main_zone, ncurves, \
+yabove, ybelow, ya_ind, yb_ind, xinterp, yinterp, bar_chart
+begin
+
+; Initialize.
+    main_zone     = 2         ; Zone for main title (may change later)
+    xref_line_on  = False     ; X reference line flag
+    yref_line_on  = False     ; Y reference line flag
+    yref_fill_on  = False     ; Whether to fill above/below Y ref line.
+    bar_chart     = False     ; Whether we want bars
+    fill_xy_res   = False     ; Whether we want to fill b/w curves
+    res2          = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(x,y,new(1,float),"gsn_csm_xy",res2,2)
+    end if
+
+    left_string   = False
+    center_string = False
+    right_string  = False
+    tm_scale      = get_res_value_keep(res2,"gsnScale",True)
+    point_outward = get_res_value(res2,"gsnTickMarksPointOutward",True)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Calculate number of Y points.
+
+    ndimsy = dimsizes(dimsizes(y))
+    ndimsx = dimsizes(dimsizes(x))
+
+    if(ndimsy.eq.1)
+      ncurves = 1
+      npts    = dimsizes(y)
+    else
+      ncurves = dimsizes(y(:,0))
+      npts    = dimsizes(y(0,:))
+    end if
+
+    if(ndimsx.eq.1)
+      nptsx = dimsizes(x)
+    else
+      nptsx = dimsizes(x(0,:))
+    end if
+;
+; Test dimensions. They must both either be the same, or have the
+; same rightmost dimension.
+;
+    if( (ndimsx.gt.1.and.ndimsy.gt.1.and.(ndimsx.ne.ndimsy.or. \
+         .not.all(dimsizes(x).eq.dimsizes(y)))).or.\
+        ((ndimsx.eq.1.or.ndimsy.eq.1).and.nptsx.ne.npts))
+      print("gsn_csm_xy: Fatal: X and Y must have the same dimensions sizes, or one must be one-dimensional and both have the same rightmost dimension.")
+    end if
+
+; This section tests for more special resources: those that start
+; with "gsn."
+
+    if((res2).and..not.any(ismissing(getvaratts(res2))))
+;
+; Check if gsnShape set.
+;
+      if(isatt(res2,"gsnShape").and.res2@gsnShape)
+        main_zone     = main_zone+1 ; Zone for main title
+      end if
+
+; Check if filling between curves is desired. This can be
+; specified via gsnXYFillColors, gsnXYAboveFillColors,  
+; gsnXYBelowFillColors, gsnXYLeftFillColors, gsnXYRightFillColors.
+
+      fill_atts = (/"gsnXYFillColors", "gsnXYAboveFillColors", \
+                    "gsnXYBelowFillColors","gsnXYLeftFillColors", \
+                    "gsnXYRightFillColors"/)
+      if(any(isatt(res2,fill_atts))) then
+;
+; Make sure you collect the appropriate resources to pass
+; to fill_bw_xy later.
+;
+        fill_xy_res = True
+        do na = 0,dimsizes(fill_atts)-1
+          if(isatt(res2,fill_atts(na))) then
+            fill_xy_res@$fill_atts(na)$ = get_res_value(res2,fill_atts(na),1)
+          end if
+        end do
+;
+; This next requirement is mostly out of laziness. It wouldn't be that 
+; hard to let both X and Y be multi-dimensional. Or would it?
+;
+        if(ndimsx.ne.1.and.ndimsy.ne.1) then
+          print("gsn_csm_xy: Warning: to fill between curves, either X or Y must be 1D.")
+          fill_xy_res = False
+        end if
+      end if
+
+; Check if gsnYRefLine set.
+
+      if(isatt(res2,"gsnYRefLine"))
+        yref_line_on = True
+        yref_line    = res2@gsnYRefLine
+        nyref        = dimsizes(yref_line)
+        delete(res2@gsnYRefLine)
+;
+; Determine color of fill above reference line(s).
+;
+        if(isatt(res2,"gsnAboveYRefLineColor"))
+          if(.not.(dimsizes(res2@gsnAboveYRefLineColor).eq.nyref.or.\
+                   dimsizes(res2@gsnAboveYRefLineColor).eq.1))
+            print("gsn_csm_xy: Fatal: there must either be an above-line fill color for every reference line, or one global above-line fill color specified")
+            return
+          end if
+          yref_line_above = res2@gsnAboveYRefLineColor
+          yref_fill_on    = True
+          delete(res2@gsnAboveYRefLineColor)
+        else
+          if(any(isatt(res2,(/"gsnXYBarChartPatterns", \
+                              "gsnXYBarChartPatterns2", \
+                              "gsnAboveYRefLineBarPatterns"/)))) then
+            yref_line_above = 1    ; defaults to foreground.
+          else
+            yref_line_above = -1    ; defaults to no fill.
+          end if
+        end if
+;
+; Determine color of fill below reference line(s).
+;
+        if(isatt(res2,"gsnBelowYRefLineColor"))
+          if(.not.(dimsizes(res2@gsnBelowYRefLineColor).eq.nyref.or.\
+                   dimsizes(res2@gsnBelowYRefLineColor).eq.1))
+            print("gsn_csm_xy: Fatal: there must either be an below-line fill color for every reference line, or one global below-line fill color specified ")
+            return
+          end if
+          yref_line_below = get_res_value(res2,"gsnBelowYRefLineColor",1)
+          yref_fill_on    = True
+        else
+          if(any(isatt(res2,(/"gsnXYBarChartPatterns", \
+                              "gsnXYBarChartPatterns2", \
+                              "gsnBelowYRefLineBarPatterns"/)))) then
+            yref_line_below = 1    ; defaults to foreground.
+          else
+            yref_line_below = -1    ; defaults to no fill.
+          end if
+        end if
+;
+; If yref_fill_on is True, and we have more than one curve, then there
+; should be the same number of reference lines as curves.
+;
+        if(yref_fill_on.and.ncurves.gt.1.and.ncurves.ne.nyref.and.nyref.ne.1)
+          print("gsn_csm_xy: Fatal: if you plan to fill above and/or below reference lines, then the number of reference lines must either equal the number")
+          print("of curves, or be one.")
+          return
+        end if
+;
+; Determine color of Y reference line(s).
+;
+        set_yref_line_color = False
+        if(isatt(res2,"gsnYRefLineColors"))
+          yref_line_color = get_res_value(res2,"gsnYRefLineColors","foreground")
+          set_yref_line_color = True
+        else
+          if(isatt(res2,"gsnYRefLineColor"))
+            yref_line_color = get_res_value(res2,"gsnYRefLineColor","foreground")
+            set_yref_line_color = True
+          else
+            yref_line_color = "foreground"
+          end if
+        end if
+        if(set_yref_line_color) then
+          if(.not.(dimsizes(yref_line_color).eq.nyref.or.\
+                   dimsizes(yref_line_color).eq.1))
+            print("gsn_csm_xy: Warning: you must specify either one Y reference line color")
+            print("or the same number of colors as there are reference lines.")
+            print("Will use the foreground color.") 
+            yref_line_color = "foreground"
+          end if
+        end if
+;
+; Determine dash pattern of Y reference line(s).
+;
+        if(isatt(res2,"gsnYRefLineDashPattern"))
+          yref_line_pattern = res2@gsnYRefLineDashPattern(0)
+          delete(res2@gsnYRefLineDashPattern)
+        else
+          if(isatt(res2,"gsnYRefLineDashPatterns"))
+            yref_line_pattern = res2@gsnYRefLineDashPatterns
+            delete(res2@gsnYRefLineDashPatterns)
+            if(.not.(dimsizes(yref_line_pattern).eq.nyref.or.\
+                     dimsizes(yref_line_pattern).eq.1))
+              print("gsn_csm_xy: Warning: you must specify either one Y reference line dash pattern")
+              print("or the same number of dash patterns as there are reference lines.")
+              print("Will use a solid line.") 
+              yref_line_pattern = 0  ; defaults to solid
+            end if
+          else
+            yref_line_pattern = 0  ; defaults to solid
+          end if
+        end if
+;
+; Determine thickness of Y reference line(s).
+;
+        if(isatt(res2,"gsnYRefLineThicknessF"))
+          yref_line_thickness = res2@gsnYRefLineThicknessF(0)
+          delete(res2@gsnYRefLineThicknessF)
+        else
+          if(isatt(res2,"gsnYRefLineThicknesses"))
+            yref_line_thickness = res2@gsnYRefLineThicknesses
+            delete(res2@gsnYRefLineThicknesses)
+            if(.not.(dimsizes(yref_line_thickness).eq.nyref.or.\
+                     dimsizes(yref_line_thickness).eq.1))
+              print("gsn_csm_xy: Warning: you must specify either one Y reference line thickness")
+              print("or the same number of line thicknesses as there are reference lines.")
+              print("Will use a thickness of 1.") 
+              yref_line_thickness = 1.0
+            end if
+          else
+            yref_line_thickness = 1.0
+          end if
+        end if
+      end if                            ; Check if gsnYRefLine set.
+;
+; Check if we want a bar chart.
+;
+      bar_chart        = get_res_value(res2,"gsnXYBarChart",False)
+      bar_outline_only = get_res_value(res2,"gsnXYBarChartOutlineOnly",False)
+
+      if(bar_chart.and..not.bar_outline_only)
+        if(.not.yref_line_on) then
+;
+; If no ref line specified, but bar fill is on, then set the reference
+; line to the minimum y value.
+;
+          yref_line           = get_res_value_keep(res2,"trYMinF",min(y))
+          nyref               = 1 
+          yref_line_on        = True
+          yref_line_color     = "foreground"
+          yref_line_pattern   = 0
+          yref_line_thickness = 1.
+        else
+          if((ncurves.gt.1.and.nyref.gt.1.and.ncurves.ne.nyref).or. \
+             (ncurves.eq.1.and.nyref.ne.1))
+            print("gsn_csm_xy: Fatal: if you plan to draw a bar chart with values above")
+            print("and/or below reference lines, then the number of reference lines")
+            print("must either equal the number of curves, or be one.")
+            return
+          end if
+        end if          ; Check for Y ref line.
+      end if            ; Check for bar chart settage.
+
+; Check if gsnXRefLine set.
+
+      if(isatt(res2,"gsnXRefLine"))
+        xref_line_on = True
+        xref_line    = get_res_value(res2,"gsnXRefLine",0.)
+        nxref        = dimsizes(xref_line)
+
+        xref_line_color     = get_res_value(res2,"gsnXRefLineColor","foreground")
+        xref_line_pattern   = get_res_value(res2,"gsnXRefLineDashPattern",0)
+        xref_line_thickness = get_res_value(res2,"gsnXRefLineThicknessF",1.)
+      end if
+
+; Check for existence of the left, center, and right subtitles.
+
+      check_for_subtitles(res2,left_string,center_string,right_string)
+      if(left_string.or.center_string.or.right_string)
+        main_zone   = main_zone+1
+      end if
+;
+; These resources allow you to control the look of the fill patterns
+; in the bars. You can change the fill line thickness, the density of
+; the fill pattern, or the thickness of the stippled dots.
+;
+      bar_outline_thickness = get_res_value(res2,"gsnXYBarChartOutlineThicknessF",1.0)
+      bar_fill_line_thickness = get_res_value(res2,"gsnXYBarChartFillLineThicknessF",1.0)
+      bar_fill_scale = get_res_value(res2,"gsnXYBarChartFillScaleF",1.0)
+      bar_fill_dot_size = get_res_value(res2,"gsnXYBarChartFillDotSizeF",0.0)
+    end if                  ; Done checking special resources.
+
+    res2          = True
+    res2@gsnDraw  = False     ; Internally, don't draw plot or advance
+    res2@gsnFrame = False     ; frame since we take care of that later.
+    res2@gsnScale = tm_scale  ; Force labels and ticks to be same.
+
+; If user explicitly sets X or Y tick marks, then don't label the X 
+; or Y axis automatically.
+
+    if(check_attr(res2,"tmXBMode","Explicit",True).or.\
+       check_attr(res2,"tmXBMode",2,True))
+      set_attr(res2,"tiXAxisString","")
+    end if
+
+    if(check_attr(res2,"tmYLMode","Explicit",True).or.\
+       check_attr(res2,"tmYLMode",2,True))
+      set_attr(res2,"tiYAxisString","")
+    end if
+
+;
+; The following code is going to create new X,Y arrays, depending
+; on whether the user wants:
+;
+;   - a regular XY plot
+;   - a regular XY plot with curves above and below a given reference
+;     line filled in
+;   - a bar plot without any fill
+;   - a bar plot with filling above and below a given Y reference value.
+
+;
+; This is the regular XY plot with the curve above and below a given
+; reference line filled in with some color.
+;
+    if(yref_fill_on.and..not.bar_chart) then
+;
+; Create new X and Y arrays to hold new data values.  Wherever the curve
+; crosses the reference line, an interpolation needs to be done to create 
+; a point *on* that reference line.
+;
+      xinterp = new((/nyref,2*npts/),double,1e36)
+      yinterp = new((/nyref,2*npts/),double,1e36)
+
+      copy_var_atts(x,xinterp,"")
+      copy_var_atts(y,yinterp,"")
+
+      new_npts = ref_line_interp(x,y,xinterp,yinterp,yref_line)
+    else
+      if(bar_chart) then
+;
+; This is the bar XY plot with outlined bars only.
+;
+        if(bar_outline_only)
+;
+; For each old y point, we need two new y points to represent
+; the horizontal line.
+;
+          nyb = 2 * (npts-1) + 1
+
+          yinterp = new((/ncurves,nyb/),double,1e36)
+          xinterp = new((/ncurves,nyb/),double,1e36)
+
+          copy_var_atts(x,xinterp,"")
+          copy_var_atts(y,yinterp,"")
+
+          outlined_bars(x,y,xinterp,yinterp)
+        else
+;
+; This is the bar XY plot with filled bars.
+;
+; Get bar widths.  They are either set by user via a resource, or 
+; from the smallest dx.
+;
+          bar_widths = get_bar_widths(x,ncurves,res2)
+          if(any(ismissing(bar_widths)).or.any(bar_widths.le.0))
+            print("gsn_csm_xy: Fatal: The x array is not monotonically increasing.")
+            print("Cannot draw a bar chart.")
+            return
+          end if
+;---Special test for just one point.
+        if(npts.eq.1) then
+          if(isatt(y,"_FillValue")) then
+            ybarmsg = y@_FillValue
+          else
+            ybarmsg = 1e20
+          end if
+;---If just one point, add some dummy missing vals before and after.
+          xbar = (/x-bar_widths,x,x+bar_widths/)
+          ybar = (/ybarmsg,y,ybarmsg/)
+          nptsbar = 3
+          ybar@_FillValue = ybarmsg
+         else
+           xbar = x
+           ybar = y
+           nptsbar = npts
+        end if
+;
+; Figure out if we want to fill bars.  Three resources can be used to
+; specify fill colors, in this order:
+;
+;     gsnAbove/BelowYRefLineBarColors     gsnAbove/BelowYRefLineBarPatterns
+;     gsnXYBarChartColors                 gsnXYBarChartPatterns
+;     gsnXYBarChartColors2                gsnXYBarChartPatterns2
+;
+          mlt_above_bar_colors = False
+          mlt_below_bar_colors = False
+          mlt_above_bar_pttrns = False
+          mlt_below_bar_pttrns = False
+          mlt_above_bar_scales = False
+          mlt_below_bar_scales = False
+          colors2              = False      ; Flag to indicate whether the
+          pttrns2              = False      ; 3rd resource is being used.
+;
+; First check for above reference line bar fill colors.
+;
+          if(isatt(res2,"gsnAboveYRefLineBarColors")) then
+            yref_fill_on         = True
+            mlt_above_bar_colors = True
+            bar_colors_above = get_res_value(res2,"gsnAboveYRefLineBarColors",1)
+;
+; If gsnXYBarChartColors or gsnXYBarChartColors2 are set, then
+; delete them.
+;
+            if(isatt(res2,"gsnXYBarChartColors")) then
+              delete(res2@gsnXYBarChartColors)
+            end if
+            if(isatt(res2,"gsnXYBarChartColors2")) then
+              delete(res2@gsnXYBarChartColors2)
+            end if
+          end if  
+;
+; Now check for below reference line bar fill colors.
+;
+          if(isatt(res2,"gsnBelowYRefLineBarColors")) then
+            yref_fill_on         = True
+            mlt_below_bar_colors = True
+            bar_colors_below = get_res_value(res2,"gsnBelowYRefLineBarColors",1)
+;
+; If gsnXYBarChartColors and/or gsnXYBarChartColors2 are set,
+; then delete them.
+;
+            if(isatt(res2,"gsnXYBarChartColors")) then
+              delete(res2@gsnXYBarChartColors)
+            end if
+            if(isatt(res2,"gsnXYBarChartColors2")) then
+              delete(res2@gsnXYBarChartColors2)
+            end if
+          end if  
+;
+; If neither gsnBelow/AboveYRefLineBarColors were set, then the
+; second choice is to check for gsnXYBarChartColors.
+;
+          if(isatt(res2,"gsnXYBarChartColors")) then
+            yref_fill_on         = True
+            mlt_above_bar_colors = True
+            mlt_below_bar_colors = True
+            bar_colors_above = get_res_value(res2,"gsnXYBarChartColors",1)
+            bar_colors_below = bar_colors_above
+;
+; If gsnXYBarChartColors2 is set, then delete it.
+;
+            if(isatt(res2,"gsnXYBarChartColors2")) then
+              delete(res2@gsnXYBarChartColors2)
+            end if
+          end if
+
+;
+; If none of gsnBelow/AboveYRefLineBarColors/gsnXYBarChartColors were
+; set, then the third choice is to use gsnXYBarChartColors2.
+;
+          if(isatt(res2,"gsnXYBarChartColors2")) then
+            colors2              = True
+            yref_fill_on         = True
+            mlt_above_bar_colors = True
+            mlt_below_bar_colors = True
+            bar_colors_above = get_res_value(res2,"gsnXYBarChartColors2",1)
+            bar_colors_below = bar_colors_above
+          end if
+;
+; Now that we've exhausted all the possible ways that bar colors can
+; be set for the above ref line, check that the array is a valid size.
+;
+          if(mlt_above_bar_colors) then
+            bac_rank = dimsizes(dimsizes(bar_colors_above))
+            if(bac_rank.gt.2.or. \
+              (bac_rank.eq.2.and.dimsizes(bar_colors_above(:,0)).ne.nyref)) then
+              print("gsn_csm_xy: Fatal: The resource for specifying bar colors must either be 1D, or 2D where the first dimension is equal to the number of Y reference lines or curves.")
+              print("Will not fill your bar chart.")
+              mlt_above_bar_colors = False
+            end if            
+          end if
+          if(mlt_below_bar_colors) then
+            bbc_rank = dimsizes(dimsizes(bar_colors_below))
+            if(bbc_rank.gt.2.or. \
+              (bbc_rank.eq.2.and.dimsizes(bar_colors_below(:,0)).ne.nyref)) then
+              print("gsn_csm_xy: Fatal: The resource for specifying bar colors must either be 1D, or 2D where the first dimension is equal to the number of Y reference lines or curves.")
+              print("Will not fill your bar chart.")
+              mlt_below_bar_colors = False
+            end if            
+          end if
+;
+; Check for above reference line fill patterns.
+;
+          if(isatt(res2,"gsnAboveYRefLineBarPatterns")) then
+            yref_fill_on         = True
+            mlt_above_bar_pttrns = True
+            bar_pttrns_above = get_res_value(res2,"gsnAboveYRefLineBarPatterns",1)
+;
+; If gsnXYBarChartPatterns or gsnXYBarChartPatterns2 are set,
+; then delete them.
+;
+            if(isatt(res2,"gsnXYBarChartPatterns")) then
+              delete(res2@gsnXYBarChartPatterns)
+            end if
+            if(isatt(res2,"gsnXYBarChartPatterns2")) then
+              delete(res2@gsnXYBarChartPatterns2)
+            end if
+          end if  
+;
+; Now check for below reference line fill patterns.
+;
+          if(isatt(res2,"gsnBelowYRefLineBarPatterns")) then
+            yref_fill_on         = True
+            mlt_below_bar_pttrns = True
+            bar_pttrns_below = get_res_value(res2,"gsnBelowYRefLineBarPatterns",1)
+;
+; If gsnXYBarChartPatterns or gsnXYBarChartPatterns2 are set,
+; then delete them.
+;
+            if(isatt(res2,"gsnXYBarChartPatterns")) then
+              delete(res2@gsnXYBarChartPatterns)
+            end if
+            if(isatt(res2,"gsnXYBarChartPatterns2")) then
+              delete(res2@gsnXYBarChartPatterns2)
+            end if
+          end if  
+
+;
+; If the gsnAbove/BelowYRefLineBarPatterns resources are not set, then
+; the second choice is to use gsnXYBarChartPatterns.
+;
+          if(isatt(res2,"gsnXYBarChartPatterns")) then
+            yref_fill_on         = True
+            mlt_above_bar_pttrns = True
+            mlt_below_bar_pttrns = True
+            bar_pttrns_above = get_res_value(res2,"gsnXYBarChartPatterns",1)
+            bar_pttrns_below = bar_pttrns_above
+;
+; If gsnXYBarChartPatterns2 is set, then delete it.
+;
+            if(isatt(res2,"gsnXYBarChartPatterns2")) then
+              delete(res2@gsnXYBarChartPatterns2)
+            end if
+          end if  
+;
+; If gsnAbove/BelowYRefLineBarPatterns and gsnXYBarChartPatterns are
+; not set, then the third choice is to use gsnXYBarChartPatterns2.
+;
+          if(isatt(res2,"gsnXYBarChartPatterns2")) then
+            pttrns2              = True
+            yref_fill_on         = True
+            mlt_above_bar_pttrns = True
+            mlt_below_bar_pttrns = True
+            bar_pttrns_above = get_res_value(res2,"gsnXYBarChartPatterns2",1)
+            bar_pttrns_below = bar_pttrns_above
+          end if  
+;
+; Now that we've exhausted all the possible ways that bar patterns can
+; be set for the above ref line, check that the array is a valid size.
+;
+          if(mlt_above_bar_pttrns) then
+            bap_rank = dimsizes(dimsizes(bar_pttrns_above))
+            if(bap_rank.gt.2.or. \
+              (bap_rank.eq.2.and.dimsizes(bar_pttrns_above(:,0)).ne.nyref)) then
+              print("gsn_csm_xy: Fatal: The resource for specifying bar patterns must either be 1D, or 2D where the first dimension is equal to the number of Y reference lines or curves.")
+              print("Will not fill your bar chart.")
+              mlt_above_bar_pttrns = False
+            end if            
+          end if
+          if(mlt_below_bar_pttrns) then
+            bbp_rank = dimsizes(dimsizes(bar_pttrns_below))
+            if(bbp_rank.gt.2.or. \
+              (bbp_rank.eq.2.and.dimsizes(bar_pttrns_below(:,0)).ne.nyref)) then
+              print("gsn_csm_xy: Fatal: The resource for specifying bar patterns must either be 1D, or 2D where the first dimension is equal to the number of Y reference lines or curves.")
+              print("Will not fill your bar chart.")
+              mlt_below_bar_pttrns = False
+            end if            
+          end if
+;
+; Check for fill scales above and below.
+;
+          if(isatt(res2,"gsnAboveYRefLineBarFillScales")) then
+            mlt_above_bar_scales = True
+            bar_scales_above = get_res_value(res2,"gsnAboveYRefLineBarFillScales",1)
+          end if  
+          if(isatt(res2,"gsnBelowYRefLineBarFillScales")) then
+            mlt_below_bar_scales = True
+            bar_scales_below = get_res_value(res2,"gsnBelowYRefLineBarFillScales",1)
+          end if  
+
+;
+; Loop across curves and figure out which points are above, below,
+; and equal to the references lines.  First create arrays to hold points
+; above, below, and equal to reference lines.
+;
+          xabove = new((/ncurves,5*nptsbar/),double,1e36)
+          yabove = new((/ncurves,5*nptsbar/),double,1e36)
+          xbelow = new((/ncurves,5*nptsbar/),double,1e36)
+          ybelow = new((/ncurves,5*nptsbar/),double,1e36)
+          xequal = new((/ncurves,5*nptsbar/),double,1e36)
+          yequal = new((/ncurves,5*nptsbar/),double,1e36)
+;
+; Arrays to hold number of points in each set of above/below points,
+; and the index values where points fall above, below, and equal
+; to the Y ref value.
+;
+          nabove   = new(ncurves,integer)
+          nbelow   = new(ncurves,integer)
+          nequal   = new(ncurves,integer)
+          indabove = new((/ncurves,nptsbar/),integer)
+          indbelow = new((/ncurves,nptsbar/),integer)
+          indequal = new((/ncurves,nptsbar/),integer)
+;
+; Fill in values for filled bars (that will be filled later).
+;
+          filled_bars(xbar,ybar,xabove,yabove,xbelow,ybelow,xequal,yequal, \
+                      nabove,nbelow,nequal,indabove,indbelow,indequal, \
+                      yref_line,bar_widths)
+;
+; Combine the above/below/equal arrays into one X/Y array so that we can
+; pass to gsn_xy routine. Make the 5th point missing, since the 5th point
+; closes the polygon, and we only want an outline here.
+;
+          na_max   = max(nabove)
+          nb_max   = max(nbelow)
+          ne_max   = max(nequal)
+          nabe_max = na_max + nb_max + ne_max
+
+          if(na_max.le.0.and.nb_max.le.0)
+            print("gsn_csm_xy: Fatal: There are no values above or below the chosen reference line.")
+            print("Cannot draw a bar chart.")
+            xinterp = x
+            yinterp = y
+          else
+            ncurves3 = 3*ncurves
+            xinterp  = new((/ncurves3,nabe_max/),double,xabove@_FillValue)
+            yinterp  = new((/ncurves3,nabe_max/),double,yabove@_FillValue)
+
+            copy_var_atts(xbar,xinterp,"")
+            copy_var_atts(ybar,yinterp,"")
+
+            if(na_max.gt.0)
+              xinterp(0:ncurves3-1:3,0:na_max-1)   = xabove(:,0:na_max-1)
+              yinterp(0:ncurves3-1:3,0:na_max-1)   = yabove(:,0:na_max-1)
+              yinterp(0:ncurves3-1:3,4:na_max-1:5) = yinterp@_FillValue
+            end if
+            if(nb_max.gt.0)
+              xinterp(1:ncurves3-1:3,0:nb_max-1)   = xbelow(:,0:nb_max-1)
+              yinterp(1:ncurves3-1:3,0:nb_max-1)   = ybelow(:,0:nb_max-1)
+              yinterp(1:ncurves3-1:3,4:nb_max-1:5) = yinterp@_FillValue
+            end if
+            if(ne_max.gt.0)
+              xinterp(2:ncurves3-1:3,0:ne_max-1)   = xequal(:,0:ne_max-1)
+              yinterp(2:ncurves3-1:3,0:ne_max-1)   = yequal(:,0:ne_max-1)
+              yinterp(2:ncurves3-1:3,4:ne_max-1:5) = yinterp@_FillValue
+            end if
+;
+; Make sure all lines are solid, and not dashed as is the default
+; with the second curve drawn.
+; 
+            res2@xyDashPatterns = get_res_value(res2,"xyDashPatterns",0)
+          end if
+        end if
+      else
+;
+; This is just a regular XY plot.
+;
+        xinterp = x
+        yinterp = y
+      end if
+    end if
+
+    if(xref_line_on)
+      set_attr(res2,"trYMinF",min(yinterp))
+      set_attr(res2,"trYMaxF",max(yinterp))
+    end if
+
+    if(yref_line_on)
+      set_attr(res2,"trXMinF",min(xinterp))
+      set_attr(res2,"trXMaxF",max(xinterp))
+    end if
+
+;
+; If user sets lgLabelFontHeightF, then lgAutoManage needs to
+; be False in order for this resource to have any affect.
+;
+    if(isatt(res2,"lgLabelFontHeightF"))
+      set_attr(res2,"lgAutoManage",False)
+    end if
+
+; Create XY plot
+    xyres = get_res_ne(res2,(/"tx"/))
+    xy_object = gsn_xy(wks,xinterp,yinterp,xyres)
+   
+; Fill between two curves if desired
+    if(fill_xy_res) then
+      xy_object = fill_bw_xy(wks,xy_object,xinterp,yinterp,fill_xy_res)
+    end if
+
+; Add lat/lon labels to X/Y axes if appropriate units exist.
+
+    res2@gsnXYPlot = True
+    res2@gsnXAxis = True
+
+    add_latlon_labels(xy_object,x,res2)
+    delete(res2@gsnXAxis)
+    res2@gsnYAxis = True
+    add_latlon_labels(xy_object,y,res2)
+    delete(res2@gsnYAxis)
+    delete(res2@gsnXYPlot)
+
+; Fill above/below Y reference line.
+
+    if(yref_fill_on.and..not.bar_chart)
+;
+; Make sure polygons get filled before xy plot is drawn. This way,
+; any lines will be drawn *after* the fill. This makes the filled 
+; polygons look better if the lines are drawn thicker.
+;
+      xyres_tmp = True
+      xyres_tmp@tfPolyDrawOrder =  "Predraw"
+      attsetvalues_check(xy_object,xyres_tmp)
+      delete(xyres_tmp)
+
+      fill_above = yref_line_above(0)
+      fill_below = yref_line_below(0)
+
+      do i=0,max((/ncurves,nyref/))-1
+        if(dimsizes(yref_line_above).gt.1)
+          fill_above = yref_line_above(i)
+        end if
+        if(dimsizes(yref_line_below).gt.1)
+          fill_below = yref_line_below(i)
+        end if
+        var_string = unique_string("polygons"+i)
+        xy_object@$var_string$=fill_xy_ref(wks,xy_object, \
+                                     xinterp(i,0:new_npts(i)-1), \
+                                     yinterp(i,0:new_npts(i)-1),\
+                                     yref_line(i),fill_above,fill_below)
+      end do
+    end if
+
+; Fill bars with either a single color for above and below, or with
+; individual colors.
+
+    if(yref_fill_on.and.bar_chart.and..not.bar_outline_only)
+      gsres = True
+      if(bar_outline_thickness.gt.0.and.bar_outline_thickness.ne.1) then
+        gsres@gsEdgesOn        = True
+        gsres@gsEdgeThicknessF = bar_outline_thickness
+      end if
+      gsres@gsFillLineThicknessF = bar_fill_line_thickness
+      gsres@gsFillScaleF         = bar_fill_scale
+      gsres@gsFillDotSizeF       = bar_fill_dot_size
+      do i=0,ncurves-1 
+        var_string = unique_string("polygons"+i)
+;
+; Fill above reference line.
+;
+        if(nabove(i).gt.0)
+;
+; Single bar color for each above and below bars.
+;
+          if(.not.mlt_above_bar_colors)
+            gsres@gsFillColor = yref_line_above(0)
+            if(dimsizes(yref_line_above).gt.1)
+              gsres@gsFillColor = yref_line_above(i)
+            end if
+          end if
+;
+; Single bar fill scale for each above and below bars.
+;
+          if(mlt_above_bar_scales) then
+            gsres@gsFillScaleF = bar_scales_above(0)
+            if(dimsizes(yref_line_above).gt.1)
+              gsres@gsFillScaleF = bar_scales_above(i)
+            end if
+          end if
+;
+; Multiple bar colors and/or patterns.
+;
+          if(mlt_above_bar_colors.or.mlt_above_bar_pttrns) then
+            if(mlt_above_bar_colors) then
+              if(bac_rank.eq.1) then
+                nca = dimsizes(bar_colors_above)
+              else
+                nca = dimsizes(bar_colors_above(0,:))
+              end if
+            end if
+            if(mlt_above_bar_pttrns) then
+              if(bap_rank.eq.1) then
+                npa = dimsizes(bar_pttrns_above)
+              else
+                npa = dimsizes(bar_pttrns_above(0,:))
+              end if
+            end if
+            do ii = 0,nabove(i)/5-1
+              var_string2 = var_string + "above" + ii
+              if(mlt_above_bar_colors) then
+                if(colors2) then 
+                  ci = indabove(i,ii) % nca
+                else
+                  ci = ii % nca
+                end if
+                if(bac_rank.eq.1) then
+                  gsres@gsFillColor = bar_colors_above(ci)
+                else
+                  gsres@gsFillColor = bar_colors_above(i,ci)
+                end if
+              end if
+              if(mlt_above_bar_pttrns) then
+                if(pttrns2) then 
+                  pi = indabove(i,ii) % npa
+                else
+                  pi = ii % npa
+                end if
+                if(bap_rank.eq.1) then
+                  gsres@gsFillIndex = bar_pttrns_above(pi)
+                else
+                  gsres@gsFillIndex = bar_pttrns_above(i,pi)
+                end if
+              end if
+              xy_object@$var_string2$ = gsn_add_polygon(wks,xy_object, \
+                                                     xabove(i,ii*5:ii*5+4), \
+                                                     yabove(i,ii*5:ii*5+4), \
+                                                     gsres)
+            end do
+          else
+            var_string2 = var_string + "above"
+            xy_object@$var_string2$ = gsn_add_polygon(wks,xy_object, \
+                                                     xabove(i,:), \
+                                                     yabove(i,:),gsres)
+          end if
+        end if
+;
+; Fill below reference line.
+;
+        if(nbelow(i).gt.0)
+          if(.not.mlt_below_bar_colors) then
+            gsres@gsFillColor = yref_line_below(0)
+            if(dimsizes(yref_line_below).gt.1)
+              gsres@gsFillColor = yref_line_below(i)
+            end if
+          end if
+;
+; Single bar fill scale for each above and below bars.
+;
+          if(mlt_below_bar_scales) then
+            gsres@gsFillScaleF = bar_scales_below(0)
+            if(dimsizes(yref_line_below).gt.1)
+              gsres@gsFillScaleF = bar_scales_below(i)
+            end if
+          end if
+;
+; Multiple bar colors and/or patterns.
+;
+         if(mlt_below_bar_colors.or.mlt_below_bar_pttrns) then
+            if(mlt_below_bar_colors) then
+              if(bbc_rank.eq.1) then
+                ncb = dimsizes(bar_colors_below)
+              else
+                ncb = dimsizes(bar_colors_below(0,:))
+              end if
+            end if
+            if(mlt_below_bar_pttrns) then
+              if(bbp_rank.eq.1) then
+                npb = dimsizes(bar_pttrns_below)
+              else
+                npb = dimsizes(bar_pttrns_below(0,:))
+              end if
+            end if
+            do ii = 0,nbelow(i)/5-1
+              var_string2 = var_string + "below" + ii
+              if(mlt_below_bar_colors) then
+                if(colors2) then 
+                  ci = indbelow(i,ii) % ncb
+                else
+                  ci = ii % ncb
+                end if
+                if(bbc_rank.eq.1) then
+                  gsres@gsFillColor = bar_colors_below(ci)
+                else
+                  gsres@gsFillColor = bar_colors_below(i,ci)
+                end if
+              end if
+              if(mlt_below_bar_pttrns) then
+                if(pttrns2) then 
+                  pi = indbelow(i,ii) % npb
+                else
+                  pi = ii % npb
+                end if
+                if(bbp_rank.eq.1) then
+                  gsres@gsFillIndex = bar_pttrns_below(pi)
+                else
+                  gsres@gsFillIndex = bar_pttrns_below(i,pi)
+                end if
+              end if
+              xy_object@$var_string2$ = gsn_add_polygon(wks,xy_object, \
+                                                     xbelow(i,ii*5:ii*5+4), \
+                                                     ybelow(i,ii*5:ii*5+4), \
+                                                     gsres)
+            end do
+          else
+            var_string2 = var_string + "below"
+            xy_object@$var_string2$ = gsn_add_polygon(wks,xy_object, \
+                                                     xbelow(i,:), \
+                                                     ybelow(i,:), gsres)
+          end if
+        end if
+      end do
+;
+; Make sure polygons get drawn first, so that XY lines are drawn on top.
+;
+      setvalues xy_object
+        "tfPolyDrawOrder" : "Predraw"
+      end setvalues
+
+      delete(gsres)    
+    end if
+
+; Draw X reference line.
+
+    if(xref_line_on)
+      getvalues xy_object
+        "trYMinF"  : ymin
+        "trYMaxF"  : ymax
+      end getvalues
+
+      gsres             = True
+
+      yline = (/ymin,ymax/)
+
+      gsres@gsLineColor       = xref_line_color(0)
+      gsres@gsLineDashPattern = xref_line_pattern(0)
+      gsres@gsLineThicknessF  = xref_line_thickness(0)
+
+      do i=0,nxref-1
+        if(dimsizes(xref_line_color).gt.1)
+          gsres@gsLineColor = xref_line_color(i)
+        end if
+        xline = fspan(xref_line(i),xref_line(i),2)
+        var_string = unique_string("xpolyline"+i)
+        xy_object@$var_string$ = gsn_add_polyline(wks,xy_object,xline,yline, \
+                                                  gsres)
+      end do
+      delete(xline)
+      delete(yline)
+    end if
+
+; Draw Y reference line.
+
+    if(yref_line_on)
+      getvalues xy_object
+        "trXMinF"  : xmin
+        "trXMaxF"  : xmax
+      end getvalues
+
+      gsres             = True
+
+      xline = (/xmin,xmax/)
+
+      gsres@gsLineColor       = yref_line_color(0)
+      gsres@gsLineDashPattern = yref_line_pattern(0)
+      gsres@gsLineThicknessF  = yref_line_thickness(0)
+
+      do i=0,nyref-1
+        if(dimsizes(yref_line_color).gt.1)
+          gsres@gsLineColor = yref_line_color(i)
+        end if
+        if(dimsizes(yref_line_pattern).gt.1)
+          gsres@gsLineDashPattern = yref_line_pattern(i)
+        end if
+        if(dimsizes(yref_line_thickness).gt.1)
+          gsres@gsLineThicknessF = yref_line_thickness(i)
+        end if
+        yline = fspan(tofloat(yref_line(i)),tofloat(yref_line(i)),2)
+        var_string = unique_string("ypolyline"+i)
+
+        xy_object@$var_string$ = gsn_add_polyline(wks,xy_object,xline, \
+                                                  yline,gsres)
+      end do
+
+      delete(xline)
+      delete(yline)
+    end if
+
+; Get title label sizes and tickmark lengths.
+    getvalues xy_object
+      "vpWidthF"             : width
+      "vpHeightF"            : height
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+
+      "tmYLMajorLengthF"     : ylength
+      "tmXBMajorLengthF"     : xlength
+      "tmYLMinorLengthF"     : ymlength
+      "tmXBMinorLengthF"     : xmlength
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+    major_length = min((/ylength,xlength/))
+    minor_length = min((/ymlength,xmlength/))
+
+; If the plot is close to square in size, then make the 
+; three top titles and the tick marks smaller.
+
+    ratio = height/width
+    if(ratio.gt.1) 
+      ratio = 1./ratio
+    end if
+    if(ratio.gt.0.5)
+      font_height = 0.75 * font_height
+      major_length = 0.75 * major_length
+      minor_length = 0.75 * minor_length
+    end if
+
+; Make tick marks same length and point outward.
+
+    tmres = get_res_eq(res2,"tm")
+    gsnp_point_tickmarks_outward(xy_object,tmres,xlength,ylength,xmlength, \
+                                 ymlength,major_length,minor_length, \
+                                 point_outward)
+
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,(/"tx","am"/))  ; Get textitem resources
+    subres               = True
+    set_attr(subres,"txFontHeightF",font_height)
+    add_subtitles(wks,xy_object,left_string,center_string,right_string, \
+                  subres)
+
+; Draw all this stuff: XY plot and subtitles.
+    draw_and_frame(wks,xy_object,calldraw,callframe,0,maxbb)
+
+; Return XY plot object.
+
+    return(xy_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_y                                                  ;
+;                   wks: workstation object                             ;
+;                     y: n-dimensional array of Y array                 ;
+;             resources: optional resources                             ;
+;                                                                       ;
+; This function is similar to gsn_csm_xy, except instead of a specific  ;
+; X array, index values are used.                                       ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_y")
+function gsn_csm_y(wks:graphic, y:numeric, resources:logical )
+local dsizes_y, npts, x, rank_y, xy
+begin
+  res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(y,new(1,float),new(1,float),"gsn_csm_y",res2,1)
+    end if
+;
+; Get dimension sizes of Y array.
+;
+  dsizes_y = dimsizes(y)
+  rank_y   = dimsizes(dsizes_y)
+  if(rank_y.eq.1) then
+    npts = dsizes_y
+  else
+    if(rank_y.ne.2) then
+      print("Error: gsn_csm_y: The input Y array must either be 1-dimensional, or 2-dimensional, where the leftmost dimension represents the number of curves and the rightmost dimension the number of points in each curve.")
+      exit
+    end if
+    npts = dsizes_y(1) 
+  end if
+
+; 
+; Create the indexed X array.
+;
+  x = ispan(0,npts-1,1)
+  x@long_name = ""
+
+;
+; Call gsn_csm_xy.
+;
+  xy = gsn_csm_xy(wks,x,y,res2)
+  return(xy)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_zonal_means                                        ;
+;                                                                       ;
+;    wks        : Workstation object                                    ;
+;    zdata      : data for calculating zonal means                      ;
+;    zres       : optional resource list                                ;
+;                                                                       ;
+; This function creates a zonal means plot.                             ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_zonal_means")
+function gsn_csm_zonal_means(wks,zdata,zres)
+local max_lat, zres2, zmeans
+begin
+; Calculate zonal means, and add Y reference line curve if requested.
+  zmeans = calculate_zonal_means(zdata,zres)
+
+  if(zres) then
+    zres2 = zres
+  end if
+
+  zres2 = True
+
+; Set up rest of resource list.
+  zres2@xyDashPattern = get_res_value(zres2,"xyDashPattern",0)
+
+; Set trXMinF/trXMaxF only if specified by user.
+  if(isatt(zres,"gsnZonalMeanXMinF")) then
+    zres2@trXMinF = get_res_value(zres2,"gsnZonalMeanXMinF",0.)
+  end if
+
+  if(isatt(zres,"gsnZonalMeanXMaxF")) then
+    zres2@trXMaxF = get_res_value(zres2,"gsnZonalMeanXMaxF",0.)
+  end if
+
+; Create zonal XY plot, using the coordinate array of the Y axis for
+; the Y values.
+
+  xy_object = gsn_csm_xy(wks,zmeans,zdata&$zdata!0$,zres2)
+
+  return(xy_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_attach_zonal_means                                 ;
+;                                                                       ;
+;    wks        : Workstation object                                    ;
+;    map_object : map plot to attach zonal plot to                      ;
+;    zdata      : data for calculating zonal means                      ;
+;    zres       : optional resource list                                ;
+;                                                                       ;
+; This function creates a zonal means plot and attaches it to the       ;
+; given map object.                                                     ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_attach_zonal_means")
+function gsn_csm_attach_zonal_means(wks,map_object,zdata,zres)
+local zres2, zres3
+begin
+
+; Resources for creating the zonal plot. Make sure gsnMaximize is not
+; set for this phase.
+  zres2 = get_res_ne(zres,(/"am","gsnDraw","gsnFrame","gsnMaximize"/))
+  zres2 = True
+
+;
+; Retrieve the lat limits and view port size of the map plot so we plot
+; the correct range in Y, and make the plot the correct size.
+;
+  getvalues map_object
+    "vpHeightF"    : vphf
+    "mpMinLatF"    : min_lat
+    "mpMaxLatF"    : max_lat
+  end getvalues
+;
+; If the map has tickmarks, then retrieve font heights and tickmark lengths.
+;
+  if(isatt(map_object,"tickmarks")) then
+    getvalues map_object@tickmarks
+      "tmXBLabelFontHeightF" : xbfontf
+      "tmXBMajorLengthF"     : xlength
+      "tmXBMinorLengthF"     : xmlength
+    end getvalues
+    zres2@tmXBLabelFontHeightF    = get_res_value(zres2, \
+                                                  "tmXBLabelFontHeightF", \
+                                                   xbfontf)
+    zres2@tmXBMajorLengthF        = get_res_value(zres2, \
+                                                  "tmXBMajorLengthF", \
+                                                  xlength)
+    zres2@tmYRMajorLengthF        = get_res_value(zres2, \
+                                                  "tmYRMajorLengthF", \
+                                                  xlength)
+    zres2@tmXBMajorOutwardLengthF = get_res_value(zres2, \
+                                                  "tmXBMajorOutwardLengthF", \
+                                                  xlength)
+    zres2@tmYRMajorOutwardLengthF = get_res_value(zres2, \
+                                                  "tmYRMajorOutwardLengthF", \
+                                                  xlength)
+    zres2@tmXBMinorLengthF        = get_res_value(zres2, \
+                                                  "tmXBMinorLengthF", \
+                                                  xmlength)
+    zres2@tmYRMinorLengthF        = get_res_value(zres2, \
+                                                  "tmYRMinorLengthF", \
+                                                  xmlength)
+    zres2@tmXBMinorOutwardLengthF = get_res_value(zres2, \
+                                                  "tmXBMinorOutwardLengthF", \
+                                                  xmlength)
+    zres2@tmYRMinorOutwardLengthF = get_res_value(zres2, \
+                                                  "tmYRMinorOutwardLengthF", \
+                                                  xmlength)
+  end if
+
+; Set up rest of resource list.
+  zres2@vpHeightF         = get_res_value(zres2,"vpHeightF",vphf)
+  zres2@vpWidthF          = get_res_value(zres2,"vpWidthF",0.15)
+  zres2@trYMaxF           = get_res_value(zres2,"trYMaxF",max_lat)
+  zres2@trYMinF           = get_res_value(zres2,"trYMinF",min_lat)
+  zres2@tmYLOn            = get_res_value(zres2,"tmYLOn",False)
+  zres2@tmYROn            = get_res_value(zres2,"tmYROn",False)
+  zres2@tmXBMaxTicks      = get_res_value(zres2,"tmXBMaxTicks",3)
+  zres2@tmXBMinorPerMajor = get_res_value(zres2,"tmXBMinorPerMajor",1)
+  zres2@tmXTMinorPerMajor = get_res_value(zres2,"tmXTMinorPerMajor",1)
+  zres2@tiXAxisOn         = get_res_value(zres2,"tiXAxisOn",False)
+  zres2@tiYAxisOn         = get_res_value(zres2,"tiYAxisOn",False)
+  zres2@gsnDraw           = False
+  zres2@gsnFrame          = False
+
+; Create zonal XY plot, using the coordinate array of the Y axis for
+; the Y values.
+
+  zonal_plot = gsn_csm_zonal_means(wks,zdata,zres2)
+;
+; Resources for attaching the zonal plot. By default, we don't
+; want the attached plots drawn or the frame advanced.
+;
+  zres3          = zres
+  maxbb          = get_bb_res(zres)
+  zres3          = True
+  zres3@gsnDraw  = get_res_value(zres3,"gsnDraw",False)
+  zres3@gsnFrame = get_res_value(zres3,"gsnFrame",False)
+;
+; Make maximize True by default, because the zonal plot is likely to
+; go off the frame.
+;
+  maxbb = get_res_value(zres3,"gsnMaximize",True)
+
+; Add zonal plot as annotation of map plot.
+  anno = NhlAddAnnotation(map_object,zonal_plot)
+  setvalues anno
+    "amZone"          : get_res_value(zres3,"amZone",2)
+    "amSide"          : get_res_value(zres3,"amSide","right")
+    "amResizeNotify"  : get_res_value(zres3,"amResizeNotify",True)
+    "amParallelPosF"  : get_res_value(zres3,"amParallelPosF",0.5)
+    "amOrthogonalPosF": get_res_value(zres3,"amOrthogonalPosF",0.05)
+  end setvalues
+
+  draw_and_frame(wks,map_object,zres3@gsnDraw,zres3@gsnFrame,0,maxbb)
+
+  return(zonal_plot)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_map_ce                                             ;
+;                   wks: workstation object                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a labeled cylindrical equidistant map ;
+; plot to the workstation "wks" (the variable returned from a previous  ;
+; call to "gsn_open_wks").  "resources" is an optional list of          ;
+; resources. The Id of the map plot is returned.                        ;
+;                                                                       ;
+; This function behaves differently from gsn_map in that it will        ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The lat/lon grid is labeled with tickmarks.                     ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;***********************************************************************;
+undef("gsn_csm_map_ce")
+function gsn_csm_map_ce(wks:graphic,resources:logical)
+local i, res, map_object, tickmark_object, calldraw, callframe, \
+left_string, center_string, right_string, main_zone, min_lat, max_lat, \
+min_lon, max_lon, res2, tmres, ticks_on, display_mode, rel_c_lat, rel_c_lon, \
+center_lon, center_lat
+begin
+; Initialize.
+    main_zone     = 2         ; Zone for main title (may change later)
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(new(1,float),new(1,float),new(1,float),\
+                       "gsn_csm_map_ce",res2,0)
+    end if
+
+;
+; Make sure user is not calling this function, and then trying to
+; change the map projection, because this can cause problems later.
+;
+    if(isatt(res2,"mpProjection")) then
+      iproj = res2@mpProjection
+      if( (typeof(iproj).eq."integer".and.iproj.ne.8).or.\
+          (typeof(iproj).eq."string".and.lower_case(iproj).ne. \
+                                             "cylindricalequidistant")) then
+        print("gsn_csm_map_ce: Warning: you are calling one of the CE map functions,")
+        print("but setting the map projection to something other than")
+        print("'CylindricalEquidistant'. You may get errors or unexpected results.")
+      end if
+    end if                
+
+; This section tests for more special resources: those that start
+; with "gsn."
+
+; Check if frame and/or draw are not supposed to be called.
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+    point_outward = get_res_value(res2,"gsnTickMarksPointOutward",True)
+
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(res2,left_string,center_string,right_string)
+    if(left_string.or.center_string.or.right_string)
+      main_zone   = 4
+    end if
+;
+; Increase title zone if map tickmarks are on.
+;
+    if(check_attr(res2,"pmTickMarkDisplayMode","Always",True).or.\
+       check_attr(res2,"pmTickMarkDisplayMode",2,False).or.\
+       check_attr(res2,"pmTickMarkDisplayMode",3,False)) then
+      main_zone = main_zone + 1
+    end if
+
+
+;
+; If automatic tick marks are turned on, then turn off gsn_csm generated
+; tickmarks.
+; 
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      ticks_on = get_res_value(res2,"gsnTickMarksOn",False)
+    else
+      ticks_on = get_res_value(res2,"gsnTickMarksOn",True)
+    end if
+    lat_spacing  = get_res_value(res2,"gsnMajorLatSpacing",0.)
+    lat_spacing  = get_res_value(res2,"tmYLTickSpacingF",lat_spacing)
+    lon_spacing  = get_res_value(res2,"gsnMajorLonSpacing",0.)
+    lon_spacing  = get_res_value(res2,"tmXBTickSpacingF",lon_spacing)
+    mlat_spacing = get_res_value(res2,"gsnMinorLatSpacing",0.)
+    mlon_spacing = get_res_value(res2,"gsnMinorLonSpacing",0.)
+    center_lon   = get_res_value_keep(res2, "mpCenterLonF",  0)
+    center_lat   = get_res_value_keep(res2, "mpCenterLatF",  0)
+    rel_c_lat    = get_res_value(res2, "mpRelativeCenterLat", False)
+    rel_c_lon    = get_res_value(res2, "mpRelativeCenterLon", False)
+    shape_mode   = get_res_value(res2,"mpShapeMode","FixedAspectFitBB")
+    limit_mode   = get_res_value(res2,"mpLimitMode","LatLon")
+    if((typeof(limit_mode).eq."integer".and.(limit_mode.ne.1.and. \
+                                             limit_mode.ne.5)).or. \
+       (typeof(limit_mode).eq."string").and.(lower_case(limit_mode).ne. \
+                                             "latlon".and. \
+                                             lower_case(limit_mode).ne. \
+                                             "corners"))
+     print("gsn_csm_map_ce: Warning: you cannot use mpLimitMode=" + limit_mode + " with the gsm_csm_map routines.")
+     return 
+   end if
+;
+; If mpCenterLonF is set, but mpMinLonF/mpLeftCornerLonF and/or 
+; mpMaxLonF/mpRightCornerLonF are not, then we need to set them.
+;
+    if(lower_case(limit_mode).eq."latlon")
+      min_lon_str = "mpMinLonF"
+      max_lon_str = "mpMaxLonF"
+      min_lat_str = "mpMinLatF"
+      max_lat_str = "mpMaxLatF"
+    else
+      if(lower_case(limit_mode).eq."corners")
+        min_lon_str = "mpLeftCornerLonF"
+        max_lon_str = "mpRightCornerLonF"
+        min_lat_str = "mpLeftCornerLatF"
+        max_lat_str = "mpRightCornerLatF"
+      end if
+    end if
+    if(res2.and.isatt(res2,"mpCenterLonF").and.\
+           .not.isatt(res2,min_lon_str).and.\
+           .not.isatt(res2,max_lon_str))
+      res2@$min_lon_str$ = res2@mpCenterLonF - 180
+      res2@$max_lon_str$ = res2@mpCenterLonF + 180
+    end if
+  
+    if(res2.and.isatt(res2,"mpCenterLonF").and..not.isatt(res2,min_lon_str))
+      res2@$min_lon_str$ = res2@mpCenterLonF -  \
+                           (res2@$max_lon_str$-res2@mpCenterLonF)
+    end if
+  
+    if(res2.and.isatt(res2,"mpCenterLonF").and..not.isatt(res2,max_lon_str))
+      res2@$max_lon_str$ = res2@mpCenterLonF + \
+                         (res2@mpCenterLonF-res2@$min_lon_str$)
+    end if
+  
+    min_lon    = get_res_value(res2,min_lon_str,-180)
+    max_lon    = get_res_value(res2,max_lon_str, 180)
+    min_lat    = get_res_value(res2,min_lat_str, -90)
+    max_lat    = get_res_value(res2,max_lat_str,  90)
+
+    if(min_lon.ge.max_lon)
+      print("gsn_csm_map_ce: Fatal: The resources mpMinLonF/mpLeftCornerLonF must be less than the resources mpMaxLonF/mpRightCornerLonF.")
+      print("Execution halted.")
+      exit
+    end if
+
+    if(min_lat.ge.max_lat)
+      print("gsn_csm_map_ce: Fatal: The resources mpMinLatF/mpLeftCornerLatF must be less than the resources mpMaxLatF/mpRightCornerF.")
+      print("Execution halted.")
+      exit
+    end if
+; 
+; Determine what the default width and height should be depending
+; on shape of plot.
+;
+    lat_range = tofloat(max_lat - min_lat)
+    lon_range = tofloat(max_lon - min_lon)
+
+    ratio1 = lat_range/lon_range
+    ratio2 = lon_range/lat_range
+    ratio = min((/ratio1,ratio2/))
+
+    ratios  = (/0.50, 0.75, 1.00/)  ; lat/lon ratios
+    wharray = (/0.80, 0.70, 0.52/)  ; default widths/heights
+
+    wh_ind    = ind(ratio.le.ratios)
+    def_vpwf  = wharray(wh_ind(0))    ; default width for plot
+    def_vphf  = def_vpwf              ; default height for plot
+
+    set_attr(res2,"vpWidthF",min((/lon_range/lat_range,1./)) * def_vpwf)
+
+    set_attr(res2,"vpHeightF",min((/lat_range/lon_range,1./)) * def_vphf)
+    set_attr(res2,"vpXF",(1. - res2@vpWidthF)/2.)
+    set_attr(res2,"vpYF",1. - (1. - res2@vpHeightF)/2.)
+    set_attr(res2,"mpGridAndLimbOn", False)
+    set_attr(res2,"mpFillOn", True)
+    set_attr(res2,"mpFillColors",(/"background","transparent","LightGray",\
+                                   "transparent"/)) ; (default,ocean,land,
+                                                    ;  inland water)
+;
+; By default, mpOutlineOn is False, unless mpFillOn is set to False,
+; then it is set back to True.
+;
+    set_attr(res2,"mpOutlineOn",.not.res2@mpFillOn)
+;    
+; Create the map object. We have to use this code instead of gsn_map
+; because we want to set the size of the map.  If we set the size of the
+; map later with setvalues, as gsn_map would do, then the size wouldn't
+; be correct.
+;
+    if(lower_case(limit_mode).eq."latlon")
+      map_object = create "map" mapPlotClass wks
+        "vpXF"               : res2@vpXF
+        "vpYF"               : res2@vpYF
+        "vpWidthF"           : res2@vpWidthF
+        "vpHeightF"          : res2@vpHeightF
+        "mpLimitMode"        : limit_mode
+        "mpMinLonF"          : min_lon
+        "mpMaxLonF"          : max_lon
+        "mpMinLatF"          : min_lat
+        "mpMaxLatF"          : max_lat
+        "mpCenterLonF"       : center_lon
+        "mpCenterLatF"       : center_lat
+        "mpRelativeCenterLat" : rel_c_lat
+        "mpRelativeCenterLon" : rel_c_lon
+        "mpShapeMode"        : shape_mode   ; must be set when map created
+        "pmTitleDisplayMode" : "Always"
+        "pmTitleZone"        : main_zone    ; Zone for main title
+      end create
+    else
+      if(lower_case(limit_mode).eq."corners")
+        map_object = create "map" mapPlotClass wks
+          "vpXF"                : res2@vpXF
+          "vpYF"                : res2@vpYF
+          "vpWidthF"            : res2@vpWidthF
+          "vpHeightF"           : res2@vpHeightF
+          "mpShapeMode"         : shape_mode
+          "mpLimitMode"         : limit_mode
+          "mpLeftCornerLonF"    : min_lon
+          "mpRightCornerLonF"   : max_lon
+          "mpLeftCornerLatF"    : min_lat
+          "mpRightCornerLatF"   : max_lat
+          "mpCenterLonF"        : center_lon
+          "mpCenterLatF"        : center_lat
+          "mpRelativeCenterLat" : rel_c_lat
+          "mpRelativeCenterLon" : rel_c_lon
+          "pmTitleDisplayMode"  : "Always"
+          "pmTitleZone"         : main_zone    ; Zone for main title
+        end create
+      end if
+    end if
+    delete(min_lon)
+    delete(max_lon)
+    delete(min_lat)
+    delete(max_lat)
+    delete(lon_range)
+    delete(lat_range)
+
+; This section tests for regular resources.
+
+    tmres = get_res_eq(res2,"tm")  ; Get tickmark resources
+    if(.not.ticks_on)
+      tmres = True
+      gsnp_turn_off_tickmarks(tmres)
+    end if
+;
+; If user has turned on built-in map tickmarks, then go ahead and
+; let the tickmark resources (if any) be passed to the map object.
+;
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      mpres = get_res_ne(res2,(/"tx","am"/))       ; Get rest of resources
+    else
+      mpres = get_res_ne(res2,(/"tx","am","tm"/))  ; Get rest of resources
+    end if
+;
+; Set some map resources
+;
+    attsetvalues_check(map_object,mpres)
+;
+; Add tickmark object, even if the tickmarks have been turned off, because
+; we need to get the size of the X/Y axis labels.
+;
+    add_map_tickmarks(wks,map_object,tmres,lon_spacing,mlon_spacing,\
+                      lat_spacing,mlat_spacing,point_outward)
+
+; Make sure axes labels (if any) are the same size.
+
+    getvalues map_object@tickmarks
+      "tmYLLabelFontHeightF"   : yfontf
+      "tmXBLabelFontHeightF"   : xfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the tickmark labels.
+    font_height = 1.25 * font_height      ; Make fonts 25% bigger.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value_keep(res2,"tiMainFontHeightF", \
+                                          1.3*font_height)
+    main_font = get_res_value_keep(res2,"tiMainFont","helvetica-bold")
+
+    setvalues map_object
+      "tiMainFontHeightF"  : main_font_height ; main title size
+      "tiMainFont"         : main_font        ; main title font
+    end setvalues
+
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,(/"tx","am"/))  ; Get textitem resources
+    subres                  = True
+    set_attr(subres,"txFontHeightF",font_height)
+    set_attr(subres,"amOrthogonalPosF",0.05)
+    add_subtitles(wks,map_object,left_string,center_string,right_string, \
+                  subres)
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and tickmark object.
+
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_map_polar                                          ;
+;                   wks: workstation object                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a polar stereographic map plot to the ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks"). "resources" is an optional list of resources. The id ;
+; of the map plot is returned.                                          ;
+;                                                                       ;
+; This function behaves differently from gsn_map in that it will        ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The longitude lines are labeled.                                ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top of the plot.                          ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If either of the resources "gsnPolarNH" or "gsnPolarSH" are set ;
+;       to True then only the northern or southern hemisphere is        ;
+;       displayed.                                                      ;
+;    4. If gsnPolarLabelSpacing is set, then this spacing will be used  ;
+;       to label the longitude lines.                                   ;
+;    5. If gsnPolarLabelDistance is set, then this will be used to      ;
+;       increase/decrease the default position of the labels from the   ;
+;       perimeter of the map.                                           ;
+;    6. gsnPolarLabelFont and gsnPolarLabelFontHeightF can be used to   ;
+;       control the label font and heights of the lat/lon labels.       ;
+;***********************************************************************;
+undef("gsn_csm_map_polar")
+function gsn_csm_map_polar(wks:graphic,resources:logical)
+local i, res, res2, map_object, main_zone, \
+calldraw, callframe, left_string, center_string, right_string, yoffset, \
+min_lat, max_lat, center_lat, main_offset, \
+side, just, orth, para, quad1, quad2, quad3, quad4, topbot, xcen, ycen, \
+vpxf, vpyf, vphf, vpwf, plon, plat, xndc, yndc, polar_type, center_lon, \
+center_lat, rel_c_lon, rel_c_lat
+begin
+
+; Initialize.
+    min_lat       = 0.0
+    max_lat       = 90.0
+    center_lat    = 0.0 
+    main_zone     = 2         ; Zone for main title (may change later)
+    res2          = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(new(1,float),new(1,float),new(1,float),\
+                       "gsn_csm_map_polar",res2,0)
+    end if
+
+; This section tests for special resources: those that start with "gsn."
+
+    calldraw      = get_res_value(res2,"gsnDraw", True)
+    callframe     = get_res_value(res2,"gsnFrame",True)
+    maxbb         = get_bb_res(res2)
+    polar_dst     = get_res_value(res2,"gsnPolarLabelDistance",1.04)
+    ticks_on      = get_res_value(res2,"gsnTickMarksOn",True)
+    polar_time    = get_res_value(res2,"gsnPolarTime",False)
+    ut            = tofloat(get_res_value(res2,"gsnPolarUT",0.))
+
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(res2,left_string,center_string,right_string)
+    if(left_string.or.center_string.or.right_string)
+      main_zone   = 4
+    end if
+;
+; Check for type of polar plot desired.
+;
+    polar_type = get_polar_type(res2)
+
+    if(polar_type.eq."NH")
+      min_lat    =   0 
+      max_lat    =  90
+      center_lat =  90
+    else
+      min_lat    = -90
+      max_lat    =   0
+      center_lat = -90
+    end if
+
+    height = get_res_value(res2,"vpHeightF",0.62)
+    width  = get_res_value(res2,"vpWidthF",0.62)
+    xpos   = get_res_value(res2,"vpXF",0.2)
+    ypos   = get_res_value(res2,"vpYF",0.8)
+
+;
+; Print a warning if user tries to set mpMinLonF and/or mpMaxLonF,
+; since these values should not be messed with in a polar plot (they
+; should be -180 and 180.
+;
+    if(isatt(res2,"mpMinLonF").or.isatt(res2,"mpMaxLonF")) then
+      print("gsn_csm_map_polar: Warning: you should not set the mpMinLonF and/or mpMaxLonF resources.")
+      print("Setting these resources to something other than -180 and 180 may produce unexpected results.")
+    end if
+
+;
+; Check for other resources that we need to set at the time the
+; map is created.
+;
+    limit_mode = get_res_value(res2,"mpLimitMode","LatLon")
+    shape_mode = get_res_value(res2,"mpShapeMode","FixedAspectFitBB")
+    rel_c_lat  = get_res_value(res2,"mpRelativeCenterLat", False)
+    rel_c_lon  = get_res_value(res2,"mpRelativeCenterLon", False)
+
+;
+; If labeling the polar plot with time values, then we want slt = 0
+; to be at the bottom of the plot, so we need to rotate the map 
+; accordingly, by setting mpCenterLonF.
+;
+;  If slt = ut + lon/15, then at slt=0:
+;
+;   0 = ut + lon/15  --> lon/15 = -ut -->  lon = -ut*15.
+;
+    center_lon = 0.
+    if(polar_time) then
+      if(polar_type.eq."NH")
+        center_lon = -ut*15
+      else
+        center_lon = -ut*15+180
+      end if 
+    end if 
+    center_lon = get_res_value(res2, "mpCenterLonF", center_lon)
+
+; Create a polar stereographic map object.
+
+    map_object = create "ezplot1p_map" mapPlotClass wks
+      "vpHeightF"            : height
+      "vpWidthF"             : width
+      "vpXF"                 : xpos
+      "vpYF"                 : ypos
+
+      "mpProjection"         : "Stereographic"
+      "mpEllipticalBoundary" : True
+      "mpLimitMode"          : limit_mode
+      "mpShapeMode"          : shape_mode   ; must be set when map created
+
+      "mpCenterLonF"         : center_lon
+      "mpCenterLatF"         : center_lat
+      "mpRelativeCenterLat"  : rel_c_lat
+      "mpRelativeCenterLon"  : rel_c_lon
+
+      "mpFillOn"             : True
+      "mpFillColors"         : (/"background","transparent","LightGray",\
+                                 "transparent"/)
+      "pmTitleDisplayMode"   : "Always"
+      "pmTitleZone"          : main_zone
+    end create
+
+; Set some map plot resources.
+
+    res2 = True
+    set_attr(res2,"mpMinLatF",min_lat)
+    set_attr(res2,"mpMaxLatF",max_lat)
+    set_attr(res2,"mpFillOn",True)
+    set_attr(res2,"mpGridAndLimbOn",True)
+    set_attr(res2,"mpGridLineDashPattern",2)
+    set_attr(res2,"mpGridLonSpacingF",30.)
+    set_attr(res2,"mpPerimOn",True)
+;
+; Set the spacing of the polar labels to the same as mpGridLonSpacingF,
+; unless user has explicitly set gsnPolarLabelSpacing.
+;
+    label_spacing = get_res_value(res2,"gsnPolarLabelSpacing",  \
+                                  res2@mpGridLonSpacingF)
+;
+; By default, mpOutlineOn is False, unless mpFillOn is set to False,
+; then it is set back to True.
+;
+    set_attr(res2,"mpOutlineOn",.not.res2@mpFillOn)
+;
+; Retrieve the map resources.
+;
+    mpres = get_res_ne(res2,(/"gs","tx","tm"/))
+
+    attsetvalues_check(map_object,mpres)
+
+; Retrieve the view port location of the map plot so we know where
+; to put titles.
+
+    getvalues map_object
+      "vpXF"      : vpxf
+      "vpYF"      : vpyf
+      "vpWidthF"  : vpwf
+      "vpHeightF" : vphf
+      "mpMinLatF" : min_lat
+      "mpMaxLatF" : max_lat
+    end getvalues
+
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value_keep(res2,"tiMainFontHeightF", \
+                                          2.*font_height)
+    main_font   = get_res_value_keep(res2,"tiMainFont","helvetica-bold")
+    main_offset = get_res_value_keep(res2,"tiMainOffsetYF",0.02)
+
+    setvalues map_object
+        "tiMainOffsetYF"       : main_offset      ; main title offset
+        "tiMainFont"           : main_font        ; main title font
+        "tiMainFontHeightF"    : main_font_height ; main title size
+    end setvalues
+
+  if(ticks_on) then
+;
+; Create the lat/lon coordinates where you want labels to appear.
+;
+; In this case, we want the labels to appear at a fixed latitude value
+; and at varying longitude values.
+;
+      if(.not.polar_time) then
+        ngrid = floattoint(360/label_spacing)
+        plon  = fspan(0.,360.-label_spacing,ngrid)
+      else
+;
+; If labeling with time, we calculate the longitudes, given nice
+; time values of 0, 3, ..., 21.
+;
+        slt   = ispan(0,21,3)
+        plon  = 15.*(slt-ut)
+        ngrid = dimsizes(plon)
+      end if
+;
+; The "0.005" addition is to make sure we are within the map perimeter.
+; Otherwise,; if we enter points right along the edge of the circle, then
+; when they are converted to NDC coords, you might get missing values.
+;
+      if(min((/min_lat,max_lat/)).ge.0.or.polar_type.eq."NH")
+          plat = fspan(min_lat+.005,min_lat+.005,ngrid)
+      else
+          plat = fspan(max_lat-.005,max_lat-.005,ngrid)
+      end if 
+
+; Create arrays to hold the NDC values that we're going to convert 
+; the lat/lon values to.
+
+      xndc = new(dimsizes(plon),float)
+      yndc = new(dimsizes(plat),float)
+
+; Convert lat/lon cooridinates to NDC coordinates since we are 
+; drawing the labels in NDC space and NOT in lat/lon space.
+
+      datatondc(map_object,plon,plat,xndc,yndc)
+;
+; Get center of plot in NDC coordinates.
+;
+      xcen = vpxf + vpwf/2.     ; X center
+      ycen = vpyf - vphf/2.     ; Y center
+
+;
+; Determine if we want longitude labels, or time labels.
+; 
+      labels = new(dimsizes(plon),string)
+
+      if(.not.polar_time) then
+; Define an array of strings to label the longitude values.
+        indexes = ind(plon.gt.0.and.plon.lt.180)
+        labels(indexes) = floattoint(plon(indexes)) + "E"
+        delete(indexes)
+
+        indexes = ind(plon.gt.180.and.plon.lt.360)
+        labels(indexes) = floattoint(360-plon(indexes)) + "W"
+        delete(indexes)
+
+        indexes = ind(plon.eq.0.or.plon.eq.180)
+        labels(indexes) = floattoint(plon(indexes))
+        delete(indexes)
+      else
+;
+; Define an array of strings to label the time values.
+;
+        labels = slt
+      end if
+      num_labels = dimsizes(labels)
+      text_ids = new(num_labels,graphic)
+;
+; Check if user setting own font heights.  gsnPolarLabelFontHeightF
+; takes precedence over txFontHeightF.
+;
+      text_font_height = get_res_value(res2,"gsnPolarLabelFontHeightF", \
+                         get_res_value_keep(res2,"txFontHeightF",\
+                         font_height))
+      text_font        = get_res_value(res2,"gsnPolarLabelFont", \
+                         get_res_value_keep(res2,"txFont","helvetica"))
+
+; Create an array of TextItem objects that we'll use to label the
+; lat/lon grid.  
+
+      do i=0,num_labels-1
+        text_ids(i) = create "lon_"+labels(i) textItemClass wks
+          "txString"      : labels(i)
+          "txFont"        : text_font
+          "txFontHeightF" : text_font_height
+        end create
+      end do
+
+      setvalues map_object
+        "pmAnnoViews" : text_ids  ; Add text items as annotations of map.
+      end setvalues
+
+      getvalues map_object
+        "pmAnnoManagers" : am_ids   ; Retrieve anno managers so we can 
+                                    ; change some stuff.
+      end getvalues
+
+;
+; Determine which quadrant each label is in, and then set values
+; for justification, side, orthogonal and parallel positions.
+;
+      quad1 = ind((ycen-yndc).le.0.and.(xcen-xndc).le.0)
+      quad2 = ind((ycen-yndc).le.0.and.(xcen-xndc).gt.0)
+      quad3 = ind((ycen-yndc).gt.0.and.(xcen-xndc).gt.0)
+      quad4 = ind((ycen-yndc).gt.0.and.(xcen-xndc).le.0)
+
+      side = new(ngrid,string)
+      just = new(ngrid,string)
+      orth = new(ngrid,float)
+      para = new(ngrid,float)
+;
+; The zone is being set to 0, so this means all labels will appear in the
+; center of the map by default.  We set the orthogonal and parallel values
+; to move the labels away from the center of the plot.  The orth/para values
+; are a fraction of the total width of the map, so if you set an orthogonal
+; value to 0.5, this will move the label from the center of the plot to the
+; edge of the plot.
+;
+; We increase the orth/para values by 4 percent so that the labels are
+; placed outside of the plot.
+;
+      if(.not.all(ismissing(quad1)))
+        side(quad1) = "Top"      ; Position labels in quadrants I and II wrt
+        orth(quad1) = ((yndc(quad1) - ycen)/vphf) * polar_dst
+        just(quad1) = "CenterLeft"
+      end if
+      if(.not.all(ismissing(quad2)))
+        side(quad2) = "Top"      ; top of plot.
+        orth(quad2) = ((yndc(quad2) - ycen)/vphf) * polar_dst
+        just(quad2) = "CenterRight"
+      end if
+      if(.not.all(ismissing(quad3)))
+        side(quad3) = "Bottom"   ; Position labels in quadrants III and IV wrt
+        orth(quad3) = ((ycen - yndc(quad3))/vphf) * polar_dst
+        just(quad3) = "CenterRight"
+      end if
+      if(.not.all(ismissing(quad4)))
+        side(quad4) = "Bottom"   ; bottom of plot.
+        orth(quad4) = ((ycen - yndc(quad4))/vphf) * polar_dst
+        just(quad4) = "CenterLeft"
+      end if
+      para = ((xndc - xcen)/vpwf) * polar_dst
+;
+; Labels at the very top or bottom of the map should be centered, not
+; right or left justified.
+;
+      topbot = ind(fabs(xndc-xcen).le.1e-5)
+      if(.not.all(ismissing(topbot)))
+        just(topbot) = "CenterCenter"
+      end if
+;
+; map_object may already have some other annotations added to it,
+; so we have to search until we find the lon label annotations.  They
+; all start with "lon_", so the first occurrence of this string will
+; be the consecutive start of the lon label annotations.
+;
+      names = NhlName(am_ids)
+      found = False
+      i = 0
+      do while(i.lt.dimsizes(names).and..not.found)
+        names_char = stringtocharacter(names)
+        if(charactertostring(names_char(i,0:3)).eq."lon_")
+          start = i
+          found = True
+        end if
+        delete(names_char)
+        i = i + 1
+      end do
+      delete(names)
+;
+; Set the side, justifcation, and position of each longitude label.
+;
+      do i=0,num_labels-1
+        setvalues am_ids(start+i)
+          "amTrackData"      : False
+          "amResizeNotify"   : True
+          "amZone"           : 0
+          "amSide"           : side(i)
+          "amJust"           : just(i)
+          "amOrthogonalPosF" : orth(i)
+          "amParallelPosF"   : para(i)
+        end setvalues
+      end do
+    end if
+
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,"tx")  ; Get textitem resources
+    subres                  = True
+    set_attr(subres,"txFontHeightF",1.2*font_height)
+    set_attr(subres,"txFont","helvetica")
+    subres@amOrthogonalPosF = 0.06 
+    add_subtitles(wks,map_object,left_string,center_string,right_string, \
+                  subres)
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_map_other                                          ;
+;                   wks: workstation object                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a labeled "other" map (non-polar,     ;
+; cylindrical equidistant.                                              ;
+;                                                                       ;
+; This function behaves differently from gsn_map in that it will        ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    2. If the special resource "gsnMaskLambertConformal" is set, then  ;
+;       if the resources mpMinLatF, mpMaxLatF, mpMinLonF, and mpMaxLonF ;
+;       are also set, the lambert conformal map will be masked outside  ;
+;       of these min/max lat/lon boundaries.  Note: mpProjection must   ;
+;       be set to "LambertConformal".                                   ;
+;    3. If the special resource "gsnMaskLambertConformalOutlineOn" is   ;
+;       set to False, then the lat/lon area of interest will not be     ;
+;       outlined in the foreground color.                               ;
+;***********************************************************************;
+undef("gsn_csm_map_other")
+function gsn_csm_map_other(wks:graphic,resources:logical)
+local i, res, map_object, calldraw, callframe, \
+left_string, center_string, right_string, main_zone, res2
+begin
+; Initialize.
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(new(1,float),new(1,float),new(1,float),\
+                       "gsn_csm_map_other",res2,0)
+    end if
+;
+; Need to check what kind of tickmarks are being used so we can set
+; the zone appropriately. It may be the case that it's okay to always
+; set it to 3, but this makes the title move slightly up, even if there
+; are no tickmarks.
+;
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      main_zone = 3
+    else
+      main_zone = 2
+    end if
+
+; This section tests for more special resources: those that start
+; with "gsn."
+
+; Check if frame and/or draw are not supposed to be called.
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    masklc    = get_res_value(res2,"gsnMaskLambertConformal",False)
+    maskoutln = get_res_value(res2,"gsnMaskLambertConformalOutlineOn",True)
+    maxbb     = get_bb_res(res2)
+    
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(res2,left_string,center_string,right_string)
+    if(left_string.or.center_string.or.right_string)
+      main_zone   = 4
+    end if
+
+    shape_mode   = get_res_value(res2,"mpShapeMode","FixedAspectFitBB")
+
+    set_attr(res2,"vpXF",     0.2)
+    set_attr(res2,"vpYF",     0.8)
+    set_attr(res2,"vpWidthF", 0.6)
+    set_attr(res2,"vpHeightF",0.6)
+
+    set_attr(res2,"mpGridAndLimbOn", False)
+    set_attr(res2,"mpPerimOn", .not.masklc)
+    set_attr(res2,"mpFillOn", True) 
+    set_attr(res2,"mpFillColors",(/"background","transparent","LightGray",\
+                                   "transparent"/)) ; (default,ocean,land,
+                                                    ;  inland water)
+;
+; By default, mpOutlineOn is False, unless mpFillOn is set to False,
+; then it is set back to True.
+;
+    set_attr(res2,"mpOutlineOn",.not.res2@mpFillOn)
+    
+; Create the map object. We have to use this code instead of gsn_map
+; because we want to set the size of the map.  If we set the size of the
+; map later with setvalues, as gsn_map would do, then the size wouldn't
+; be correct.
+
+    map_object = create "map" mapPlotClass wks
+      "vpXF"               : res2@vpXF
+      "vpYF"               : res2@vpYF
+      "vpWidthF"           : res2@vpWidthF
+      "vpHeightF"          : res2@vpHeightF
+      "pmTitleDisplayMode" : "Always"
+      "pmTitleZone"        : main_zone        ; Zone for main title
+      "mpShapeMode"        : shape_mode   ; must be set when map created
+    end create
+
+; This section tests for regular resources.
+
+    mpres = get_res_ne(res2,(/"tx","tm"/))  ; Get rest of resources
+;
+; If user wants to mask the lambert conformal map, then to avoid 
+; the error message:
+;
+;      warning:MapSetTrans: map limits invalid - using maximal area
+; 
+; we must set the lambert parallels here.   We also use this opportunity
+; to make sure the Min/Max/Lat/LonF resources are set.
+;
+    if(masklc) then
+      if(isatt(res2,"mpMinLatF").and.isatt(res2,"mpMaxLatF").and. \
+         isatt(res2,"mpMinLonF").and.isatt(res2,"mpMaxLonF")) then
+        if (res2@mpMinLatF.lt.0) then
+          mpres@mpLambertParallel1F = -0.001
+          mpres@mpLambertParallel2F = -89.999
+        end if
+      else
+        print("gsn_csm_map_other: Warning: one or more of the resources mpMinLatF, mpMaxLatF, mpMinLonF, and mpMaxLonF have not been set.")
+        print("No masking of the Lambert Conformal map will take place.")
+        masklc = False
+      end if
+    end if
+
+;
+; If user has turned on built-in map tickmarks, then go ahead and
+; let the tickmark resources (if any) be passed to the map object.
+;
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      mpres = get_res_ne(res2,(/"tx","am"/))       ; Get rest of resources
+    else
+      mpres = get_res_ne(res2,(/"tx","am","tm"/))  ; Get rest of resources
+    end if
+;
+; Set some map resources.
+;
+    attsetvalues_check(map_object,mpres)
+;
+; If user wants to mask the lambert conformal map, then the four
+; mpMin/Max resources must be set. The masking routine will be called,
+; and masking polygons will be attached to map_object.
+;
+    if(masklc) then
+      map_object = mask_lambert_conformal(wks,map_object,res2@mpMinLatF, \
+                                          res2@mpMaxLatF,res2@mpMinLonF, \
+                                          res2@mpMaxLonF,maskoutln,res2)
+    end if
+
+; Make sure axes labels (if any) are the same size.
+
+    getvalues map_object
+        "tiXAxisFontHeightF"   : xfontf
+        "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value_keep(res2,"tiMainFontHeightF", \
+                                          1.1*font_height)
+    main_font = get_res_value_keep(res2,"tiMainFont","helvetica-bold")
+
+    setvalues map_object
+      "tiMainFontHeightF"  : main_font_height ; main title size
+      "tiMainFont"         : main_font        ; main title font
+    end setvalues
+
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,(/"tx","am"/))  ; Get textitem resources
+    subres                  = True
+    set_attr(subres,"txFontHeightF",0.8*font_height)
+    set_attr(subres,"amOrthogonalPosF",0.015)
+    add_subtitles(wks,map_object,left_string,center_string,right_string, \
+                  subres)
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and tickmark object.
+
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_map                                                ;
+;                   wks: workstation object                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function calls either gsn_csm_map_ce, gsn_csm_map_other, or      ;
+; gsn_csm_map_polar depending on if gsnPolar is set, or how             ;
+; mpProjection is set.                                                  ;
+;***********************************************************************;
+undef("gsn_csm_map")
+function gsn_csm_map(wks:graphic,resources:logical)
+begin
+  res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res2,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(new(1,float),new(1,float),new(1,float),\
+                     "gsn_csm_map",res2,0)
+  end if
+
+  if(res2.and.(isatt(res2,"gsnPolarNH").or.isatt(res2,"gsnPolarSH").or.\
+               isatt(res2,"gsnPolar")))
+    return(gsn_csm_map_polar(wks,res2))
+  else
+    if(.not.isatt(res2,"mpProjection").or.\
+       check_attr(res2,"mpProjection","cylindricalequidistant",True).or.\
+       check_attr(res2,"mpProjection",8,True))
+      return(gsn_csm_map_ce(wks,res2))
+    else   
+      return(gsn_csm_map_other(wks,res2))
+    end if
+  end if
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_contour_map_polar                                  ;
+;                   wks: workstation object                             ;
+;                  data: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a contour plot over a polar           ;
+; stereographic map plot to the workstation "wks" (the variable         ;
+; returned from a previous call to "gsn_open_wks").  "data" is the      ;
+; 2-dimensional data to be contoured, and "resources" is an optional    ;
+; list of resources. The id of the map plot is returned.                ;
+;                                                                       ;
+; This function behaves differently from gsn_contour in that it will    ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. By default, a cyclic point is added.  If gsnAddCyclic is set to ;
+;       False, then the cyclic point is not added.                      ;
+;    2. The longitude lines are labeled.                                ;
+;    3. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top of the plot.                          ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    4. If the resource "cnFillOn" is set to True, then a labelbar is   ;
+;       drawn and line labels are turned off.                           ;
+;    5. If data has an attribute called "long_name," and "gsnLeftString";
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the left string title.                              ;
+;    6. If data has an attribute called "units," and "gsnRightString"   ;
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the right string title.                             ;
+;    7. If either of the resources "gsnPolarNH" or "gsnPolarSH" are set ;
+;       to True then only the northern or southern hemisphere is        ;
+;       displayed.                                                      ;
+;***********************************************************************;
+undef("gsn_csm_contour_map_polar")
+function gsn_csm_contour_map_polar(wks:graphic,data:numeric,resources:logical)
+local i, contour_object, map_object, res, lbar_pos, lbar_zone, \
+lbar_on, calldraw, callframe, main_offset, datanew, res2, cnres, mpres, \
+vpwf, vphf, font_height, levels, colors, lbres, \
+infolabel_on, infolabel_zone, lbar_zone, lbar_height, lbar_width
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_contour_map_polar: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    lbar_on       = False     ; Labelbar flag
+    res2          = get_resources(resources) ; Copy of resources
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float),\
+                       "gsn_csm_contour_map_polar",res2,1)
+    end if
+
+    lbar_zone     = 3         ; Zone for labelbar (may change later)
+    mpres         = True      ; Will hold map resources
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,mpres)
+    set_left_subtitle(datanew,res2,mpres)
+
+; Check for draw and frame.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+;
+; Check for type of polar plot and polar labels desired.
+;
+    mpres@gsnPolar     = get_polar_type(res2)
+    mpres@gsnPolarTime = get_res_value(res2,"gsnPolarTime",False)
+    mpres@gsnPolarUT   = get_res_value(res2,"gsnPolarUT",0.)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+;
+; Tickmarks.
+;
+    mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+
+; Create data object and use coordinate variables if they exist.
+
+    check_for_y_lat_coord(datanew,res2,"contour_map")
+    check_for_lon_coord(datanew,res2,"contour_map")
+
+; Set some more contour plot resources.
+
+    set_attr(res2,"cnLineLabelBackgroundColor",-1)
+    set_attr(res2,"cnInfoLabelOrthogonalPosF",0.06)
+    set_attr(res2,"cnInfoLabelZone",2)
+
+;
+; By default, mpOutlineOn is False, unless cnFillOn is set to True
+; or mpFillOn is set to False, then it is set back to True.
+;
+    if(check_attr(res2,"cnFillOn",True,False).or.\
+       check_attr(res2,"mpFillOn",False,False))
+      set_attr(res2,"mpOutlineOn",True)
+    end if
+
+; This section tests for regular resources.
+
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+    mpres = get_res_eq(res2,(/"mp","ti","vp","tx","am","pmA","pmO","pmT",\
+                              "gsnPolar"/))
+    cnres = get_res_ne(res2,(/"mp","vp","lb","tx","am","gsnPolar"/))
+
+    if(cnres)
+      if(check_attr(cnres,"cnFillOn",True,False))
+        set_attr(cnres,"cnInfoLabelOn",False)
+        if(.not.isatt(lbres,"lbLabelBarOn").or.\
+          check_attr(lbres,"lbLabelBarOn",True,False))
+          set_attr(cnres,"cnLineLabelsOn",False)
+          lbar_on = True   ; Turn on a labelbar
+        end if
+      end if
+    end if
+;
+; Compute zone for labelbar if it is supposed to get drawn.
+; Zone for labelbar changes only if an info label is not drawn.
+;
+    if(check_attr(cnres,"cnInfoLabelOn",False,False))
+      lbar_zone = 2
+    end if
+
+; Before we create the objects, turn off draw and frame for them.
+    cnres           = True 
+    mpres           = True 
+    cnres@gsnDraw   = False
+    cnres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    contour_object = gsn_contour(wks,datanew,cnres) ; Create contours.
+    map_object = gsn_csm_map_polar(wks,mpres)       ; Create map.
+    overlay(map_object,contour_object)              ; Overlay contour plot
+                                                    ; on map.
+;
+; Retrieve the view port location of the map plot so we know where
+; to put titles and labelbar (if there is one).
+;
+    getvalues map_object
+      "vpWidthF"  : vpwf
+      "vpHeightF" : vphf
+    end getvalues
+
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value_keep(res2,"tiMainFontHeightF", \
+                                          2.*font_height)
+    main_font = get_res_value_keep(res2,"tiMainFont","helvetica-bold")
+
+    setvalues map_object
+        "tiMainFont"           : main_font        ; main title font
+        "tiMainFontHeightF"    : main_font_height ; main title size
+    end setvalues
+
+; Create a labelbar.
+
+    if(lbar_on)
+      add_labelbar(wks,contour_object,lbar_zone,\
+                   font_height,"polar",lbres)
+    end if
+  
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data    = contour_object@data
+    map_object@contour = contour_object
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_contour_map_ce                                     ;
+;                   wks: workstation object                             ;
+;                  data: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a contour plot over a map plot to the ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks").  "data" is the 2-dimensional data to be contoured,   ;
+; and "resources" is an optional list of resources. The Id of the map   ;
+; plot is returned.                                                     ;
+;                                                                       ;
+; This function behaves differently from gsn_contour in that it will    ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The lat/lon grid is labeled with tickmarks.                     ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If the special GSUN resource "gsnZonalMean" is set to True,     ;
+;       then a zonal mean XY plot is drawn.                             ;
+;   3a. In addition, if "gsnZonalMeanYRefLine" is set, then a vertical  ;
+;       line is drawn at this value. Otherwise, a line is drawn at 0.   ;
+;    4. If the resource "cnFillOn" is set to True, then a labelbar is   ;
+;       drawn and line labels are turned off.                           ;
+;    5. If data has an attribute called "long_name," and "gsnLeftString";
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the left string title.                              ;
+;    6. If data has an attribute called "units," and "gsnRightString"   ;
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the right string title.                             ;
+;***********************************************************************;
+undef("gsn_csm_contour_map_ce")
+function gsn_csm_contour_map_ce(wks:graphic,data:numeric,resources:logical)
+local i, contour_object, labelbar_object, xy_object, map_object, \
+calldraw, callframe, lbar_on, zonal_mean_plot, min_lat, max_lat, datanew, \
+res, res2, lbres, xy_res, mpres, cnres, levels, colors, \
+lbar_zone, lbar_orient, lbar_side, lbar_height, lbar_width, lbar_just, \
+map_vpwf, map_vphf, vphf, contour_plot, zonal_zone
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_contour_map_ce: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    lbar_on        = False    ; Default is no labelbar.
+    mpres          = True
+
+    infolabel_zone = 2        ; Zone for info label (may change later)
+    lbar_zone      = 2        ; Zone for labelbar (may change later)
+    zonal_zone     = 2        ; Zone for zonal means plot
+
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float),\
+                       "gsn_csm_contour_map_ce",res2,1)
+    end if
+
+; Default is no zonal mean plot.
+    zonal_mean_plot = get_res_value(res2,"gsnZonalMean",False)
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes and data is not 1D).
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+        datanew = gsn_add_cyclic_point(data)
+    else
+        datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay contour on map.
+
+    check_for_y_lat_coord(datanew,res2,"contour_map")
+    check_for_lon_coord(datanew,res2,"contour_map")
+
+    if(.not.(isatt(res2,"sfXArray")))
+      set_attr(res2,"sfXCStartV",-180.)
+      set_attr(res2,"sfXCEndV",   180.)
+    end if
+
+    if(.not.(isatt(res2,"sfYArray")))
+      set_attr(res2,"sfYCStartV",-90.)
+      set_attr(res2,"sfYCEndV",   90.)
+    end if
+
+; Check if a zonal mean plot is desired. First make sure data
+; is not all missing and that we have valid lat/lon coords.
+    if(zonal_mean_plot) then
+      if(all(ismissing(datanew))) then
+        zonal_mean_plot = False
+      end if
+      if(.not.(is_valid_latlon_coord(datanew,"y","lat",res2).and. \
+               is_valid_latlon_coord(datanew,"x","lon",res2))) then
+        print("gsn_csm_contour_map_ce: Warning: The resource gsnZonalMean can only be set to True")
+        print("if the data has one of the coordinate variables " + get_allowed_latnames() + "and " + get_allowed_lonnames())
+        zonal_mean_plot = False
+      end if
+    end if
+
+    if(zonal_mean_plot) then
+      if(isatt(res2,"vpHeightF"))
+        map_vphf = res2@vpHeightF
+      else
+        map_vphf  = 0.7 ; make sure zonal plot will fit in view port
+         set_attr(res2,"vpHeightF",0.7)
+        set_attr(res2, "vpWidthF",0.7)
+        set_attr(res2,     "vpXF",0.1)
+        set_attr(res2,     "vpYF",0.9)
+      end if
+    end if
+
+; Create some contour plot resources.
+
+    res2 = True
+    set_attr(res2,"cnLineLabelBackgroundColor", "transparent")
+
+; This section tests for more special resources: those that start
+; with "gsn."
+
+    if(isatt(res2,"gsnMajorLonSpacing"))
+      mpres@gsnMajorLonSpacing = res2@gsnMajorLonSpacing
+      delete(res2@gsnMajorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMajorLatSpacing"))
+      mpres@gsnMajorLatSpacing = res2@gsnMajorLatSpacing
+      delete(res2@gsnMajorLatSpacing)
+    end if
+
+    if(isatt(res2,"gsnMinorLonSpacing"))
+      mpres@gsnMinorLonSpacing = res2@gsnMinorLonSpacing
+      delete(res2@gsnMinorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMinorLatSpacing"))
+      mpres@gsnMinorLatSpacing = res2@gsnMinorLatSpacing
+      delete(res2@gsnMinorLatSpacing)
+    end if
+    mpres@gsnTickMarksPointOutward = get_res_value(res2, \
+                                     "gsnTickMarksPointOutward",True)
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,mpres)
+    set_left_subtitle(datanew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+;
+; Tickmarks.
+;
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",False)
+    else
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+    end if
+
+; Check for subtitles at top and add to mpres if exist.
+    set_subtitles_res(res2,mpres)
+;
+; By default, mpOutlineOn is False, unless cnFillOn is set to True
+; or mpFillOn is set to False, then it is set back to True.
+;
+    if(check_attr(res2,"cnFillOn",True,False).or.\
+       check_attr(res2,"mpFillOn",False,False))
+      set_attr(res2,"mpOutlineOn",True)
+    end if
+
+; This section tests for regular resources.
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT"/))
+    cnres = get_res_ne(res2,(/"mp","vp","tm","lb","tx","am","pm","gsnZonal"/))
+
+    if(cnres)
+      if(check_attr(cnres,"cnFillOn",True,False))
+        set_attr(cnres,"cnInfoLabelOn",False)
+        if(.not.check_attr(lbres,"lbLabelBarOn",False,False))
+          set_attr(cnres,"cnLineLabelsOn",False)
+          lbar_on = True   ; Turn on a labelbar
+          if(check_attr(lbres,"lbOrientation","vertical",True).or.\
+             check_attr(lbres,"lbOrientation",1,True))
+            set_attr(mpres, "vpWidthF",0.75)   ; Make room for labelbar
+            set_attr(mpres,"vpHeightF",0.75)   ; on the side.
+            set_attr(mpres,     "vpXF",0.08)
+            set_attr(mpres,     "vpYF",0.90)
+          end if
+        end if
+      end if
+    end if
+;
+; Compute zones for zonal means plot, info label, and labelbar if
+; they are supposed to get drawn.
+;
+    infolabel_on = get_res_value_keep(cnres,"cnInfoLabelOn",True)
+
+    if(zonal_mean_plot) then
+      if(infolabel_on) then
+        infolabel_zone = zonal_zone + 1
+        lbar_zone      = zonal_zone + 2
+      else
+        lbar_zone      = zonal_zone + 1
+      end if
+    else
+      if(infolabel_on)
+        lbar_zone      = infolabel_zone + 1
+      end if
+    end if
+
+    if(infolabel_on)
+      if(.not.isatt(cnres,"cnInfoLabelOrthogonalPosF").and.infolabel_zone.eq.2)
+        cnres@cnInfoLabelOrthogonalPosF = 0.13
+      end if
+      cnres@cnInfoLabelZone = infolabel_zone
+    end if
+
+; Before we create the objects, turn off draw and frame for them.
+    cnres           = True
+    mpres           = True
+    cnres@gsnDraw   = False
+    cnres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    contour_object = gsn_contour(wks,datanew,cnres) ; Create contours.
+    map_object = gsn_csm_map_ce(wks,mpres)             ; Create map.
+    overlay(map_object,contour_object)              ; Overlay contours on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues map_object@tickmarks
+      "tmXBLabelFontHeightF" : xbfontf
+    end getvalues
+
+    getvalues map_object
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value_keep(res2,"tiMainFontHeightF", \
+                                          1.3*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Set font heights only if they haven't been set explicitly by user.
+
+    contour_plot = check_class_name(contour_object,"contour")
+
+    if(.not.isatt(cnres,"cnLineLabelFontHeightF"))
+      setvalues contour_plot
+        "cnLineLabelFontHeightF"    : xbfontf
+      end setvalues
+    end if
+
+    if(.not.isatt(cnres,"cnInfoLabelFontHeightF"))
+      setvalues contour_plot
+        "cnInfoLabelFontHeightF"    : xbfontf
+      end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on)
+      add_labelbar(wks,contour_object,lbar_zone,xbfontf,"ce",lbres)
+    end if
+
+; Add a zonal mean plot if requested.
+    if(zonal_mean_plot) then
+      zres                         = get_res_eq(res2,"gsnZonal")
+      zres                         = True   ; Make sure it is True
+      zres@vpWidthF                = 0.15 * map_vphf
+      zres@amZone                  = zonal_zone
+      zonal_object = gsn_csm_attach_zonal_means(wks,map_object,datanew,zres)
+
+      map_object@xy = zonal_object
+    end if  
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data    = contour_object@data
+    map_object@contour = contour_object
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_contour_map_other                                  ;
+;                   wks: workstation object                             ;
+;                  data: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a contour plot over a map plot to the ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks").  "data" is the 2-dimensional data to be contoured,   ;
+; and "resources" is an optional list of resources. The Id of the map   ;
+; plot is returned.                                                     ;
+;                                                                       ;
+; This function behaves differently from gsn_contour in that it will    ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The lat/lon grid is labeled with tickmarks.                     ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If the resource "cnFillOn" is set to True, then a labelbar is   ;
+;       drawn and line labels are turned off.                           ;
+;    4. If data has an attribute called "long_name," and "gsnLeftString";
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the left string title.                              ;
+;    5. If data has an attribute called "units," and "gsnRightString"   ;
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the right string title.                             ;
+;    6. If the special GSUN resource "gsnZonalMean" is set to True,     ;
+;       then a zonal mean XY plot is drawn.                             ;
+;   6a. In addition, if "gsnZonalMeanYRefLine" is set, then a vertical  ;
+;       line is drawn at this value. Otherwise, a line is drawn at 0.   ;
+;***********************************************************************;
+undef("gsn_csm_contour_map_other")
+function gsn_csm_contour_map_other(wks:graphic,data:numeric,\
+                                   resources:logical)
+local i, contour_object, labelbar_object, xy_object, map_object, \
+calldraw, callframe, lbar_on, min_lat, max_lat, datanew, \
+res, res2, lbres, xy_res, mpres, cnres, levels, colors, \
+lbar_zone, lbar_orient, lbar_side, lbar_height, lbar_width, lbar_just, \
+map_vpwf, map_vphf, vphf, contour_plot, zonal_mean_plot, zonal_zone
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_contour_map_other: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    lbar_on        = False    ; Default is no labelbar.
+    mpres          = True
+
+    infolabel_zone = 2        ; Zone for info label (may change later)
+    lbar_zone      = 2        ; Zone for labelbar (may change later)
+    zonal_zone     = 2        ; Zone for zonal means plot
+
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float), \
+                       "gsn_csm_contour_map_other",res2,1)
+    end if
+
+; Default is no zonal mean plot.
+    zonal_mean_plot = get_res_value(res2,"gsnZonalMean",False)
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+        datanew = gsn_add_cyclic_point(data)
+    else
+        datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay contour on map.
+
+    check_for_y_lat_coord(datanew,res2,"contour_map")
+    check_for_lon_coord(datanew,res2,"contour_map")
+
+; Check if a zonal mean plot is desired. First make sure data
+; is not all missing.
+
+    if(zonal_mean_plot) then
+      if(all(ismissing(datanew))) then
+        zonal_mean_plot = False
+      end if
+
+      if(.not.(is_valid_latlon_coord(datanew,"y","lat",res2).and. \
+               is_valid_latlon_coord(datanew,"x","lon",res2))) then
+        print("gsn_csm_contour_map_other: Warning: The resource gsnZonalMean can only be set to True")
+        print("if the data has one of the coordinate variables " + get_allowed_latnames() + "and " + get_allowed_lonnames())
+        zonal_mean_plot = False
+
+      end if
+    end if
+
+    if(zonal_mean_plot) then
+      if(isatt(res2,"vpHeightF"))
+        map_vphf = res2@vpHeightF
+      else
+        map_vphf  = 0.7 ; make sure zonal plot will fit in view port
+         set_attr(res2,"vpHeightF",0.7)
+        set_attr(res2, "vpWidthF",0.7)
+        set_attr(res2,     "vpXF",0.1)
+        set_attr(res2,     "vpYF",0.9)
+      end if
+    end if
+
+; Create some contour plot resources.
+
+    res2 = True
+    set_attr(res2,"cnLineLabelBackgroundColor", "transparent")
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,mpres)
+    set_left_subtitle(datanew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+;
+; By default, mpOutlineOn is False, unless cnFillOn is set to True
+; or mpFillOn is set to False, then it is set back to True.
+;
+   if(check_attr(res2,"cnFillOn",True,False).or.\
+       check_attr(res2,"mpFillOn",False,False))
+      set_attr(res2,"mpOutlineOn",True)
+    end if
+
+; This section tests for regular resources.
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT","gsnMask"/))
+    cnres = get_res_ne(res2,(/"mp","vp","tm","lb","tx","am","pm","gsnMask","gsnZonal"/))
+
+    if(cnres)
+      if(check_attr(cnres,"cnFillOn",True,False))
+        set_attr(cnres,"cnInfoLabelOn",False)
+        if(.not.isatt(lbres,"lbLabelBarOn").or.\
+          check_attr(lbres,"lbLabelBarOn",True,False))
+          set_attr(cnres,"cnLineLabelsOn",False)
+          lbar_on = True   ; Turn on a labelbar
+          if(check_attr(lbres,"lbOrientation","vertical",True).or.\
+             check_attr(lbres,"lbOrientation",1,True))
+            set_attr(mpres, "vpWidthF",0.75)   ; Make room for labelbar
+            set_attr(mpres,"vpHeightF",0.75)   ; on the side.
+            set_attr(mpres,     "vpXF",0.08)
+            set_attr(mpres,     "vpYF",0.85)
+          end if
+        end if
+      end if
+    end if
+;
+; Compute zones for info label and labelbar if
+; they are supposed to get drawn.
+;
+    infolabel_on = get_res_value_keep(cnres,"cnInfoLabelOn",True)
+
+    if(zonal_mean_plot) then
+      if(infolabel_on) then
+        infolabel_zone = zonal_zone + 1
+        lbar_zone      = zonal_zone + 2
+      else
+        lbar_zone      = zonal_zone + 1
+      end if
+    else
+      if(infolabel_on)
+        lbar_zone = infolabel_zone + 1
+        cnres@cnInfoLabelZone = infolabel_zone
+      end if
+    end if
+
+;
+; Increase labelbar zone if map tickmarks are on.
+;
+    if(lbar_on.and.\
+       check_attr(mpres,"pmTickMarkDisplayMode","Always",True).or.\
+       check_attr(mpres,"pmTickMarkDisplayMode",2,False).or.\
+       check_attr(mpres,"pmTickMarkDisplayMode",3,False)) then
+      lbar_zone = lbar_zone + 1
+    end if
+
+; Before we create the objects, turn off draw and frame for them.
+    cnres           = True
+    mpres           = True
+    cnres@gsnDraw   = False
+    cnres@gsnFrame  = False
+    mpres@gsnDraw   = False
+    mpres@gsnFrame  = False
+
+    contour_object = gsn_contour(wks,datanew,cnres) ; Create contours.
+    map_object = gsn_csm_map_other(wks,mpres)       ; Create map.
+    overlay(map_object,contour_object)              ; Overlay contours on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues map_object
+      "tmXBLabelFontHeightF" : xbfontf
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.1*font_height)
+    setvalues map_object
+      "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Set font heights only if they haven't been set explicitly by user.
+
+    contour_plot = check_class_name(contour_object,"contour")
+
+    if(.not.isatt(cnres,"cnLineLabelFontHeightF"))
+      setvalues contour_plot
+        "cnLineLabelFontHeightF"    : 0.6 * font_height
+      end setvalues
+    end if
+
+    if(.not.isatt(cnres,"cnInfoLabelFontHeightF"))
+      setvalues contour_plot
+        "cnInfoLabelFontHeightF"  : 0.6 * font_height
+      end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on) then
+      add_labelbar(wks,contour_object,lbar_zone,\
+                   0.6 * font_height,"other",lbres)
+    end if
+
+; Add a zonal mean plot if requested.
+    if(zonal_mean_plot) then
+      zres                      = get_res_eq(res2,"gsnZonal")
+      zres                      = True            ; Make sure it is True
+      zres@vpWidthF             = 0.15 * map_vphf
+      zres@tmXBLabelFontHeightF = 0.6*font_height      
+      zonal_object = gsn_csm_attach_zonal_means(wks,map_object,datanew,zres)
+      map_object@xy = zonal_object
+    end if  
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data    = contour_object@data
+    map_object@contour = contour_object
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_vector_map_ce                                      ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a vector plot over a map plot to the  ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks").  "u,v" is the 2-dimensional data to be vectorized,   ;
+; and "resources" is an optional list of resources. The Id of the map   ;
+; plot is returned.                                                     ;
+;                                                                       ;
+; This function behaves differently from gsn_vector in that it will     ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The lat/lon grid is labeled with tickmarks.                     ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If data has an attribute called "long_name," and "gsnLeftString";
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the left string title.                              ;
+;    4. If data has an attribute called "units," and "gsnRightString"   ;
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the right string title.                             ;
+;    5. If the resource "vcMonoLineArrowColor" is set to False, then a  ;
+;       labelbar is drawn.                                              ;
+;***********************************************************************;
+undef("gsn_csm_vector_map_ce")
+function gsn_csm_vector_map_ce(wks:graphic,u[*][*]:numeric,v[*][*]:numeric,\
+                               resources:logical)
+local i, vector_object, map_object, res, res2, calldraw, vcres, \
+lbres, map_vpwf, map_vphf, vpwf, vphf, callframe, min_lat, max_lat, \
+lbar_on, lbar_zone, unew, vnew
+begin
+
+; Initialize.
+    annolabel_zone = 2        ; Zone for vector anno label
+    mpres          = True
+    lbar_zone      = 2        ; Zone for labelbar (may change later)
+    lbar_on        = False
+
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_vector_map_ce",res2,2)
+    end if
+
+    if(isatt(res2,"vcRefAnnoOrthogonalPosF")) then
+      user_set_ref_orth = True
+    else
+      user_set_ref_orth = False
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay vector on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+    if(.not.(isatt(res2,"vfXArray")))
+      set_attr(res2,"vfXCStartV",-180.)
+      set_attr(res2,"vfXCEndV",   180.)
+    end if
+
+    if(.not.(isatt(res2,"vfYArray")))
+      set_attr(res2,"vfYCStartV",-90.)
+      set_attr(res2,"vfYCEndV",   90.)
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+
+;
+; Check for other special resources.
+;
+    if(isatt(res2,"gsnMajorLonSpacing"))
+      mpres@gsnMajorLonSpacing = res2@gsnMajorLonSpacing
+      delete(res2@gsnMajorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMajorLatSpacing"))
+      mpres@gsnMajorLatSpacing = res2@gsnMajorLatSpacing
+      delete(res2@gsnMajorLatSpacing)
+    end if
+
+    if(isatt(res2,"gsnMinorLonSpacing"))
+      mpres@gsnMinorLonSpacing = res2@gsnMinorLonSpacing
+      delete(res2@gsnMinorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMinorLatSpacing"))
+      mpres@gsnMinorLatSpacing = res2@gsnMinorLatSpacing
+      delete(res2@gsnMinorLatSpacing)
+    end if
+
+;
+; Tickmarks.
+;
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",False)
+    else
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+    end if
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT"/))
+    vcres = get_res_ne(res2,(/"mp","vp","tm","tx","am","lb","pm"/))
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+
+    if(vcres)
+      if(check_attr(vcres,"vcMonoLineArrowColor",False,False))
+        if(.not.isatt(lbres,"lbLabelBarOn").or.\
+          check_attr(lbres,"lbLabelBarOn",True,False))
+          lbar_on = True   ; Turn on a labelbar
+          if(check_attr(lbres,"lbOrientation","vertical",True).or.\
+             check_attr(lbres,"lbOrientation",1,True))
+            set_attr(mpres, "vpWidthF",0.75)   ; Make room for labelbar
+            set_attr(mpres,"vpHeightF",0.75)   ; on the side.
+            set_attr(mpres,     "vpXF",0.08)
+            set_attr(mpres,     "vpYF",0.90)
+          end if
+        end if
+      end if
+    end if
+;
+; Default is for the vector reference anno label to be on.  To be
+; turned off, it has to be explicitly turned off.
+;
+    refanno_on = get_res_value_keep(vcres,"vcRefAnnoOn",True)
+    if(refanno_on)
+;
+; If the user is moving the vector annotation around, then 
+; the labelbar will no longer be in the zone outside the ref anno.
+; This is to avoid the problem of the user moving the ref anno into
+; the plot, and then having the labelbar follow it up too far, and
+; running into the tickmarks.
+;
+      if(user_set_ref_orth) then
+        lbar_zone = annolabel_zone
+      else
+        lbar_zone = annolabel_zone + 1
+      end if
+    end if
+
+; Before we create the objects, turn off draw and frame for them.
+    vcres = True
+    mpres = True
+    vcres@gsnDraw   = False
+    vcres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+    set_attr(vcres,"vcRefAnnoZone",annolabel_zone)
+    set_attr(vcres,"vcRefAnnoOrthogonalPosF", 0.12)
+    set_attr(vcres,"vcRefAnnoString2On","False")
+
+    vector_object = gsn_vector(wks,unew,vnew,vcres) ; Create vectors
+
+    map_object = gsn_csm_map_ce(wks,mpres)          ; Create map.
+    overlay(map_object,vector_object)               ; Overlay vectors on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the anno label size the same as the tick mark label size.
+
+    getvalues map_object@tickmarks
+      "tmXBLabelFontHeightF" : xbfontf
+      "tmXBMajorLengthF"     : xlength
+      "tmXBMinorLengthF"     : xmlength
+    end getvalues
+
+    getvalues map_object
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.3*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+    if(.not.isatt(vcres,"vcRefAnnoFontHeightF"))
+      setvalues vector_object
+        "vcRefAnnoFontHeightF"    : xbfontf
+      end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on)
+      add_labelbar(wks,vector_object,lbar_zone,xbfontf,"vector",lbres)
+    end if
+  
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data   = vector_object@data
+    map_object@vector = vector_object
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_vector_map_polar                                   ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a vector plot over a polar            ;
+; stereographic map projection to the workstation "wks" (the variable   ;
+; returned from a previous call to "gsn_open_wks").  "u,v" is the       ;
+; 2-dimensional data to be vectorized, and "resources" is an optional   ;
+; list of resources. The Id of the map plot is returned.                ;
+;                                                                       ;
+; This function behaves differently from gsn_vector in that it will     ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The longitude lines are labeled.                                ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top of the plot.                          ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If either of the resources "gsnPolarNH" or "gsnPolarSH" are set ;
+;       to True then only the northern or southern hemisphere is        ;
+;       displayed.                                                      ;
+;    4. If the resource "vcMonoLineArrowColor" is set to False, then a  ;
+;       labelbar is drawn.                                              ;
+;***********************************************************************;
+undef("gsn_csm_vector_map_polar")
+function gsn_csm_vector_map_polar(wks:graphic,u[*][*]:numeric, \
+                                  v[*][*]:numeric,resources:logical)
+local i, vector_object, map_object, res, res2, calldraw, vcres, \
+lbres, map_vpwf, map_vphf, vpwf, vphf, callframe, min_lat, max_lat, \
+lbar_on, lbar_zone, unew, vnew
+begin
+
+; Initialize.
+    lbar_on        = False
+    annolabel_zone = 2        ; Zone for vector anno label
+    lbar_zone      = 2        ; Zone for labelbar (may change later)
+    mpres          = True
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_vector_map_polar",res2,2)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check for draw and frame.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+;
+; Check for type of polar plot and polar labels desired.
+;
+    mpres@gsnPolar     = get_polar_type(res2)
+    mpres@gsnPolarTime = get_res_value(res2,"gsnPolarTime",False)
+    mpres@gsnPolarUT   = get_res_value(res2,"gsnPolarUT",0.)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+;
+; Tickmarks.
+;
+    mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+
+; Create data object and use coordinate variables if they exist.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO", \
+                       "pmT","gsnPolar"/))
+    vcres = get_res_ne(res2,(/"mp","vp","tm","tx","am","lb","pm","gsnPolar"/))
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+
+    if(vcres)
+      if(check_attr(vcres,"vcMonoLineArrowColor",False,False))
+        if(.not.isatt(lbres,"lbLabelBarOn").or.\
+          check_attr(lbres,"lbLabelBarOn",True,False))
+          lbar_on = True   ; Turn on a labelbar
+        end if
+      end if
+    end if
+
+    if(lbar_on)
+      if(check_attr(lbres,"lbOrientation","vertical",True).or.\
+         check_attr(lbres,"lbOrientation",1,True))
+        set_attr(mpres,"vpXF",0.15)
+        set_attr(vcres,"vcRefAnnoOrthogonalPosF",0.04)
+        set_attr(lbres,"pmLabelBarOrthogonalPosF",0.1)
+      else
+        set_attr(mpres,"vpYF",0.82)
+      end if
+    end if
+;
+; Default is for the vector reference anno label to be on.  To be
+; turned off, it has to be explicitly turned off.
+;
+    refanno_on = get_res_value_keep(vcres,"vcRefAnnoOn",True)
+    if(refanno_on)
+      lbar_zone    = annolabel_zone + 1
+    end if
+
+; Before we create the objects, turn off draw and frame for them.
+    vcres = True
+    mpres = True
+    vcres@gsnDraw   = False
+    vcres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+    set_attr(vcres,"vcRefAnnoZone",annolabel_zone)
+    set_attr(vcres,"vcRefAnnoOrthogonalPosF", 0.01)
+    set_attr(vcres,"vcRefAnnoParallelPosF", 0.8)
+    set_attr(vcres,"vcRefAnnoString2On","False")
+
+    vector_object = gsn_vector(wks,unew,vnew,vcres) ; Create vectors
+    map_object    = gsn_csm_map_polar(wks,mpres)          ; Create map.
+    overlay(map_object,vector_object)               ; Overlay vectors on map.
+
+;
+; Retrieve the view port location of the map plot so we know where
+; to put titles and labelbar (if there is one).
+;
+    getvalues map_object
+      "vpWidthF"  : vpwf
+      "vpHeightF" : vphf
+    end getvalues
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     2.*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Create a labelbar.
+
+    if(lbar_on)
+      add_labelbar(wks,vector_object,lbar_zone, \
+                   font_height,"vector",lbres)
+    end if
+  
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data   = vector_object@data
+    map_object@vector = vector_object
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_vector_map_other                                   ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a vector plot over a map plot to the  ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks").  "u"/"v" is the 2-dimensional data to be vectored,   ;
+; and "resources" is an optional list of resources. The Id of the map   ;
+; plot is returned.                                                     ;
+;                                                                       ;
+; This function behaves differently from gsn_vector in that it will     ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The lat/lon grid is labeled with tickmarks.                     ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If the resource "vcMonoLineArrowColor" is set to False, then a  ;
+;       labelbar is drawn.                                              ;
+;***********************************************************************;
+undef("gsn_csm_vector_map_other")
+function gsn_csm_vector_map_other(wks:graphic,u[*][*]:numeric,\
+                                  v[*][*]:numeric,resources:logical)
+local i, vector_object, labelbar_object, xy_object, map_object, \
+calldraw, callframe, lbar_on, min_lat, max_lat, datanew, \
+res, res2, lbres, xy_res, mpres, vcres, levels, colors, \
+lbar_zone, lbar_orient, lbar_side, lbar_height, lbar_width, lbar_just, \
+map_vpwf, map_vphf, vphf 
+begin
+; Initialize.
+    lbar_on        = False    ; Default is no labelbar.
+    mpres          = True
+
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_vector_map_other",res2,2)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay vectors on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+;
+; By default, mpOutlineOn is False, unless vcMonoLineArrowColor is set to
+; False or mpFillOn is set to False, then it is set back to True.
+;
+   if(check_attr(res2,"vcMonoLineArrowColor",False,False).or.\
+      check_attr(res2,"mpFillOn",False,False))
+      set_attr(res2,"mpOutlineOn",True)
+    end if
+
+; This section tests for regular resources.
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT","gsnMask"/))
+    vcres = get_res_ne(res2,(/"mp","vp","tm","lb","tx","am","pm","gsnMask"/))
+
+    if(vcres)
+      if(check_attr(vcres,"vcMonoLineArrowColor",False,False))
+        if(.not.isatt(lbres,"lbLabelBarOn").or.\
+          check_attr(lbres,"lbLabelBarOn",True,False))
+          lbar_on = True   ; Turn on a labelbar
+        end if
+      end if
+    end if
+
+; Before we create the objects, turn off draw and frame for them.
+    vcres           = True
+    mpres           = True
+    vcres@gsnDraw   = False
+    vcres@gsnFrame  = False
+    mpres@gsnDraw   = False
+    mpres@gsnFrame  = False
+
+    set_attr(vcres,"vcRefAnnoString2On","False")
+
+    vector_object = gsn_vector(wks,unew,vnew,vcres) ; Create vectors.
+    map_object = gsn_csm_map_other(wks,mpres)             ; Create map.
+    overlay(map_object,vector_object)               ; Overlay vectors on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues map_object
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.1*font_height)
+    setvalues map_object
+      "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Set font heights only if they haven't been set explicitly by user.
+
+    if(.not.isatt(vcres,"vcRefAnnoFontHeightF"))
+      setvalues vector_object
+        "vcRefAnnoFontHeightF"  : 0.6 * font_height
+      end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on)
+      add_labelbar(wks,vector_object,2,0.6 * font_height,"other",lbres)
+    end if
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data   = vector_object@data
+    map_object@vector = vector_object
+    return(map_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_map_ce                                  ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a streamline plot over a map plot to  ;
+; the workstation "wks" (the variable returned from a previous call to  ;
+; "gsn_open_wks").  "u,v" is the 2-dimensional data to be streamlined,  ;
+; and "resources" is an optional list of resources. The Id of the map   ;
+; plot is returned.                                                     ;
+;                                                                       ;
+; This function behaves differently from gsn_streamline in that it will ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The lat/lon grid is labeled with tickmarks.                     ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If data has an attribute called "long_name," and "gsnLeftString";
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the left string title.                              ;
+;    4. If data has an attribute called "units," and "gsnRightString"   ;
+;       hasn't explicitly been set, then the value of this attribute    ;
+;       is used for the right string title.                             ;
+;***********************************************************************;
+undef("gsn_csm_streamline_map_ce")
+function gsn_csm_streamline_map_ce(wks:graphic,u[*][*]:numeric,\
+                                   v[*][*]:numeric,resources:logical)
+local i, stream_object, map_object, stres, calldraw, callframe, \
+min_lat, max_lat, unew, vnew, res, res2, map_vpwf, map_vphf, vpwf, vphf
+begin
+
+; Initialize.
+    infolabel_zone = 2        ; Zone for info label (may change later)
+    mpres          = True
+
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_streamline_map_ce",res2,2)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay streamline on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+    if(.not.(isatt(res2,"vfXArray")))
+      set_attr(res2,"vfXCStartV",-180.)
+      set_attr(res2,"vfXCEndV",   180.)
+    end if
+
+    if(.not.(isatt(res2,"vfYArray")))
+      set_attr(res2,"vfYCStartV",-90.)
+      set_attr(res2,"vfYCEndV",   90.)
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+
+;
+; Check for other special resources.
+;
+    if(isatt(res2,"gsnMajorLonSpacing"))
+      mpres@gsnMajorLonSpacing = res2@gsnMajorLonSpacing
+      delete(res2@gsnMajorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMajorLatSpacing"))
+      mpres@gsnMajorLatSpacing = res2@gsnMajorLatSpacing
+      delete(res2@gsnMajorLatSpacing)
+    end if
+
+    if(isatt(res2,"gsnMinorLonSpacing"))
+      mpres@gsnMinorLonSpacing = res2@gsnMinorLonSpacing
+      delete(res2@gsnMinorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMinorLatSpacing"))
+      mpres@gsnMinorLatSpacing = res2@gsnMinorLatSpacing
+      delete(res2@gsnMinorLatSpacing)
+    end if
+;
+; Tickmarks.
+;
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",False)
+    else
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+    end if
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT"/))
+    stres = get_res_ne(res2,(/"mp","vp","tm","tx","am"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    stres = True
+    mpres = True
+    stres@gsnDraw   = False
+    stres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    stream_object = gsn_streamline(wks,unew,vnew,stres) ; Create streamlines
+
+    map_object = gsn_csm_map_ce(wks,mpres)   ; Create map.
+    overlay(map_object,stream_object)     ; Overlay streamlines on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues map_object@tickmarks
+      "tmXBLabelFontHeightF" : xbfontf
+      "tmXBMajorLengthF"     : xlength
+      "tmXBMinorLengthF"     : xmlength
+    end getvalues
+
+    getvalues map_object
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.3*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data       = stream_object@data
+    map_object@streamline = stream_object
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_map_polar                               ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a streamline plot over a polar        ;
+; stereographic map projection to the workstation "wks" (the variable   ;
+; returned from a previous call to "gsn_open_wks").  "u,v" is the       ;
+; 2-dimensional data to be streamlined, and "resources" is an optional  ;
+; list of resources. The Id of the map plot is returned.                ;
+;                                                                       ;
+; This function behaves differently from gsn_streamline in that it will ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The longitude lines are labeled.                                ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top of the plot.                          ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;    3. If either of the resources "gsnPolarNH" or "gsnPolarSH" are set ;
+;       to True then only the northern or southern hemisphere is        ;
+;       displayed.                                                      ;
+;***********************************************************************;
+undef("gsn_csm_streamline_map_polar")
+function gsn_csm_streamline_map_polar(wks:graphic,u[*][*]:numeric, \
+                                      v[*][*]:numeric,resources:logical)
+local i, stream_object, map_object, res, res2, calldraw, stres, \
+map_vpwf, map_vphf, vpwf, vphf, callframe, unew, vnew
+begin
+
+; Initialize.
+    mpres          = True
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_streamline_map_polar",res2,2)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check for draw and frame.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+;
+; Check for type of polar plot and polar labels desired.
+;
+    mpres@gsnPolar     = get_polar_type(res2)
+    mpres@gsnPolarTime = get_res_value(res2,"gsnPolarTime",False)
+    mpres@gsnPolarUT   = get_res_value(res2,"gsnPolarUT",0.)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+;
+; Tickmarks.
+;
+    mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+
+; Create data object and use coordinate variables if they exist.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO", \
+                              "pmT","gsnPolar"/))
+    stres = get_res_ne(res2,(/"mp","vp","tm","tx","am","gsnPolar"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    stres = True
+    mpres = True
+    stres@gsnDraw   = False
+    stres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    stream_object = gsn_streamline(wks,unew,vnew,stres) ; Create streamlines
+    map_object    = gsn_csm_map_polar(wks,mpres)        ; Create map.
+    overlay(map_object,stream_object)               ; Overlay strmlns on map.
+;
+; Retrieve the view port location of the map plot so we know where
+; to put titles.
+;
+    getvalues map_object
+      "vpWidthF"  : vpwf
+      "vpHeightF" : vphf
+    end getvalues
+
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     2.*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data       = stream_object@data
+    map_object@streamline = stream_object
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_map_other                               ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a streamline plot over a map plot to  ;
+; the workstation "wks" (the variable returned from a previous call to  ;
+; "gsn_open_wks").  "u"/"v" is the 2-dimensional data to be             ;
+; streamlined, and "resources" is an optional list of resources. The    ;
+; id of the map plot is returned.                                       ;
+;                                                                       ;
+; This function behaves differently from gsn_streamline in that it will ;
+; create a special kind of plot if certain attributes are set.          ;
+;                                                                       ;
+;    1. The lat/lon grid is labeled with tickmarks.                     ;
+;    2. If any of the special GSUN resources "gsnLeftString,"           ;
+;       "gsnCenterString," and/or "gsnRightString" are set, then they   ;
+;       are used to title the top left, center, and right of the plot   ;
+;       (in addition, the regular resource "tiMainString" can be set to ;
+;       create a regular title).                                        ;
+;***********************************************************************;
+undef("gsn_csm_streamline_map_other")
+function gsn_csm_streamline_map_other(wks:graphic,u[*][*]:numeric,\
+                                      v[*][*]:numeric,resources:logical)
+local i, stream_object, labelbar_object, xy_object, map_object, \
+calldraw, callframe, lbar_on, min_lat, max_lat, datanew, \
+res, res2, mpres, stres, map_vpwf, map_vphf, vphf 
+begin
+; Initialize.
+    mpres          = True
+
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_streamline_map_other",res2,2)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay streamlines on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+;
+; By default, mpOutlineOn is False, unless mpFillOn is set to False, then
+; it is set back to True.
+;
+   if(check_attr(res2,"mpFillOn",False,False))
+      set_attr(res2,"mpOutlineOn",True)
+    end if
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT","gsnMask"/))
+    stres = get_res_ne(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT","gsnMask"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    stres           = True
+    mpres           = True
+    stres@gsnDraw   = False
+    stres@gsnFrame  = False
+    mpres@gsnDraw   = False
+    mpres@gsnFrame  = False
+
+    stream_object = gsn_streamline(wks,unew,vnew,stres) ; Create streamlines.
+    map_object = gsn_csm_map_other(wks,mpres)     ; Create map.
+    overlay(map_object,stream_object)       ; Overlay streamlines on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues map_object
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.1*font_height)
+    setvalues map_object
+      "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@data       = stream_object@data
+    map_object@streamline = stream_object
+    return(map_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_contour_map_ce                          ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional scalar data                      ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function is similar to gsn_csm_streamline_map_ce except it       ;
+; overlays contours.                                                    ;
+;***********************************************************************;
+undef("gsn_csm_streamline_contour_map_ce")
+function gsn_csm_streamline_contour_map_ce(wks:graphic,u[*][*]:numeric,\
+                   v[*][*]:numeric,data:numeric,resources:logical)
+local i, stream_object, map_object, res, res2, \
+calldraw, callframe, min_lat, max_lat, unew, vnew, datanew, \
+map_vpwf, map_vphf, vpwf, vphf, lbar_on
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_streamline_contour_map_ce: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    infolabel_on   = False
+    lbar_on        = True
+    mpres          = True
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,data,"gsn_csm_streamline_contour_map_ce",res2,3)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes). Check the vector and contour data separately.
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value_keep(res2,"gsnAddCyclic",set_cyclic)) then
+      unew    = gsn_add_cyclic_point(u)
+      vnew    = gsn_add_cyclic_point(v)
+    else
+      unew    = u
+      vnew    = v
+    end if
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay vector on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+    if(.not.(isatt(res2,"vfXArray")))
+      set_attr(res2,"vfXCStartV",-180.)
+      set_attr(res2,"vfXCEndV",   180.)
+    end if
+
+    if(.not.(isatt(res2,"vfYArray")))
+      set_attr(res2,"vfYCStartV",-90.)
+      set_attr(res2,"vfYCEndV",   90.)
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+
+;
+; Check for other special resources.
+;
+    if(isatt(res2,"gsnMajorLonSpacing"))
+      mpres@gsnMajorLonSpacing = res2@gsnMajorLonSpacing
+      delete(res2@gsnMajorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMajorLatSpacing"))
+      mpres@gsnMajorLatSpacing = res2@gsnMajorLatSpacing
+      delete(res2@gsnMajorLatSpacing)
+    end if
+
+    if(isatt(res2,"gsnMinorLonSpacing"))
+      mpres@gsnMinorLonSpacing = res2@gsnMinorLonSpacing
+      delete(res2@gsnMinorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMinorLatSpacing"))
+      mpres@gsnMinorLatSpacing = res2@gsnMinorLatSpacing
+      delete(res2@gsnMinorLatSpacing)
+    end if
+
+    lbar_on = False
+; Turn on labelbar if cnFillOn is True and it wasn't explicitly 
+; turned off.
+    if(check_attr(res2,"cnFillOn",True,False))
+      set_attr(res2,"cnFillDrawOrder","Predraw")
+      set_attr(res2,"cnInfoLabelOn",False)
+      if(.not.isatt(lbres,"lbLabelBarOn").or.\
+         check_attr(lbres,"lbLabelBarOn",True,False))
+        set_attr(res2,"cnLineLabelsOn",False)
+        lbar_on = True   ; Turn on a labelbar
+      end if
+    end if
+
+    check_for_y_lat_coord(datanew,res2,"contour_map")
+    check_for_lon_coord(datanew,res2,"contour_map")
+
+    if(.not.(isatt(res2,"sfXArray")))
+      set_attr(res2,"sfXCStartV",-180.)
+      set_attr(res2,"sfXCEndV",   180.)
+    end if
+
+    if(.not.(isatt(res2,"sfYArray")))
+      set_attr(res2,"sfYCStartV",-90.)
+      set_attr(res2,"sfYCEndV",   90.)
+    end if
+
+    if(check_attr(res2,"lbLabelBarOn",False,False))
+      lbar_on = False
+    end if
+
+; Turn off info label if labelbar is on, unless otherwise specified by user.
+    if(lbar_on)
+      set_attr(res2,"cnInfoLabelOn",False)
+    else
+      set_attr(res2,"cnInfoLabelOn",True)
+    end if
+;
+; Tickmarks.
+;
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",False)
+    else
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+    end if
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT"/))
+    stres = get_res_ne(res2,(/"mp","vp","tm","lb","tx","am","pm"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    stres          = True
+    mpres          = True
+    stres@gsnDraw  = False
+    stres@gsnFrame = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    if(lbar_on.and.(check_attr(lbres,"lbOrientation","vertical",True).or.\
+                    check_attr(lbres,"lbOrientation",1,True)))
+      set_attr(mpres, "vpWidthF",0.75)   ; Make room for labelbar
+      set_attr(mpres,"vpHeightF",0.75)   ; on the side.
+      set_attr(mpres,     "vpXF",0.08)
+      set_attr(mpres,     "vpYF",0.90)
+    end if
+
+    set_attr(stres,"cnInfoLabelZone",2)
+    set_attr(stres,"cnInfoLabelOrthogonalPosF", 0.13)
+
+    stream_object = gsn_streamline_contour(wks,unew,vnew,datanew,stres)
+
+    map_object = gsn_csm_map_ce(wks,mpres)    ; Create map.
+    overlay(map_object,stream_object)         ; Overlay streamlines on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues map_object@tickmarks
+      "tmXBLabelFontHeightF" : xbfontf
+    end getvalues
+
+    getvalues map_object
+      "vpWidthF"           : vpwf
+      "vpHeightF"          : vphf
+      "tiXAxisFontHeightF" : xfontf
+      "tiYAxisFontHeightF" : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.3*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Make sure line labels and info labels are same size.
+    if(.not.isatt(stres,"cnLineLabelFontHeightF"))
+      setvalues stream_object@contour
+        "cnInfoLabelFontHeightF" : xbfontf
+     end setvalues
+    end if
+    if(.not.isatt(stres,"cnLineLabelFontHeightF"))
+      setvalues stream_object@contour
+        "cnLineLabelFontHeightF"    : xbfontf
+      end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on)
+      if(.not.infolabel_on)
+        lbar_zone = 2
+      else
+        lbar_zone = 3
+      end if
+
+      add_labelbar(wks,stream_object@contour,lbar_zone,xbfontf,"vector",lbres)
+    end if
+  
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@vfdata      = stream_object@vfdata
+    map_object@sfdata      = stream_object@sfdata
+    map_object@streamline  = stream_object
+    map_object@contour     = stream_object@contour
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_contour_map_polar                       ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional scalar data                      ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function is similar to gsn_csm_streamline_map_polar except it    ;
+; overlays a contour plot.                                              ;
+;***********************************************************************;
+undef("gsn_csm_streamline_contour_map_polar")
+function gsn_csm_streamline_contour_map_polar(wks:graphic,u[*][*]:numeric, \
+                                         v[*][*]:numeric,data:numeric,
+                                         resources:logical)
+local i, stream_object, map_object, res, res2, calldraw, vcres, \
+lbres, vpwf, vphf, callframe, lbar_on, lbar_zone, unew, vnew
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_streamline_contour_map_polar: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+;
+; The default is to draw streamlines colored by a scalar field, so this
+; means a labelbar should be drawn, and no contour information is 
+; needed.
+;
+; Initialize.
+    res2  = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,data,"gsn_csm_streamline_contour_map_polar",res2,3)
+    end if
+
+    mpres = True
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes). Check the vector and contour data separately.
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value_keep(res2,"gsnAddCyclic",set_cyclic)) then
+      unew    = gsn_add_cyclic_point(u)
+      vnew    = gsn_add_cyclic_point(v)
+    else
+      unew    = u
+      vnew    = v
+    end if
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay streamlines on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check for draw and frame.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+;
+; Check for type of polar plot and polar labels desired.
+;
+    mpres@gsnPolar     = get_polar_type(res2)
+    mpres@gsnPolarTime = get_res_value(res2,"gsnPolarTime",False)
+    mpres@gsnPolarUT   = get_res_value(res2,"gsnPolarUT",0.)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+; 
+; Determine which annotations (labelbar, info label) should be turned on. 
+; By default, labelbar is on, and contour info label is off.
+;
+    if(check_attr(res2,"cnFillOn",True,False))
+      set_attr(res2,"cnFillDrawOrder","Predraw")
+      set_attr(res2,"cnLineLabelsOn",False)
+      set_attr(res2,"cnLinesOn",False)
+      set_attr(res2,"cnInfoLabelOn",False)
+    else    
+      set_attr(res2,"cnInfoLabelOn",True)
+      set_attr(res2,"lbLabelBarOn",False)
+    end if
+;
+; Check for coordinate variables for scalar field.
+;
+    check_for_y_lat_coord(datanew,res2,"contour_map")
+    check_for_lon_coord(datanew,res2,"contour_map")
+
+    lbar_on      = get_res_value_keep(res2,"lbLabelBarOn",True)
+    lbar_orient  = lower_case(get_res_value_keep(res2,"lbOrientation", \
+                              "horizontal"))
+    infolabel_on = get_res_value_keep(res2,"cnInfoLabelOn",False)
+;
+; Now that we know what's being drawn for annotations (labelbar, 
+; info label), we can determine where to put all this
+; stuff.
+;
+    if(infolabel_on)
+      set_attr(res2,"cnInfoLabelZone",2)
+      set_attr(res2,"cnInfoLabelOrthogonalPosF", 0.1)
+      set_attr(res2,"cnInfoLabelParallelPosF", 1.0)
+      set_attr(res2,"cnInfoLabelJust","TopRight")
+    end if
+
+    if(lbar_on)
+      if(lbar_orient.eq."vertical")
+        set_attr(res2,"vpXF",0.15)
+        set_attr(res2,"pmLabelBarOrthogonalPosF",0.1)
+      else
+        set_attr(res2,"vpYF",0.82)
+      end if
+    end if
+;
+; Tickmarks.
+;
+    mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO", \
+                              "pmT","gsnPolar"/))
+    stres = get_res_ne(res2,(/"mp","vp","tm","tx","am","lb","pm","gsnPolar"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    stres = True
+    mpres = True
+    stres@gsnDraw   = False
+    stres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    stream_object = gsn_streamline_contour(wks,unew,vnew,datanew,stres)
+    map_object    = gsn_csm_map_polar(wks,mpres)    ; Create map.
+    overlay(map_object,stream_object)           ; Overlay streamlines on map.
+
+; Retrieve plot height so we can compute font height.
+
+    getvalues map_object
+      "vpHeightF"          : vphf
+    end getvalues
+
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.3*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Create a labelbar.
+
+    if(lbar_on)
+      if(.not.infolabel_on)
+        lbar_zone = 2
+      else
+        lbar_zone = 3
+      end if
+;
+; Get labelbar resources, if any.
+;
+      lbres = get_res_eq(res2,(/"lb","pm"/))
+
+      add_labelbar(wks,stream_object@contour, \
+                   lbar_zone,font_height,"vector",lbres)
+    end if
+  
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@vfdata  = stream_object@vfdata
+    map_object@sfdata  = stream_object@sfdata
+    map_object@streamline  = stream_object
+    map_object@contour = stream_object@contour
+    return(map_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_contour_map_other                       ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional scalar data                      ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function is similar to gsn_csm_streamline_map_other except       ;
+; overlays a contour plot.                                              ;
+;***********************************************************************;
+undef("gsn_csm_streamline_contour_map_other")
+function gsn_csm_streamline_contour_map_other(wks:graphic,u[*][*]:numeric,\
+                                        v[*][*]:numeric,data:numeric, \
+                                        resources:logical)
+local i, stream_object, labelbar_object, map_object, \
+calldraw, callframe, lbar_on, min_lat, max_lat, datanew, \
+res, res2, lbres, mpres, vcres, levels, colors, \
+lbar_zone, lbar_orient, lbar_side, lbar_height, lbar_width, lbar_just, \
+map_vpwf, map_vphf, vphf 
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_streamline_contour_map_other: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+; Initialize.
+    infolabel_on   = False
+    lbar_on        = False    ; Default is no labelbar.
+    mpres          = True
+
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,data,"gsn_csm_streamline_contour_map_other",res2,3)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes). Check the vector and contour data separately.
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value_keep(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay streamlines on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,mpres)
+    set_left_subtitle(unew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+
+; 
+; Determine which annotations (labelbar, info label) should be turned on.
+; By default, labelbar is on, and contour info label is off.
+;
+    if(check_attr(res2,"cnFillOn",True,False))
+      set_attr(res2,"cnFillDrawOrder","Predraw")
+      set_attr(res2,"cnLineLabelsOn",False)
+      set_attr(res2,"cnLinesOn",False)
+      set_attr(res2,"cnInfoLabelOn",False)
+    else    
+      set_attr(res2,"cnInfoLabelOn",True)
+      set_attr(res2,"lbLabelBarOn",False)
+    end if
+;
+; Check for coordinate variables for scalar field.
+;
+    check_for_y_lat_coord(datanew,res2,"contour_map")
+    check_for_lon_coord(datanew,res2,"contour_map")
+
+    lbar_on      = get_res_value_keep(res2,"lbLabelBarOn",True)
+    lbar_orient  = lower_case(get_res_value_keep(res2,"lbOrientation", \
+                              "horizontal"))
+    infolabel_on = get_res_value_keep(res2,"cnInfoLabelOn",False)
+
+;
+; Now that we know what's being drawn for annotations (labelbar, 
+; info label), we can determine where to put all this
+; stuff.
+;
+    if(infolabel_on)
+      set_attr(res2,"cnInfoLabelZone",2)
+      set_attr(res2,"cnInfoLabelOrthogonalPosF", 0.1)
+      set_attr(res2,"cnInfoLabelParallelPosF", 1.0)
+      set_attr(res2,"cnInfoLabelJust","TopRight")
+    end if
+;
+; By default, mpOutlineOn is False, unless mpFillOn is set to False,
+; then it is set back to True.
+;
+   if(check_attr(res2,"mpFillOn",False,False))
+      set_attr(res2,"mpOutlineOn",True)
+    end if
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT","gsnMask"/))
+    stres = get_res_ne(res2,(/"mp","vp","tm","lb","tx","am","pm","gsnMask"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    stres           = True
+    mpres           = True
+    stres@gsnDraw   = False
+    stres@gsnFrame  = False
+    mpres@gsnDraw   = False
+    mpres@gsnFrame  = False
+
+    stream_object = gsn_streamline_contour(wks,unew,vnew,datanew,stres)
+
+    map_object = gsn_csm_map_other(wks,mpres)   ; Create map.
+    overlay(map_object,stream_object)           ; Overlay streamlines on map.
+
+; Retrieve plot height so we can compute font height.
+
+    getvalues map_object
+      "vpHeightF"          : vphf
+    end getvalues
+
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     2.*font_height)
+    setvalues map_object
+      "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Create a labelbar.
+
+    if(lbar_on)
+      if(.not.infolabel_on)
+        lbar_zone = 2
+      else
+        lbar_zone = 3
+      end if
+;
+; Get labelbar resources, if any.
+;
+      lbres = get_res_eq(res2,(/"lb","pm"/))
+
+      add_labelbar(wks,stream_object@contour,lbar_zone,font_height,"vector",lbres)
+    end if
+  
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    map_object@vfdata  = stream_object@vfdata
+    map_object@sfdata  = stream_object@sfdata
+    map_object@vector  = stream_object
+    map_object@contour = stream_object@contour
+
+    return(map_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_vector_scalar                                      ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional scalar data                      ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function colors vectors according to a scalar field.             ;
+;                                                                       ;
+; There's a special resource associated with this function called       ;
+; "gsnScalarContour".  If it's set to True, then the scalar field will  ;
+; be drawn as a contour plot.  Otherwise, the vectors will be colored   ;
+; according to the scalar field. This resource defaults to False.       ;
+;***********************************************************************;
+undef("gsn_csm_vector_scalar")
+function gsn_csm_vector_scalar(wks:graphic,u[*][*]:numeric,v[*][*]:numeric, \
+                               data:numeric,resources:logical)
+local i, vector_object, res, res2, \
+calldraw, callframe, unew, vnew, datanew, vpwf, vphf, lbar_on, lbar_type
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_vector_scalar: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    main_zone      = 2         ; Zone for main title (may change later)
+    infolabel_on   = False
+    refanno_on     = True
+    lbar_on        = True
+    lbar_type      = ""
+    res2 = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,data,"gsn_csm_vector_scalar",res2,3)
+    end if
+
+    tm_scale      = get_res_value_keep(res2,"gsnScale",True)
+    point_outward = get_res_value(res2,"gsnTickMarksPointOutward",True)
+
+; The default is to not add a cyclic point.
+    if(get_res_value_keep(res2,"gsnAddCyclic",False)) then
+      unew    = gsn_add_cyclic_point(u)
+      vnew    = gsn_add_cyclic_point(v)
+    else
+      unew    = u
+      vnew    = v
+    end if
+
+    if(get_res_value(res2,"gsnAddCyclic",False)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,res2)
+    set_left_subtitle(datanew,res2,res2)
+
+; Check for existence of the left, center, and right subtitles.
+
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(res2,left_string,center_string,right_string)
+
+    if(left_string.or.center_string.or.right_string)
+      main_zone   = main_zone+1
+    end if
+
+; Check if gsnShape set.
+
+    if(check_attr(res2,"gsnShape",True,False))
+      main_zone     = main_zone+1 ; Zone for main title
+    end if
+
+; Use coordinate variables for X and/or Y if they exist.
+
+    check_for_coord_arrays(datanew,res2,"contour")
+    check_for_coord_arrays(unew,res2,"vector")
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for type of scalar field representation.
+    scalar_contour = get_res_value(res2,"gsnScalarContour",False)
+
+; Get labelbar resources.
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+
+    if(scalar_contour)
+      lbar_on = False
+; Turn on labelbar if cnFillOn is True and it wasn't explicitly 
+; turned off.
+      if(check_attr(res2,"cnFillOn",True,False))
+        lbar_type = "contour"
+        set_attr(res2,"cnFillDrawOrder","Predraw")
+        set_attr(res2,"cnInfoLabelOn",False)
+        if(.not.isatt(lbres,"lbLabelBarOn").or.\
+           check_attr(lbres,"lbLabelBarOn",True,False))
+          set_attr(res2,"cnLineLabelsOn",False)
+          lbar_on = True   ; Turn on a labelbar
+        end if
+      end if
+    end if
+
+    if(check_attr(res2,"lbLabelBarOn",False,False))
+      lbar_on = False
+    end if
+
+; Turn off anno label if specified by user.
+    if(check_attr(res2,"vcRefAnnoOn",False,False))
+      refanno_on = False
+    end if
+
+; Turn off info label if labelbar is on, unless otherwise specified by user.
+    if(scalar_contour)
+      if(lbar_on)
+        set_attr(res2,"cnInfoLabelOn",False)
+      else
+        set_attr(res2,"cnInfoLabelOn",True)
+      end if
+      infolabel_on = res2@cnInfoLabelOn
+    end if
+
+    if(lbar_on.and.(check_attr(lbres,"lbOrientation","vertical",True).or.\
+                    check_attr(lbres,"lbOrientation",1,True)))
+      set_attr(res2, "vpWidthF",0.75)   ; Make room for labelbar
+      set_attr(res2,"vpHeightF",0.75)   ; on the side.
+      set_attr(res2,     "vpXF",0.08)
+      set_attr(res2,     "vpYF",0.90)
+    end if
+
+    if(scalar_contour.and.infolabel_on)
+      set_attr(res2,"cnInfoLabelZone",2)
+      set_attr(res2,"cnInfoLabelOrthogonalPosF", 0.13)
+    end if
+
+    if(refanno_on)
+      if(infolabel_on)
+        set_attr(res2,"vcRefAnnoParallelPosF",0.)
+        set_attr(res2,"vcRefAnnoJust","TopLeft")
+      end if
+      set_attr(res2,"vcRefAnnoString2On","False")
+      set_attr(res2,"vcRefAnnoZone",2)
+      set_attr(res2,"vcRefAnnoOrthogonalPosF", 0.13)
+    end if
+
+; Before we create the vector object, turn off draw and frame for it.
+    vcres = get_res_ne(res2,(/"mp","lb","tx","am","pm"/))
+
+    vcres          = True
+    vcres@gsnDraw  = False
+    vcres@gsnFrame = False
+
+    if(scalar_contour)
+      vector_object = gsn_vector_contour(wks,unew,vnew,datanew,vcres)
+    else
+      vector_object = gsn_vector_scalar(wks,unew,vnew,datanew,vcres)
+    end if
+
+; Add lat/lon labels to X/Y axes if appropriate coordinate arrays exist.
+
+    add_latlon_labels(vector_object,unew,res2)
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues vector_object
+      "vpHeightF"            : height
+      "vpWidthF"             : width
+
+      "tmXBLabelFontHeightF" : xbfontf
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make subtitle label sizes a
+                                          ; function of the size of the
+                                          ; X/Y axis labels.
+
+; If the plot is close to square in size, then make the 
+; three top titles and the tick marks smaller.
+
+    font_scale = (/1.0,0.8,0.8/)
+    ratios     = (/0.5,0.75,1.0/)
+
+    ratio = height/width
+    if(ratio.gt.1) 
+      ratio = 1./ratio
+    end if
+    index = ind(ratio.le.ratios)
+
+    scale = font_scale(index(0))
+    font_height  = scale * font_height
+;
+; If gsnScale is True, then make sure we have a valid tickmark
+; object before we do anything else.
+;
+    if(tm_scale.and.is_tm_obj_valid(vector_object)) then
+;
+; Make tick marks same length and point outward.
+;
+      getvalues vector_object
+        "tmYLMajorLengthF"     : ylength
+        "tmXBMajorLengthF"     : xlength
+        "tmYLMinorLengthF"     : ymlength
+        "tmXBMinorLengthF"     : xmlength
+      end getvalues
+
+      major_length = min((/ylength,xlength/))    ; New length for major ticks.
+      minor_length = min((/ymlength,xmlength/))  ; New length for minor ticks.
+
+      major_length = scale * major_length
+      minor_length = scale * minor_length
+
+      tmres = get_res_eq(res2,"tm")
+      gsnp_point_tickmarks_outward(vector_object,tmres,xlength,ylength,\
+                                   xmlength,ymlength,\
+                                   major_length,minor_length,point_outward)
+    end if
+
+; Make sure info labels, line labels, and vector labels are same size.
+    if(scalar_contour)
+      if(.not.isatt(res2,"cnLineLabelFontHeightF"))
+        setvalues vector_object@contour
+          "cnInfoLabelFontHeightF" : xbfontf
+       end setvalues
+      end if
+      if(.not.isatt(res2,"cnLineLabelFontHeightF"))
+        setvalues vector_object@contour
+          "cnLineLabelFontHeightF"    : xbfontf
+        end setvalues
+      end if
+    end if
+
+    if(.not.isatt(res2,"vcRefAnnoFontHeightF"))
+      setvalues vector_object
+        "vcRefAnnoFontHeightF" : xbfontf
+     end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on)
+      if(.not.refanno_on.and..not.infolabel_on)
+        lbar_zone = 2
+      else
+        lbar_zone = 3
+      end if
+
+      if(scalar_contour)
+        add_labelbar(wks,vector_object@contour,lbar_zone,xbfontf, \
+                     "vector",lbres)
+      else
+        add_labelbar(wks,vector_object,lbar_zone,xbfontf,"vector",lbres)
+      end if
+    end if
+  
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,(/"tx","am"/))  ; Get textitem resources
+    subres                  = True
+    set_attr(subres,"txFontHeightF",font_height)
+    add_subtitles(wks,vector_object,left_string,center_string,\
+                  right_string,subres)
+
+; Draw all this stuff: vector/contour plot, subtitles, and tick marks.
+    draw_and_frame(wks,vector_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    vector_object@vfdata  = vector_object@vfdata
+    vector_object@sfdata  = vector_object@sfdata
+    if(lbar_type.eq."contour") then
+      vector_object@labelbar      = vector_object@contour
+      vector_object@labelbar_type = lbar_type
+    end if
+    return(vector_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_vector_scalar_map_ce                               ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional scalar data                      ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function is similar to gsn_csm_vector_map_ce except it colors the;
+; vectors according to a scalar field.                                  ;
+;                                                                       ;
+; There's a special resource associated with this function called       ;
+; "gsnScalarContour".  If it's set to True, then the scalar field will  ;
+; be drawn as a contour plot.  Otherwise, the vectors will be colored   ;
+; according to the scalar field. This resource defaults to False.       ;
+;***********************************************************************;
+undef("gsn_csm_vector_scalar_map_ce")
+function gsn_csm_vector_scalar_map_ce(wks:graphic,u[*][*]:numeric,\
+                   v[*][*]:numeric,data:numeric,resources:logical)
+local i, vector_object, map_object, res, res2, \
+calldraw, callframe, min_lat, max_lat, unew, vnew, datanew, \
+map_vpwf, map_vphf, vpwf, vphf, lbar_on, lbar_type
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_vector_scalar_map_ce: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    infolabel_on   = False
+    refanno_on   = True
+    lbar_on        = True
+    lbar_type      = ""
+    mpres          = True
+    res2           = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,data,"gsn_csm_vector_scalar_map_ce",res2,3)
+    end if
+
+    if(isatt(res2,"vcRefAnnoOrthogonalPosF")) then
+      user_set_ref_orth = True
+    else
+      user_set_ref_orth = False
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes). Check the vector and contour data separately.
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value_keep(res2,"gsnAddCyclic",set_cyclic)) then
+      unew    = gsn_add_cyclic_point(u)
+      vnew    = gsn_add_cyclic_point(v)
+    else
+      unew    = u
+      vnew    = v
+    end if
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay vector on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+    if(.not.(isatt(res2,"vfXArray")))
+      set_attr(res2,"vfXCStartV",-180.)
+      set_attr(res2,"vfXCEndV",   180.)
+    end if
+
+    if(.not.(isatt(res2,"vfYArray")))
+      set_attr(res2,"vfYCStartV",-90.)
+      set_attr(res2,"vfYCEndV",   90.)
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,mpres)
+    set_left_subtitle(datanew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+    lbres = get_res_eq(res2,(/"lb","pm"/))
+
+; Check for type of scalar field representation.
+    scalar_contour = get_res_value(res2,"gsnScalarContour",False)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+
+;
+; Check for other special resources.
+;
+    if(isatt(res2,"gsnMajorLonSpacing"))
+      mpres@gsnMajorLonSpacing = res2@gsnMajorLonSpacing
+      delete(res2@gsnMajorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMajorLatSpacing"))
+      mpres@gsnMajorLatSpacing = res2@gsnMajorLatSpacing
+      delete(res2@gsnMajorLatSpacing)
+    end if
+
+    if(isatt(res2,"gsnMinorLonSpacing"))
+      mpres@gsnMinorLonSpacing = res2@gsnMinorLonSpacing
+      delete(res2@gsnMinorLonSpacing)
+    end if
+    if(isatt(res2,"gsnMinorLatSpacing"))
+      mpres@gsnMinorLatSpacing = res2@gsnMinorLatSpacing
+      delete(res2@gsnMinorLatSpacing)
+    end if
+
+    if(scalar_contour)
+      lbar_on = False
+; Turn on labelbar if cnFillOn is True and it wasn't explicitly 
+; turned off.
+      if(check_attr(res2,"cnFillOn",True,False))
+        lbar_type = "contour"
+        set_attr(res2,"cnFillDrawOrder","Predraw")
+        set_attr(res2,"cnInfoLabelOn",False)
+        if(.not.isatt(lbres,"lbLabelBarOn").or.\
+           check_attr(lbres,"lbLabelBarOn",True,False))
+          set_attr(res2,"cnLineLabelsOn",False)
+          lbar_on = True   ; Turn on a labelbar
+        end if
+      end if
+
+      check_for_y_lat_coord(datanew,res2,"contour_map")
+      check_for_lon_coord(datanew,res2,"contour_map")
+
+      if(.not.(isatt(res2,"sfXArray")))
+        set_attr(res2,"sfXCStartV",-180.)
+        set_attr(res2,"sfXCEndV",   180.)
+      end if
+
+      if(.not.(isatt(res2,"sfYArray")))
+        set_attr(res2,"sfYCStartV",-90.)
+        set_attr(res2,"sfYCEndV",   90.)
+      end if
+    end if
+
+    if(check_attr(res2,"lbLabelBarOn",False,False))
+      lbar_on = False
+    end if
+
+; Turn off anno label if specified by user.
+    if(check_attr(res2,"vcRefAnnoOn",False,False))
+      refanno_on = False
+    end if
+
+; Turn off info label if labelbar is on, unless otherwise specified by user.
+    if(scalar_contour)
+      if(lbar_on)
+        set_attr(res2,"cnInfoLabelOn",False)
+      else
+        set_attr(res2,"cnInfoLabelOn",True)
+      end if
+      infolabel_on = res2@cnInfoLabelOn
+    end if
+;
+; Tickmarks.
+;
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2) then
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",False)
+    else
+      mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+    end if
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT"/))
+    vcres = get_res_ne(res2,(/"mp","vp","tm","lb","tx","am","pm"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    vcres          = True
+    mpres          = True
+    vcres@gsnDraw  = False
+    vcres@gsnFrame = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    if(lbar_on.and.(check_attr(lbres,"lbOrientation","vertical",True).or.\
+                    check_attr(lbres,"lbOrientation",1,True)))
+      set_attr(mpres, "vpWidthF",0.75)   ; Make room for labelbar
+      set_attr(mpres,"vpHeightF",0.75)   ; on the side.
+      set_attr(mpres,     "vpXF",0.08)
+      set_attr(mpres,     "vpYF",0.90)
+    end if
+
+    if(scalar_contour.and.infolabel_on)
+      set_attr(vcres,"cnInfoLabelZone",2)
+      set_attr(vcres,"cnInfoLabelOrthogonalPosF", 0.13)
+    end if
+
+    if(refanno_on)
+      if(infolabel_on)
+        set_attr(vcres,"vcRefAnnoParallelPosF",0.)
+        set_attr(vcres,"vcRefAnnoJust","TopLeft")
+      end if
+      set_attr(vcres,"vcRefAnnoString2On","False")
+      set_attr(vcres,"vcRefAnnoZone",2)
+      set_attr(vcres,"vcRefAnnoOrthogonalPosF", 0.13)
+    end if
+
+    if(scalar_contour)
+      vector_object = gsn_vector_contour(wks,unew,vnew,datanew,vcres)
+    else
+      vector_object = gsn_vector_scalar(wks,unew,vnew,datanew,vcres)
+    end if
+
+    map_object = gsn_csm_map_ce(wks,mpres)          ; Create map.
+    overlay(map_object,vector_object)               ; Overlay vectors on map.
+
+; Retrieve some font heights and make the X/Y axis labels the same
+; size, and the info label size the same as the tick mark label size.
+
+    getvalues map_object@tickmarks
+      "tmXBLabelFontHeightF" : xbfontf
+    end getvalues
+
+    getvalues map_object
+      "vpWidthF"           : vpwf
+      "vpHeightF"          : vphf
+      "tiXAxisFontHeightF" : xfontf
+      "tiYAxisFontHeightF" : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+                                          ; the size of the X/Y axis labels.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.3*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Make sure info labels, line labels, and vector labels are same size.
+    if(scalar_contour)
+      if(.not.isatt(vcres,"cnLineLabelFontHeightF"))
+        setvalues vector_object@contour
+          "cnInfoLabelFontHeightF" : xbfontf
+       end setvalues
+      end if
+      if(.not.isatt(vcres,"cnLineLabelFontHeightF"))
+        setvalues vector_object@contour
+          "cnLineLabelFontHeightF"    : xbfontf
+        end setvalues
+      end if
+    end if
+
+    if(.not.isatt(vcres,"vcRefAnnoFontHeightF"))
+      setvalues vector_object
+        "vcRefAnnoFontHeightF" : xbfontf
+     end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on)
+      if(.not.refanno_on.and..not.infolabel_on)
+        lbar_zone = 2
+      else
+;
+; If the user is moving the vector annotation around, then 
+; the labelbar will no longer be in the zone outside the ref anno.
+; This is to avoid the problem of the user moving the ref anno into
+; the plot, and then having the labelbar follow it up too far, and
+; running into the tickmarks.
+;
+        if(user_set_ref_orth) then
+          lbar_zone = 2
+        else
+          lbar_zone = 3
+        end if
+      end if
+
+      if(scalar_contour)
+        add_labelbar(wks,vector_object@contour,lbar_zone,xbfontf, \
+                     "vector",lbres)
+      else
+        add_labelbar(wks,vector_object,lbar_zone,xbfontf,"vector",lbres)
+      end if
+    end if
+  
+
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    if(lbar_type.eq."contour") then
+      map_object@labelbar      = vector_object@contour
+      map_object@labelbar_type = lbar_type
+    end if
+
+    map_object@vfdata  = vector_object@vfdata
+    map_object@sfdata  = vector_object@sfdata
+    if(scalar_contour)
+      map_object@vector  = vector_object
+      map_object@contour = vector_object@contour
+    else
+      map_object@vector  = vector_object
+    end if
+
+    return(map_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_vector_scalar_map_polar                            ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional scalar data                      ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function is similar to gsn_csm_vector_map_polar except it either ;
+; colors the vectors according to a scalar field, or it overlays a      ;
+; contour plot.                                                         ;
+;                                                                       ;
+; There's a special resource associated with this function called       ;
+; "gsnScalarContour".  If it's set to True, then the scalar field will  ;
+; be drawn as a contour plot.  Otherwise, the vectors will be colored   ;
+; according to the scalar field. This resource defaults to False.       ;
+;***********************************************************************;
+undef("gsn_csm_vector_scalar_map_polar")
+function gsn_csm_vector_scalar_map_polar(wks:graphic,u[*][*]:numeric, \
+                                         v[*][*]:numeric,data:numeric,
+                                         resources:logical)
+local i, vector_object, map_object, res, res2, calldraw, vcres, \
+lbres, vpwf, vphf, callframe, lbar_on, lbar_type, lbar_zone, unew, vnew
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_vector_scalar_map_polar: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+;
+; The default is to draw vectors colored by a scalar field, so this
+; means a labelbar should be drawn, and no contour information is 
+; needed.
+;
+; Initialize.
+    res2  = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,data,"gsn_csm_vector_scalar_map_polar",res2,3)
+    end if
+
+    mpres = True
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes). Check the vector and contour data separately.
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value_keep(res2,"gsnAddCyclic",set_cyclic)) then
+      unew    = gsn_add_cyclic_point(u)
+      vnew    = gsn_add_cyclic_point(v)
+    else
+      unew    = u
+      vnew    = v
+    end if
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay vectors on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,mpres)
+    set_left_subtitle(datanew,res2,mpres)
+
+; Check for draw and frame.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+;
+; Check for type of polar plot and scalar field representation.
+;
+    mpres@gsnPolar     = get_polar_type(res2)
+    mpres@gsnPolarTime = get_res_value(res2,"gsnPolarTime",False)
+    mpres@gsnPolarUT   = get_res_value(res2,"gsnPolarUT",0.)
+    scalar_contour     = get_res_value(res2,"gsnScalarContour",False)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+; 
+; Determine which annotations (labelbar, vector reference anno, info label)
+; should be turned on.  By default, labelbar and vector anno are on, and
+; contour info label is off.
+;
+    if(scalar_contour)
+      if(check_attr(res2,"cnFillOn",True,False))
+        set_attr(res2,"cnFillDrawOrder","Predraw")
+        set_attr(res2,"cnLineLabelsOn",False)
+        set_attr(res2,"cnLinesOn",False)
+        set_attr(res2,"cnInfoLabelOn",False)
+      else    
+        set_attr(res2,"cnInfoLabelOn",True)
+        set_attr(res2,"lbLabelBarOn",False)
+      end if
+;
+; Check for coordinate variables for scalar field.
+;
+      check_for_y_lat_coord(datanew,res2,"contour_map")
+      check_for_lon_coord(datanew,res2,"contour_map")
+    end if
+
+    lbar_type    = ""
+    lbar_on      = get_res_value_keep(res2,"lbLabelBarOn",True)
+    lbar_orient  = lower_case(get_res_value_keep(res2,"lbOrientation", \
+                              "horizontal"))
+    infolabel_on = get_res_value_keep(res2,"cnInfoLabelOn",False)
+    refanno_on   = get_res_value_keep(res2,"vcRefAnnoOn",True)
+;
+; Now that we know what's being drawn for annotations (labelbar, 
+; info label, ref anno), we can determine where to put all this
+; stuff. If both info label and ref anno are on, put the info label
+; on the right, and the ref anno on the left.  If only one of them is
+; on, put it on the right.
+;
+    if(refanno_on)
+      set_attr(res2,"vcRefAnnoZone",2)
+      set_attr(res2,"vcRefAnnoString2On","False")
+      if(infolabel_on)
+        set_attr(res2,"vcRefAnnoOrthogonalPosF", 0.1)
+        set_attr(res2,"vcRefAnnoJust","TopLeft")
+        set_attr(res2,"vcRefAnnoParallelPosF", 0.0)
+      else
+        set_attr(res2,"vcRefAnnoOrthogonalPosF",0.02)
+        set_attr(res2,"vcRefAnnoParallelPosF",0.8)
+      end if
+    end if
+
+    if(infolabel_on)
+      set_attr(res2,"cnInfoLabelZone",2)
+      set_attr(res2,"cnInfoLabelOrthogonalPosF", 0.1)
+      set_attr(res2,"cnInfoLabelParallelPosF", 1.0)
+      set_attr(res2,"cnInfoLabelJust","TopRight")
+    end if
+
+    if(lbar_on)
+      if(lbar_orient.eq."vertical")
+        set_attr(res2,"vpXF",0.15)
+        set_attr(res2,"pmLabelBarOrthogonalPosF",0.1)
+      else
+        set_attr(res2,"vpYF",0.82)
+      end if
+    end if
+;
+; Tickmarks.
+;
+    mpres@gsnTickMarksOn = get_res_value(res2,"gsnTickMarksOn",True)
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO",\
+                              "pmT","gsnPolar"/))
+    vcres = get_res_ne(res2,(/"mp","vp","tm","tx","am","lb","pm","gsnPolar"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    vcres = True
+    mpres = True
+    vcres@gsnDraw   = False
+    vcres@gsnFrame  = False
+    mpres@gsnDraw  = False
+    mpres@gsnFrame = False
+
+    if(scalar_contour)
+      vector_object = gsn_vector_contour(wks,unew,vnew,datanew,vcres)
+    else
+      vector_object = gsn_vector_scalar(wks,unew,vnew,datanew,vcres)
+    end if
+    map_object    = gsn_csm_map_polar(wks,mpres)    ; Create map.
+    overlay(map_object,vector_object)               ; Overlay vectors on map.
+
+; Retrieve plot height so we can compute font height.
+
+    getvalues map_object
+      "vpHeightF"          : vphf
+    end getvalues
+
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     1.3*font_height)
+    setvalues map_object
+        "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Create a labelbar.
+
+    if(lbar_on)
+      if(.not.refanno_on.and..not.infolabel_on)
+        lbar_zone = 2
+      else
+        lbar_zone = 3
+      end if
+;
+; Get labelbar resources, if any.
+;
+      lbres = get_res_eq(res2,(/"lb","pm"/))
+
+      if(scalar_contour)
+        lbar_type = "contour"
+        add_labelbar(wks,vector_object@contour,lbar_zone,font_height, \
+                     "vector",lbres)
+      else
+        add_labelbar(wks,vector_object,lbar_zone,font_height,"vector",lbres)
+      end if
+    end if
+  
+; Draw all this stuff: map plot, subtitles, and tick marks.
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    if(lbar_type.eq."contour") then
+      map_object@labelbar      = vector_object@contour
+      map_object@labelbar_type = lbar_type
+    end if
+
+    map_object@vfdata  = vector_object@vfdata
+    map_object@sfdata  = vector_object@sfdata
+    if(scalar_contour)
+      map_object@vector  = vector_object
+      map_object@contour = vector_object@contour
+    else
+      map_object@vector  = vector_object
+    end if
+    return(map_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_vector_scalar_map_other                            ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional scalar data                      ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function is similar to gsn_csm_vector_map_other except it either ;
+; colors the vectors according to a scalar field, or it overlays a      ;
+; contour plot.                                                         ;
+;                                                                       ;
+; There's a special resource associated with this function called       ;
+; "gsnScalarContour".  If it's set to True, then the scalar field will  ;
+; be drawn as a contour plot.  Otherwise, the vectors will be colored   ;
+; according to the scalar field. This resource defaults to False.       ;
+;***********************************************************************;
+undef("gsn_csm_vector_scalar_map_other")
+function gsn_csm_vector_scalar_map_other(wks:graphic,u[*][*]:numeric,\
+                                        v[*][*]:numeric,data:numeric, \
+                                        resources:logical)
+local i, vector_object, labelbar_object, map_object, \
+calldraw, callframe, lbar_on, lbar_type, min_lat, max_lat, datanew, \
+res, res2, lbres, mpres, vcres, levels, colors, \
+lbar_zone, lbar_orient, lbar_side, lbar_height, lbar_width, lbar_just, \
+map_vpwf, map_vphf, vphf 
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_vector_scalar_map_other: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    infolabel_on   = False
+    refanno_on     = True
+    lbar_on        = False    ; Default is no labelbar.
+    lbar_type      = ""
+    mpres          = True
+
+    res2           = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,data,"gsn_csm_vector_scalar_map_other",res2,3)
+    end if
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes). Check the vector and contour data separately.
+
+    set_cyclic = .not.((isatt(u,"lat2d").and.isatt(u,"lon2d")).or.\
+                       (isatt(v,"lat2d").and.isatt(v,"lon2d")))
+    if(get_res_value_keep(res2,"gsnAddCyclic",set_cyclic)) then
+      unew = gsn_add_cyclic_point(u)
+      vnew = gsn_add_cyclic_point(v)
+    else
+      unew = u
+      vnew = v
+    end if
+
+    set_cyclic = .not.(isatt(data,"lat2d").and.isatt(data,"lon2d"))
+    if(get_res_value(res2,"gsnAddCyclic",set_cyclic)) then
+      datanew = gsn_add_cyclic_point(data)
+    else
+      datanew = data
+    end if
+
+; Check for coordinate variables. These values will determine where to 
+; overlay vectors on map.
+
+    check_for_y_lat_coord(unew,res2,"vector_map")
+    check_for_lon_coord(unew,res2,"vector_map")
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,mpres)
+    set_left_subtitle(datanew,res2,mpres)
+
+; Check if frame and/or draw are not supposed to be called.
+
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for subtitles at top and add to mpres if exist.
+
+    set_subtitles_res(res2,mpres)
+
+; Check for type of scalar field representation.
+    scalar_contour = get_res_value(res2,"gsnScalarContour",False)
+
+; 
+; Determine which annotations (labelbar, vector reference anno, info label)
+; should be turned on.  By default, labelbar and vector anno are on, and
+; contour info label is off.
+;
+    if(scalar_contour)
+      if(check_attr(res2,"cnFillOn",True,False))
+        lbar_type = "contour"
+        set_attr(res2,"cnFillDrawOrder","Predraw")
+        set_attr(res2,"cnLineLabelsOn",False)
+        set_attr(res2,"cnLinesOn",False)
+        set_attr(res2,"cnInfoLabelOn",False)
+      else    
+        set_attr(res2,"cnInfoLabelOn",True)
+        set_attr(res2,"lbLabelBarOn",False)
+      end if
+;
+; Check for coordinate variables for scalar field.
+;
+      check_for_y_lat_coord(datanew,res2,"contour_map")
+      check_for_lon_coord(datanew,res2,"contour_map")
+    end if
+
+    lbar_on      = get_res_value_keep(res2,"lbLabelBarOn",True)
+    lbar_orient  = lower_case(get_res_value_keep(res2,"lbOrientation", \
+                              "horizontal"))
+    infolabel_on = get_res_value_keep(res2,"cnInfoLabelOn",False)
+    refanno_on   = get_res_value_keep(res2,"vcRefAnnoOn",True)
+
+;
+; Now that we know what's being drawn for annotations (labelbar, 
+; info label, ref anno), we can determine where to put all this
+; stuff. If both info label and ref anno are on, put the info label
+; on the right, and the ref anno on the left.  If only one of them is
+; on, put it on the right.
+;
+    if(refanno_on)
+      set_attr(res2,"vcRefAnnoZone",2)
+      set_attr(res2,"vcRefAnnoString2On","False")
+      if(infolabel_on)
+        set_attr(res2,"vcRefAnnoOrthogonalPosF", 0.1)
+        set_attr(res2,"vcRefAnnoJust","TopLeft")
+        set_attr(res2,"vcRefAnnoParallelPosF", 0.0)
+      else
+        set_attr(res2,"vcRefAnnoOrthogonalPosF",0.02)
+        set_attr(res2,"vcRefAnnoParallelPosF",0.8)
+      end if
+    end if
+
+    if(infolabel_on)
+      set_attr(res2,"cnInfoLabelZone",2)
+      set_attr(res2,"cnInfoLabelOrthogonalPosF", 0.1)
+      set_attr(res2,"cnInfoLabelParallelPosF", 1.0)
+      set_attr(res2,"cnInfoLabelJust","TopRight")
+    end if
+;
+; By default, mpOutlineOn is False, unless vcMonoLineArrowColor is set to
+; False or mpFillOn is set to False, then it is set back to True.
+;
+   if(check_attr(res2,"vcMonoLineArrowColor",False,False).or.\
+      check_attr(res2,"mpFillOn",False,False))
+      set_attr(res2,"mpOutlineOn",True)
+    end if
+
+; This section tests for regular resources.
+    mpres = get_res_eq(res2,(/"mp","vp","tm","ti","tx","am","pmA","pmO","pmT","gsnMask"/))
+    vcres = get_res_ne(res2,(/"mp","vp","tm","lb","tx","am","pm","gsnMask"/))
+
+; Before we create the objects, turn off draw and frame for them.
+    vcres           = True
+    mpres           = True
+    vcres@gsnDraw   = False
+    vcres@gsnFrame  = False
+    mpres@gsnDraw   = False
+    mpres@gsnFrame  = False
+
+    if(scalar_contour)
+      vector_object = gsn_vector_contour(wks,unew,vnew,datanew,vcres)
+    else
+      vector_object = gsn_vector_scalar(wks,unew,vnew,datanew,vcres)
+    end if
+
+    map_object = gsn_csm_map_other(wks,mpres)   ; Create map.
+    overlay(map_object,vector_object)           ; Overlay vectors on map.
+
+; Retrieve plot height so we can compute font height.
+
+    getvalues map_object
+      "vpHeightF"          : vphf
+    end getvalues
+
+; Make sure axes labels are the same size.
+
+    font_height = 0.02 * vphf     ; Make various label sizes a function
+                                  ; of the height of the viewport.
+;
+; Check if user setting own font heights.
+;
+    main_font_height = get_res_value(res2,"tiMainFontHeightF", \
+                                     2.*font_height)
+    setvalues map_object
+      "tiMainFontHeightF"    : main_font_height  ; main title size
+    end setvalues
+
+; Set font heights only if they haven't been set explicitly by user.
+
+    if(.not.isatt(vcres,"vcRefAnnoFontHeightF"))
+      setvalues vector_object
+        "vcRefAnnoFontHeightF"  : font_height
+      end setvalues
+    end if
+
+; Create a labelbar.
+
+    if(lbar_on)
+      if(.not.refanno_on.and..not.infolabel_on)
+        lbar_zone = 2
+      else
+        lbar_zone = 3
+      end if
+;
+; Get labelbar resources, if any.
+;
+      lbres = get_res_eq(res2,(/"lb","pm"/))
+
+      if(scalar_contour)
+        add_labelbar(wks,vector_object@contour,lbar_zone,font_height, \
+                     "vector",lbres)
+      else
+        add_labelbar(wks,vector_object,lbar_zone,font_height, \
+                     "vector",lbres)
+      end if
+    end if
+  
+; Draw all this stuff: map plot, subtitles, and tick marks.
+
+    draw_and_frame(wks,map_object,calldraw,callframe,0,maxbb)
+
+; Return plot object and data object (as attribute of plot object).
+
+    if(lbar_type.eq."contour") then
+      map_object@labelbar      = vector_object@contour
+      map_object@labelbar_type = lbar_type
+    end if
+
+    map_object@vfdata  = vector_object@vfdata
+    map_object@sfdata  = vector_object@sfdata
+    if(scalar_contour)
+      map_object@vector  = vector_object
+      map_object@contour = vector_object@contour
+    else
+      map_object@vector  = vector_object
+    end if
+    return(map_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_contour_map                                        ;
+;                   wks: workstation object                             ;
+;                  data: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function calls either gsn_csm_contour_map_ce,                    ;
+; gsn_csm_contour_map_polar or gsn_csm_contour_map_polar depending on   ;
+; the map projection selected.                                          ;
+;***********************************************************************;
+undef("gsn_csm_contour_map")
+function gsn_csm_contour_map(wks:graphic,data:numeric,resources:logical)
+local res
+begin
+  res = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(data,new(1,float),new(1,float),\
+                     "gsn_csm_contour_map",res,1)
+  end if
+
+  if(res.and.(isatt(res,"gsnPolarNH").or.isatt(res,"gsnPolarSH").or.\
+              isatt(res,"gsnPolar")))
+    return(gsn_csm_contour_map_polar(wks,data,res))
+  else
+    if((check_attr(res,"mpProjection","CylindricalEquidistant",True).or.\
+        check_attr(res,"mpProjection",8,True)).or.\
+       .not.isatt(res,"mpProjection"))
+      return(gsn_csm_contour_map_ce(wks,data,res))
+    else
+      return(gsn_csm_contour_map_other(wks,data,res))
+    end if
+  end if
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_map                                     ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function calls either gsn_csm_streamline_map_ce,                 ;
+; gsn_csm_streamline_map_polar or gsn_csm_streamline_map_other          ;
+; depending on the map projection selected.                             ;
+;***********************************************************************;
+undef("gsn_csm_streamline_map")
+function gsn_csm_streamline_map(wks:graphic,u[*][*]:numeric,v[*][*]:numeric,\
+                                resources:logical)
+local res
+begin
+  res = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_streamline_map",res,2)
+  end if
+
+  if(res.and.(isatt(res,"gsnPolarNH").or.isatt(res,"gsnPolarSH").or.\
+              isatt(res,"gsnPolar")))
+    return(gsn_csm_streamline_map_polar(wks,u,v,res))
+  else
+    if((check_attr(res,"mpProjection","CylindricalEquidistant",True).or.\
+        check_attr(res,"mpProjection",8,True)).or.\
+       .not.isatt(res,"mpProjection"))
+      return(gsn_csm_streamline_map_ce(wks,u,v,res))
+    else
+      return(gsn_csm_streamline_map_other(wks,u,v,res))
+    end if
+  end if
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_vector_map                                         ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function calls either gsn_csm_vector_map_ce,                     ;
+; gsn_csm_vector_map_polar or gsn_csm_vector_map_polar depending on the ;
+; map projection selected.                                              ;
+;***********************************************************************;
+undef("gsn_csm_vector_map")
+function gsn_csm_vector_map(wks:graphic,u[*][*]:numeric,v[*][*]:numeric,\
+                            resources:logical)
+local res
+begin
+  res  = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_vector_map",res,2)
+  end if
+
+  if(res.and.(isatt(res,"gsnPolarNH").or.isatt(res,"gsnPolarSH").or.\
+              isatt(res,"gsnPolar")))
+    return(gsn_csm_vector_map_polar(wks,u,v,res))
+  else
+    if((check_attr(res,"mpProjection","CylindricalEquidistant",True).or.\
+        check_attr(res,"mpProjection",8,True)).or.\
+       .not.isatt(res,"mpProjection"))
+      return(gsn_csm_vector_map_ce(wks,u,v,res))
+    else
+      return(gsn_csm_vector_map_other(wks,u,v,res))
+    end if
+  end if
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_vector_scalar_map                                  ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function calls either gsn_csm_vector_scalar_map_ce,              ;
+; gsn_csm_vector_scalar_map_polar or gsn_csm_vector_scalar_map_other    ;
+; depending on the map projection selected.                             ;
+;***********************************************************************;
+undef("gsn_csm_vector_scalar_map")
+function gsn_csm_vector_scalar_map(wks:graphic,u[*][*]:numeric, \
+                                   v[*][*]:numeric,data:numeric, \
+                                   resources:logical)
+local res
+begin
+  res  = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(u,v,data,"gsn_csm_vector_scalar_map",res,3)
+  end if
+
+  if(res.and.(isatt(res,"gsnPolarNH").or.isatt(res,"gsnPolarSH").or.\
+              isatt(res,"gsnPolar")))
+    return(gsn_csm_vector_scalar_map_polar(wks,u,v,data,res))
+  else
+    if((check_attr(res,"mpProjection","CylindricalEquidistant",True).or.\
+        check_attr(res,"mpProjection",8,True)).or.\
+       .not.isatt(res,"mpProjection"))
+      return(gsn_csm_vector_scalar_map_ce(wks,u,v,data,res))
+    else
+      return(gsn_csm_vector_scalar_map_other(wks,u,v,data,res))
+    end if
+  end if
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_streamline_contour_map                             ;
+;                   wks: workstation object                             ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;                  data: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function calls either gsn_csm_streamline_contour_map_ce,         ;
+; gsn_csm_streamline_contour_map_polar, or                              ;
+; gsn_csm_streamline_contour_map_other depending on the map projection  ;
+; selected.                                                             ;
+;***********************************************************************;
+undef("gsn_csm_streamline_contour_map")
+function gsn_csm_streamline_contour_map(wks:graphic,u[*][*]:numeric, \
+                                   v[*][*]:numeric,data:numeric, \
+                                   resources:logical)
+local res
+begin
+  res  = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(u,v,data,"gsn_csm_streamline_contour_map",res,3)
+  end if
+
+  if(res.and.(isatt(res,"gsnPolarNH").or.isatt(res,"gsnPolarSH").or.\
+              isatt(res,"gsnPolar")))
+    return(gsn_csm_streamline_contour_map_polar(wks,u,v,data,res))
+  else
+    if((check_attr(res,"mpProjection","CylindricalEquidistant",True).or.\
+        check_attr(res,"mpProjection",8,True)).or.\
+       .not.isatt(res,"mpProjection"))
+      return(gsn_csm_streamline_contour_map_ce(wks,u,v,data,res))
+    else
+      return(gsn_csm_streamline_contour_map_other(wks,u,v,data,res))
+    end if
+  end if
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_contour_map_overlay                                ;
+;                   wks: workstation object                             ;
+;                 data1: first data to contour                          ;
+;                 data2: second data to contour                         ;
+;                  res1: optional resources                             ;
+;                  res2: optional resources                             ;
+;                                                                       ;
+; This is similar to gsn_csm_contour_map, only it overlays an           ;
+; additional contour plot.                                              ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_contour_map_overlay")
+function gsn_csm_contour_map_overlay(wks:graphic,data1:numeric,data2:numeric, \
+                                     res1:logical,res2:logical)
+local calldraw, callframe, res1_tmp, res2_tmp
+begin
+;
+; Make sure input data is 1D or 2D
+;
+  if(.not.is_data_1d_or_2d(data1).or..not.is_data_1d_or_2d(data2)) then
+    print("gsn_csm_contour_map_overlay: Fatal: the input data arrays must be 1D or 2D")
+    return
+  end if
+
+  res1_tmp  = get_resources(res1)   ; Transfer attributes
+  res2_tmp  = get_resources(res2)   ; Transfer attributes
+  res1_tmp  = True 
+  res2_tmp  = True 
+  
+  calldraw  = get_res_value(res1_tmp,"gsnDraw", True)
+  callframe = get_res_value(res1_tmp,"gsnFrame",True)
+  maxbb     = get_bb_res(res1_tmp)
+
+  res1_tmp@gsnDraw  = False
+  res1_tmp@gsnFrame = False
+
+; Default for first plot is to turn fill on and turn off lines and line
+; labels.
+
+  if(.not.isatt(res1_tmp,"cnFillOn"))
+    res1_tmp@cnFillOn = True
+    set_attr(res1_tmp,"cnInfoLabelOn",False)
+  end if 
+  set_attr(res1_tmp,"cnLinesOn",False)
+  set_attr(res1_tmp,"cnLineLabelsOn",False)
+
+  contour1 = gsn_csm_contour_map(wks,data1,res1_tmp)
+
+  res2_tmp@gsnDraw  = False
+  res2_tmp@gsnFrame = False
+
+; Check for cyclic point (default is True if we are not setting both
+; lon2d/lat2d attributes).
+
+  set_cyclic = .not.(isatt(data2,"lat2d").and.isatt(data2,"lon2d"))
+  if(get_res_value(res2_tmp,"gsnAddCyclic",set_cyclic)) then
+    datanew = gsn_add_cyclic_point(data2)
+  else
+    datanew = data2
+  end if
+
+  check_for_y_lat_coord(datanew,res2_tmp,"contour_map")
+  check_for_lon_coord(datanew,res2_tmp,"contour_map")
+
+; Default for second plot is to draw line labels, but make background
+; label box transparent. Also, move the info label around depending on
+; whether the labelbar from the first plot is on the side or the bottom.
+
+  set_attr(res2_tmp,"cnLineLabelBackgroundColor",-1)
+  if(.not.isatt(res2_tmp,"cnInfoLabelOrthogonalPosF"))
+    if(res1_tmp@cnFillOn)
+      if(check_attr(res1_tmp,"lbOrientation","horizontal",True).or.\
+         check_attr(res1_tmp,"lbOrientation",0,True))
+        set_attr(res2_tmp,"cnInfoLabelOrthogonalPosF",-0.01)
+      else
+        set_attr(res2_tmp,"cnInfoLabelOrthogonalPosF",0.12)
+      end if
+    else
+      set_attr(res2_tmp,"cnInfoLabelOrthogonalPosF",0.12)
+    end if
+  end if
+
+  contour2 = gsn_contour(wks,datanew,res2_tmp)
+
+  overlay(contour1,contour2)
+
+; Draw all this stuff: contour plots and subtitles.
+    draw_and_frame(wks,contour1,calldraw,callframe,0,maxbb)
+
+; Return contour plot object.
+
+  contour1@contour2 = contour2
+  return(contour1)
+
+end
+
+;***********************************************************************;
+; Function : plot_x2y2                                                  ;
+;               wks: workstation object                                 ;
+;                x1: X values, representing the bottom axis             ;
+;                x2: second set of X values (opt'l)                     ;
+;                    representing the top axis                          ;
+;                y1: Y values, representing the left axis               ;
+;                y2: second set of Y values (opt'l)                     ;
+;                    representing the right axis                        ;
+;              res1: opt'l resources, to apply to first plot            ;
+;                    axes used are bottom/left.                         ;
+;              res2: opt'l resources, to apply to second plot           ;
+;                    axes used are top/right.                           ;
+;              axis: which axis has the multiple curves ("x" means      ;
+;                    the X axes has the multiple curves, "y" is for the ;
+;                    Y axes, and "xy" for both axes)                    ;
+;         plot_type: whether we're doing generic gsn, or gsn_csm        ;
+;                                                                       ;
+; Originally created by Dennis Shea to allow two Y curves with two      ;
+; separate Y axes to reside on the same plot and share the same X axis. ;
+; The Y axes are labeled both on the left and right to indicate the two ;
+; different axes.                                                       ;
+;                                                                       ;
+; Modified by Mary Haley and made more generic so it can handle the X   ;
+; or Y axis or both axes having multiple curves.                        ;
+;***********************************************************************;
+undef("plot_x2y2")
+function plot_x2y2(wks:graphic, x1:numeric, x2:numeric, \
+                                y1:numeric, y2:numeric, \
+                                res1:logical, res2:logical, \
+                                axis:string, plot_type:string)
+local locRes1, locRes2, Atts1, Atts2, xy1, xy2, calldraw, callframe, maxbb 
+begin
+;
+; Make copy of local resources.
+;
+    if (res2) then
+      locRes2 = res2
+    end if
+    if (res1) then
+      locRes1 = get_res_ne(res1,"tiMain")
+      locRes2 = get_res_eq(res1,"tiMain")
+    end if
+    locRes1 = True
+    locRes2 = True
+;
+; Retain draw, frame, and maximize settings for later.
+;
+    calldraw  = get_res_value(locRes1,"gsnDraw", True)
+    callframe = get_res_value(locRes1,"gsnFrame",True)
+    maxbb     = get_bb_res(locRes1)
+;
+; Check for subtitles. We don't want to add the subtitles until all
+; the plot stuff is done, in case some zones need to be adjusted.
+;
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(locRes1,left_string,center_string,right_string)
+;
+; Set some zone information for the subtitles and main string.
+;
+    if(axis.eq."x".or.axis.eq."xy") then
+      mainzone = 5 
+      amzone   = 4
+    else
+      mainzone = 6 
+      amzone   = 5
+    end if
+
+    locRes2@pmTitleZone = mainzone
+;
+; For first plot, don't auto advance the frame or draw or maximize
+; the plot.
+;
+    locRes1@gsnFrame    = False
+    locRes1@gsnDraw     = False
+    locRes1@gsnMaximize = False
+
+;
+; If drawing a multiple axis plot, make sure you turn off the
+; tickmarks on the other side, since they will later be defined
+; by the second set of data.
+;
+    if(axis.eq."y".or.axis.eq."xy") then
+        locRes1@tmYROn       = False  ; Turn off right tick marks.
+        locRes1@tmYRMinorOn  = False  ; Turn off right minor tick marks.
+        locRes1@tmYUseLeft   = False  ; Keep independent of right.
+    end if
+    if(axis.eq."x".or.axis.eq."xy") then
+        locRes1@tmXTOn       = False  ; Turn off top tick marks.
+        locRes1@tmXTMinorOn  = False  ; Turn off top minor tick marks.
+        locRes1@tmXUseBottom = False  ; Keep independent of top.
+    end if
+
+;
+; Create first plot.
+;
+    if(plot_type.eq."csm") then
+      xy1 = gsn_csm_xy (wks,x1,y1,locRes1)
+    else
+      xy1 = gsn_xy (wks,x1,y1,locRes1)
+    end if
+;
+; Get viewport coordinates, tickmark lengths, and font heights of
+; first plot to use for second plot.
+;
+    getvalues xy1
+      "vpHeightF"               : vph      ; Get assorted info from previous
+      "vpWidthF"                : vpw      ; plot for use on second plot.
+      "vpXF"                    : vpx
+      "vpYF"                    : vpy
+                                            ; Bottom X axis stuff
+      "trXMinF"                 : trxmin 
+      "trXMaxF"                 : trxmax
+      "trYMinF"                 : trymin 
+      "trYMaxF"                 : trymax
+
+      "tiXAxisFontHeightF"      : xfonth
+      "tmXBLabelFontHeightF"    : xbfonth
+      "tmXBMajorLengthF"        : xmjlength
+      "tmXBMinorLengthF"        : xmnlength
+      "tmXBMajorOutwardLengthF" : xmjolength
+      "tmXBMinorOutwardLengthF" : xmnolength
+                                            ; Left Y axis stuff
+      "tiYAxisFontHeightF"      : yfonth
+      "tmYLLabelFontHeightF"    : ylfonth
+      "tmYLMajorLengthF"        : ymjlength
+      "tmYLMinorLengthF"        : ymnlength
+      "tmYLMajorOutwardLengthF" : ymjolength
+      "tmYLMinorOutwardLengthF" : ymnolength
+    end getvalues
+
+;
+; If the user is setting any of these, then use these settings and
+; not the ones we just retrieved.
+;
+; For second plot, don't auto advance the frame or draw or maximize
+; the plot.
+;
+    locRes2@gsnFrame    = False
+    locRes2@gsnDraw     = False
+    locRes2@gsnMaximize = False
+;
+; Set resources that are common for second plot, regardless of what
+; kind of axes situation we have.
+;
+    locRes2@gsnFrame    = False
+    locRes2@gsnDraw     = False
+    locRes2@gsnMaximize = False
+
+    locRes2@vpHeightF   = vph       ; set to same size as first plot
+    locRes2@vpWidthF    = vpw 
+    locRes2@vpXF        = vpx     
+    locRes2@vpYF        = vpy
+
+    locRes2@tmXBLabelsOn = False  ; Turn off bottom x axis labels
+    locRes2@tmXBMinorOn  = False  ; and tick marks.
+    locRes2@tmXBOn       = False
+    locRes2@tmYLLabelsOn = False  ; Turn off left y axis labels
+    locRes2@tmYLMinorOn  = False  ; and tick marks.
+    locRes2@tmYLOn       = False
+
+;
+; Set some resources that will apply if you have two Y axes.
+;
+    if(axis.eq."y".or.axis.eq."xy") then
+      locRes2@tmYRLabelsOn            = get_res_value_keep(locRes2, \
+                                        "tmYRLabelsOn",True) ; rgt axis labels
+      locRes2@tmYROn                  = get_res_value_keep(locRes2, \
+                                        "tmYROn",True) ; rgt tick marks on
+      locRes2@tmYUseLeft              = False  
+      locRes2@tiYAxisSide             = "Right"; put title on right scale
+      locRes2@tiYAxisFontHeightF      = get_res_value_keep(locRes2, \
+                                        "tiYAxisFontHeightF",yfonth) 
+      locRes2@tmYRLabelFontHeightF    = get_res_value_keep(locRes2, \
+                                        "tmYLLabelFontHeightF",ylfonth)
+      locRes2@tmYRMajorLengthF        = get_res_value_keep(locRes2, \
+                                        "tmYLMajorLengthF",ymjlength)
+      locRes2@tmYRMinorLengthF        = get_res_value_keep(locRes2, \
+                                        "tmYLMinorLengthF",ymnlength)
+      locRes2@tmYRMajorOutwardLengthF = get_res_value_keep(locRes2, \
+                                        "tmYLMajorOutwardLengthF",ymjolength)
+      locRes2@tmYRMinorOutwardLengthF = get_res_value_keep(locRes2, \
+                                        "tmYLMinorOutwardLengthF",ymnolength)
+    end if
+
+;
+; Set resources specific only to having two Y axes and one X axis.
+;
+    if(axis.eq."y") then
+      locRes2@trXMinF       = get_res_value_keep(locRes2,"trXMinF",trxmin) 
+      locRes2@trXMaxF       = get_res_value_keep(locRes2,"trXMaxF",trxmax)
+      locRes2@tiXAxisString = ""     ; already done 
+      locRes2@tmXTLabelsOn  = False  ; Turn off top x axis labels
+      locRes2@tmXTMinorOn   = False  ; and tick marks.
+      locRes2@tmXTOn        = False
+;
+; Create second plot, but only for the case of two Y axes and one X axis.
+;
+      if(plot_type.eq."csm") then
+        xy2 = gsn_csm_xy(wks,x1,y2,locRes2)
+      else
+        xy2 = gsn_xy(wks,x1,y2,locRes2)
+      end if
+    end if
+
+;
+; Set some resources that will apply if you have two X axes.
+; Note that normally, the x axis will use "long_name" for a title.
+; However, this causes clutter if you try to put this title at
+; the top of the plot, so for now, we are disabling an x axis string
+; for the top, unless it is explicitly set by the user.
+;
+    if(axis.eq."x".or.axis.eq."xy") then
+      locRes2@tmXTLabelsOn            = get_res_value_keep(locRes2, \
+                                        "tmXTLabelsOn",True) ; top axis labels
+      locRes2@tmXTOn                  = get_res_value_keep(locRes2, \
+                                        "tmXTOn",True) ; top tick marks on
+      locRes2@tmXUseBottom            = False  
+      if(isatt(locRes2,"tiXAxisString")) then
+        locRes2@tiXAxisSide           = "Top"; put title on Top scale
+      else
+        locRes2@tiXAxisOn             = False
+      end if 
+      locRes2@tiXAxisFontHeightF      = get_res_value_keep(locRes2, \
+                                        "tiXAxisFontHeightF",xfonth)
+      locRes2@tmXTLabelFontHeightF    = get_res_value_keep(locRes2,\
+                                        "tmXBLabelFontHeightF",xbfonth)
+      locRes2@tmXTMajorLengthF        = get_res_value_keep(locRes2, \
+                                        "tmXBMajorLengthF",xmjlength)
+      locRes2@tmXTMinorLengthF        =  get_res_value_keep(locRes2, \
+                                         "tmXBMinorLengthF",xmnlength)
+      locRes2@tmXTMajorOutwardLengthF = get_res_value_keep(locRes2, \
+                                        "tmXBMajorOutwardLengthF",xmjolength)
+      locRes2@tmXTMinorOutwardLengthF = get_res_value_keep(locRes2, \
+                                        "tmXBMinorOutwardLengthF",xmnolength)
+    end if
+
+;
+; Set resources specific only to having two X axes and one Y axis.
+;
+    if(axis.eq."x") then
+      locRes2@trYMinF        = get_res_value_keep(locRes2,"trYMinF",trymin)
+      locRes2@trYMaxF        = get_res_value_keep(locRes2,"trYMaxF",trymax)
+      locRes2@tiYAxisString  = ""     ; already done 
+      locRes2@tmYRLabelsOn   = False  ; Turn off right y axis labels
+      locRes2@tmYRMinorOn    = False  ; and tick marks.
+      locRes2@tmYROn         = False
+
+      if(plot_type.eq."csm") then
+        xy2 = gsn_csm_xy(wks,x2,y1,locRes2)
+      else
+        xy2 = gsn_xy(wks,x2,y1,locRes2)
+      end if
+    end if
+
+;
+; Create a second plot for the case of two Y axes and two X axes.
+;
+    if(axis.eq."xy") then 
+      if(plot_type.eq."csm") then
+        xy2 = gsn_csm_xy(wks,x2,y2,locRes2)
+      else
+        xy2 = gsn_xy(wks,x2,y2,locRes2)
+      end if
+    end if
+
+;
+; Set up three subtitles at top, if they exist. Note that we are
+; attaching the subtitles to the second plot. This is because the
+; second plot is the one that might have tickmarks and labels 
+; coming out the top, and we need to make sure these gsn strings stay
+; outside of them. This is also true for the main title, which we
+; already handled above.
+;
+    getvalues xy2
+      "vpHeightF"            : height
+      "vpWidthF"             : width
+      "tiYAxisFontHeightF"   : yfontf
+      "tiXAxisFontHeightF"   : xfontf
+    end getvalues
+
+; If the plot is close to square in size, then make the 
+; three top titles and the tick marks smaller.
+
+    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+
+    ratio = height/width
+    if(ratio.gt.1) 
+      ratio = 1./ratio
+    end if
+    if(ratio.gt.0.5)
+      font_height = 0.75 * font_height
+    end if
+
+    subres = True
+    subres = get_res_eq(locRes1,"tx")  ; Get textitem resources
+    set_attr(subres,"txFontHeightF",font_height)
+    set_attr(subres,"txFont","helvetica")
+    set_attr(subres,"amZone",amzone)
+    subres@amOrthogonalPosF = 0.06 
+
+    add_subtitles(wks,xy2,left_string,center_string,right_string,subres)
+
+;
+; Add second plot as annotation of 1st plot.
+;
+    anno = NhlAddAnnotation(xy1,xy2)
+    setvalues anno
+      "amZone"         : 0     ; Zone 0 centers tick marks over map.
+      "amResizeNotify" : True  ; Resize tick marks if map resized.
+    end setvalues
+
+    draw_and_frame(wks,xy1,calldraw,callframe,0,maxbb)
+;
+; Copy over xy2 atts, if any. This is just in case any
+; primitives were attached.
+;
+    xy2att = getvaratts(xy2)
+    if(.not.all(ismissing(xy2att))) then
+      do i=0,dimsizes(xy2att)-1
+        xy1@$xy2att(i)$ = xy2@$xy2att(i)$
+      end do
+    end if
+    xy1@xy2 = xy2
+    return (xy1)
+ end
+
+
+;***********************************************************************;
+; Function : plot_xy3                                                   ;
+;               wks: workstation object                                 ;
+;                x1 : X values                                          ;
+;                y1 : First set of Y values                             ;
+;                y2 : Second set of Y values                            ;
+;                y3 : Third set of Y values                             ;
+;              res1 : opt'l resources, to apply to first curve          ;
+;              res2 : opt'l resources, to apply to second curve         ;
+;              res3 : opt'l resources, to apply to third curve          ;
+;         plot_type : whether we're doing generic gsn, or gsn_csm       ;
+;                                                                       ;
+; This function calls plot_x2y2 with a single set of X values, and two  ;
+; sets of Y values, each with their own Y axis, and puts them on the    ;
+; same plot. The left axis is labeled according to the y1 values, and   ;
+; the right axis is labeled according to the y2 values.                 ;
+;                                                                       ;
+;***********************************************************************;
+undef("plot_xy3")
+function plot_xy3(wks:graphic, x1:numeric, y1:numeric, y2:numeric, \
+                  y3:numeric, res1:logical, res2:logical, res3:logical, \
+                  plot_type:string)
+begin
+;
+; Make a copy of the resources
+;
+  if(res1) then
+    res1_new = res1
+  end if
+  if(res2) then
+    res2_new = res2
+  end if
+  if(res3) then
+    res3_new = get_res_ne(res3,(/"am"/))
+  end if
+;
+; Make sure these are True
+;
+  res1_new = True
+  res2_new = True
+  res3_new = True
+;
+; Retain draw, frame, and maximize settings for later.
+;
+  calldraw  = get_res_value(res1_new,"gsnDraw", True)
+  callframe = get_res_value(res1_new,"gsnFrame",True)
+  maxbb     = get_bb_res(res1_new)
+
+;
+; Create some dummy variables.
+;
+  x2 = new(1,typeof(x1))
+;
+; Call plot_x2y2 function.
+;
+  res1_new@gsnDraw     = False
+  res1_new@gsnFrame    = False
+  res1_new@gsnMaximize = False   ; Don't need to maximize yet.
+  res2_new@gsnDraw     = False
+  res2_new@gsnFrame    = False
+  res2_new@gsnMaximize = False   ; Don't need to maximize yet.
+  xy12 = plot_x2y2 (wks, x1, x2, y1, y2, res1_new, res2_new, "y", plot_type)
+  delete(x2)
+;
+; Get the size and X limits of this plot, and use them for the third plot.
+;
+  getvalues xy12
+    "vpHeightF"  : vph
+    "vpWidthF"   : vpw
+    "vpXF"       : vpx
+    "vpYF"       : vpy
+    "trXMinF"    : xmin
+    "trXMaxF"    : xmax
+    "tiXAxisFontHeightF"   : xaxis_fh
+    "tiYAxisFontHeightF"   : yaxis_fh
+    "tmXBLabelFontHeightF" : xlab_fh
+    "tmYLLabelFontHeightF" : ylab_fh
+  end getvalues
+
+;
+; Set up some resources so we can add the third Y curve to the
+; previous plot in the same location as the first two curves,
+; but without any tickmarks.
+;
+; Notice that we are allowing the user to override some of these 
+; settings, but the user really shouldn't be doing this in the
+; first place.
+;
+  res3_new@gsnFrame    = False
+  res3_new@gsnDraw     = False
+  res3_new@gsnMaximize = False
+  res3_new@vpHeightF   = get_res_value_keep(res3, "vpHeightF",vph)
+  res3_new@vpWidthF    = get_res_value_keep(res3, "vpWidthF", vpw)
+  res3_new@vpXF        = get_res_value_keep(res3, "vpXF",     vpx)
+  res3_new@vpYF        = get_res_value_keep(res3, "vpYF",     vpy)
+  res3_new@trXMinF     = get_res_value_keep(res3, "trXMinF",  xmin)
+  res3_new@trXMaxF     = get_res_value_keep(res3, "trXMaxF",  xmax)
+  res3_new@tmXTOn      = get_res_value_keep(res3, "tmXTOn",   False)
+  res3_new@tmXBOn      = get_res_value_keep(res3, "tmXBOn",   False)
+  res3_new@tmYROn      = get_res_value_keep(res3, "tmYROn",   False)
+  res3_new@tmYLOn      = get_res_value_keep(res3, "tmYLOn",   False)
+  res3_new@tiYAxisOn   = get_res_value_keep(res3,"tiYAxisOn",False)
+  res3_new@tiXAxisOn   = get_res_value_keep(res3,"tiXAxisOn",False)
+
+  if(plot_type.eq."csm") then
+    xy3 = gsn_csm_xy(wks, (/x1/), (/y3/), res3_new)
+  else
+    xy3 = gsn_xy(wks, (/x1/), (/y3/), res3_new)
+  end if
+  delete(res3_new)
+
+;
+; Add this third curve as annotation of the xy12 plot.
+;
+  anno1 = NhlAddAnnotation(xy12,xy3)
+  setvalues anno1
+    "amZone"         : 0     ; Zone 0 centers tick marks over map.
+    "amResizeNotify" : True  ; Resize tick marks if map resized.
+  end setvalues
+
+;
+; Last step is to attach a single vertical line that will
+; represent the Y axis for the third curve.  Make the width
+; of this plot basically 0, so we can then use the amZone
+; resource to attach the left edge of this plot to right side
+; of the previous  plot, outside of the tickmarks and labels.
+;
+  if(res3) then
+    res3_new = get_res_ne(res3,(/"am","xy"/))
+  end if
+  res3_new = True      ; Make sure this is True.
+
+  res3_new@gsnFrame     = False
+;  res3_new@xyMarkLineMode = "Lines"  ; Make sure not markers!
+  res3_new@gsnDraw      = False
+  res3_new@vpHeightF    = vph
+  res3_new@vpWidthF     = 0.0001
+  res3_new@vpXF         = vpx
+  res3_new@vpYF         = vpy
+  res3_new@trXMinF      = xmin
+  res3_new@trXMaxF      = xmax
+;
+; Pick some "nice" values for this single vertical axis, and
+; use them if the user hasn't already set their own.
+;
+  if(.not.isatt(res3_new,"trYMinF").or..not.isatt(res3_new,"trYMaxF")) then
+    mnmxint               = nice_mnmxintvl(min(y3), max(y3), 10, True)
+    res3_new@trYMinF      = get_res_value(res3_new,"trYMinF",mnmxint(0))
+    res3_new@trYMaxF      = get_res_value(res3_new,"trYMaxF",mnmxint(1))
+  else
+    res3_new@trYMinF      = get_res_value(res3_new,"trYMinF",0)
+    res3_new@trYMaxF      = get_res_value(res3_new,"trYMaxF",0)
+  end if
+  res3_new@tmXBOn       = get_res_value(res3_new,"tmXBOn",False)
+  res3_new@tmXBBorderOn = get_res_value(res3_new,"tmXBBorderOn",False)
+  res3_new@tmXTOn       = get_res_value(res3_new,"tmXTOn",False)
+  res3_new@tmXTBorderOn = get_res_value(res3_new,"tmXTBorderOn",False)
+  res3_new@tmYLOn       = get_res_value(res3_new,"tmYLOn",False)
+  res3_new@tmYROn       = get_res_value(res3_new,"tmYROn",True)
+;
+; Turn on right axis labels; they are off by default.
+;
+  res3_new@tmYRLabelsOn = get_res_value(res3_new,"tmYRLabelsOn",True) 
+  res3_new@tmYUseLeft   = get_res_value(res3_new,"tmYUseLeft",False)
+  res3_new@tiYAxisSide  = get_res_value(res3_new,"tiYAxisSide","Right")
+  res3_new@tiXAxisFontHeightF  = get_res_value(res3_new, \
+                                 "tiXAxisFontHeightF",xaxis_fh)
+  res3_new@tiYAxisFontHeightF  = get_res_value(res3_new, \
+                                 "tiYAxisFontHeightF",yaxis_fh)
+  res3_new@tmXBLabelFontHeightF  = get_res_value(res3_new, \
+                                 "tmXBFontHeightF",xlab_fh)
+  res3_new@tmYLLabelFontHeightF  = get_res_value(res3_new, \
+                                 "tmYLFontHeightF",ylab_fh)
+;
+; Generate some dummy data for our plot.
+;
+  xdummy    = new( 2, double)       ; Make it double so it can handle
+  ydummy    = new( 2, double)
+  if (isatt(y3,"long_name")) then
+      ydummy@long_name = y3@long_name
+  end if
+  ydummy(0) = res3_new@trYMinF   ; dummy for vertical line
+  ydummy(1) = res3_new@trYMaxF
+  xdummy(0) = xmax
+  xdummy(1) = xmax
+;
+; Create the vertical line.
+;
+  if(plot_type.eq."csm") then
+    line = gsn_csm_xy(wks,xdummy,ydummy,res3_new)
+  else
+    line = gsn_xy(wks,xdummy,ydummy,res3_new)
+  end if
+
+;
+; Right now we are using 0.7 for an orthgonal distance for the
+; single vertical axis to be positioned with respect to the 
+; previous plot. The real way to  do this is to figure out the
+; distance from the outermost right edge of the xy3
+; plot to the plot border. Then, figure out what fraction of the
+; width of the plot this is.  This fraction is how much we need to
+; move the vertical line to the right. The problem is that if we
+; do an NhlGetBB on the plot, it won't include the annotation that
+; was added, and hence the outermost edge of the plot space is the
+; same as the edge of the plot itself.
+;
+; At least let the user change this value if he/she wants to.
+;
+  anno2 = NhlAddAnnotation(xy12,line)
+  amres = get_res_eq(res3,(/"am"/))
+  setvalues anno2
+    "amZone"           : 0     ; Zone 2 is outside the tickmarks
+    "amResizeNotify"   : True  ; Resize tick marks if plot resized.
+    "amJust"           : "CenterLeft"
+    "amOrthogonalPosF" : get_res_value(res3,"amOrthgonalPosF",0.7)
+    "amSide"           : "Right" 
+  end setvalues
+  attsetvalues_check(anno2,amres)
+
+;
+; Maximize plot, draw and advance the frame, if so desired.
+;
+    draw_and_frame(wks,xy12,calldraw,callframe,0,maxbb)
+
+    xy12@xy3 = xy3
+    return (xy12)
+end
+
+;***********************************************************************;
+; Function : plot_xy2                                                   ;
+;               wks: workstation object                                 ;
+;                x1: X values                                           ;
+;                y1: First set of Y values                              ;
+;                y2: Second set of Y values                             ;
+;              res1: opt'l resources, to apply to first plot            ;
+;              res2: opt'l resources, to apply to second plot           ;;
+;                                                                       ;
+; This function calls plot_x2y2 with a single set of X values, and two  ;
+; sets of Y values, each with their own Y axis, and puts them on the    ;
+; same plot. The left axis is labeled according to the y1 values, and   ;
+; the right axis is labeled according to the y2 values.                 ;
+;                                                                       ;
+; "gsn_xy" is the underlying XY plotting routine called to generate     ;
+; the XY plots.                                                         ;
+;                                                                       ;
+; Note: the reason I didn't call this routine "gsn_xy2" is two-fold:    ;
+;                                                                       ;
+;    1. I would have had to put a version of "plot_x2y2" in both        ;
+;       gsn_code.ncl and gsn_csm.ncl.                                   ;
+;    2. It's not a widely used routine, so I didn't think people would  ;
+;       miss it.  They can just call "plot_xy2".                        ;
+;***********************************************************************;
+undef("plot_xy2")
+function plot_xy2(wks:graphic, x1:numeric, y1:numeric, y2:numeric, \
+                  res1:logical, res2:logical)
+begin
+;
+; Create some dummy variables.
+;
+    x2 = new(1,typeof(x1))
+;
+; Call plot_x2y2 function.
+;
+    xy = plot_x2y2 (wks, x1, x2, y1, y2, res1, res2, "y", "gsun")
+    delete(x2)
+    return(xy)
+end
+
+;***********************************************************************;
+; Function : plot_x2y                                                   ;
+;               wks: workstation object                                 ;
+;                x1: First set of X values                              ;
+;                x2: Second set of X values                             ;
+;                y1: Y values                                           ;
+;              res1: opt'l resources, to apply to first plot            ;
+;              res2: opt'l resources, to apply to second plot           ;
+;                                                                       ;
+; This function calls plot_x2y2 with a single set of Y values, and two  ;
+; sets of X values, each with their own X axis, and puts them on the    ;
+; same plot. The bottom axis is labeled according to the x1 values, and ;
+; the top axis is labeled according to the x2 values.                   ;
+;                                                                       ;
+; "gsn_xy" is the underlying XY plotting routine called to generate     ;
+; the XY plots.                                                         ;
+;                                                                       ;
+; Note: the reason I didn't call this routine "gsn_x2y" is two-fold:    ;
+;                                                                       ;
+;    1. I would have had to put a version of "plot_x2y2" in both        ;
+;       gsn_code.ncl and gsn_csm.ncl.                                   ;
+;    2. It's not a widely used routine, so I didn't think people would  ;
+;       miss it.  They can just call "plot_x2y".                        ;
+;***********************************************************************;
+undef("plot_x2y")
+function plot_x2y(wks:graphic, x1:numeric, x2:numeric, y1:numeric, \
+                  res1:logical, res2:logical)
+begin
+;
+; Create some dummy variables.
+;
+    y2 = new(1,typeof(y1))
+;
+; Call plot_x2y2 function.
+;
+    xy = plot_x2y2 (wks, x1, x2, y1, y2, res1, res2, "x", "gsun")
+    delete(y2)
+    return(xy)
+end
+
+
+;***********************************************************************;;
+; Function : gsn_csm_xy2                                                ;
+;               wks: workstation object                                 ;
+;                x1: X values                                           ;
+;                y1: First set of Y values                              ;
+;                y2: Second set of Y values                             ;
+;              res1: opt'l resources, to apply to first plot            ;
+;              res2: opt'l resources, to apply to second plot           ;
+;                                                                       ;
+; This function calls plot_x2y2 with a single set of X values, and two  ;
+; sets of Y values, each with their own Y axis, and puts them on the    ;
+; same plot. The left axis is labeled according to the y1 values, and   ;
+; the right axis is labeled according to the y2 values.                 ;
+;                                                                       ;
+; "gsn_csm_xy" is the underlying XY plotting routine called to generate ;
+; the XY plots.                                                         ;
+;***********************************************************************;
+undef("gsn_csm_xy2")
+function gsn_csm_xy2(wks:graphic, x1:numeric, y1:numeric, y2:numeric, \
+                                 res1:logical, res2:logical)
+begin
+;
+; Create some dummy variables.
+;
+    x2 = new(1,typeof(x1))
+;
+; Call plot_x2y2 function.
+;
+    xy = plot_x2y2 (wks, x1, x2, y1, y2, res1, res2, "y", "csm")
+    delete(x2)
+    return(xy)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_x2y                                                ;
+;               wks: workstation object                                 ;
+;                x1: First set of X values                              ;
+;                x2: Second set of X values                             ;
+;                y1: Y values                                           ;
+;              res1: opt'l resources, to apply to first plot            ;
+;              res2: opt'l resources, to apply to second plot           ;
+;                                                                       ;
+; This function calls plot_x2y2 with a single set of Y values, and two  ;
+; sets of X values, each with their own X axis, and puts them on the    ;
+; same plot. The bottom axis is labeled according to the x1 values, and ;
+; the top axis is labeled according to the x2 values.                   ;
+;                                                                       ;
+; "gsn_csm_xy" is the underlying XY plotting routine called to generate ;
+; the XY plots.                                                         ;
+;***********************************************************************;
+undef("gsn_csm_x2y")
+function gsn_csm_x2y(wks:graphic, x1:numeric, x2:numeric, y1:numeric, \
+                     res1:logical, res2:logical)
+begin
+;
+; Create some dummy variables.
+;
+    y2 = new(1,typeof(y1))
+;
+; Call plot_x2y2 function.
+;
+    xy = plot_x2y2 (wks, x1, x2, y1, y2, res1, res2, "x", "csm")
+    delete(y2)
+    return(xy)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_x2y2                                               ;
+;               wks: workstation object                                 ;
+;                x1: First set of Y values                              ;
+;                x2: First set of Y values                              ;
+;                y1: First set of X values                              ;
+;                y2: Second set of X values                             ;
+;              res1: optl resources, to apply to first plot             ;
+;              res2: optl resources, to apply to second plot            ;
+;                                                                       ;
+; This function calls plot_x2y2 with a two sets of X *and* Y values,    ;
+; and puts them on the same plot.                                       ;
+;                                                                       ;
+; "gsn_csm_xy" is the underlying XY plotting routine called to generate ;
+; the XY plots.                                                         ;
+;***********************************************************************;
+undef("gsn_csm_x2y2")
+function gsn_csm_x2y2(wks:graphic, x1:numeric, x2:numeric, \
+                      y1:numeric, y2:numeric, res1:logical, res2:logical)
+begin
+;
+; Call plot_x2y2 function.
+;
+    xy = plot_x2y2 (wks, x1, x2, y1, y2, res1, res2, "xy", "csm")
+    return(xy)
+end
+
+;***********************************************************************;;
+; Function : gsn_csm_xy3                                                ;
+;               wks: workstation object                                 ;
+;                x1 : X values                                          ;
+;                y1 : First set of Y values                             ;
+;                y2 : Second set of Y values                            ;
+;                y3 : Third set of Y values                             ;
+;              res1 : opt'l resources, to apply to first curve          ;
+;              res2 : opt'l resources, to apply to second curve         ;
+;              res3 : opt'l resources, to apply to third curve          ;
+;                                                                       ;
+; This function calls plot_xy3 with a plot_type of "csm".               ;
+;***********************************************************************;
+undef("gsn_csm_xy3")
+function gsn_csm_xy3(wks:graphic, x1:numeric, y1:numeric, y2:numeric, \
+                     y3:numeric, res1:logical, res2:logical, res3:logical)
+begin
+;
+; Call plot_xy3 function.
+;
+    xy = plot_xy3 (wks, x1, y1, y2, y3, res1, res2, res3, "csm")
+    return(xy)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_contour                                            ;
+;                     wks: workstation object                           ;
+;                    data: data to contour                              ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled contour plot to the          ;
+; workstation  "wks" (the variable returned from a previous call to     ;
+; "gsn_open_wks"). "resources" is an optional list of  resources. The   ;
+; Id of the contour plot is returned.                                   ;
+;                                                                       ;
+; This function behaves differently from gsn_contour in that it will    ;
+; add additional titles to the top of the plot if any of the special    ;
+; GSUN resources "gsnLeftString," "gsnCenterString," and/or             ;
+; "gsnRightString" are set, They are used to title the top left, center,;
+; and right of the plot (in addition, the regular resource              ;
+; "tiMainString" can be set to create a regular title).                 ;
+;                                                                       ;
+; If cnFillOn is True, then a labelbar will be added, and the info label;
+; will be removed.
+;                                                                       ;
+; Tick marks will be made to point outwards.                            ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_contour")
+function gsn_csm_contour(wks:graphic,data:numeric,resources:logical)
+local res, contour_object, res2, xfontf, yfontf, font_height, lbar_on, \
+calldraw, callframe, left_string, center_string, right_string, \
+main_zone, datanew, popgrid, contour_plot
+begin
+;
+; Make sure input data is 1D or 2D
+;
+    if(.not.is_data_1d_or_2d(data)) then
+      print("gsn_csm_contour: Fatal: the input data array must be 1D or 2D")
+      return
+    end if
+
+; Initialize.
+    lbar_on       = False     ; Labelbar flag
+    main_zone     = 2         ; Zone for main title (may change later)
+    res2          = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float),"gsn_csm_contour",res2,1)
+    end if
+
+    tm_scale      = get_res_value_keep(res2,"gsnScale",True)
+    point_outward = get_res_value(res2,"gsnTickMarksPointOutward",True)
+
+; This section tests for more special resources: those that start
+; with "gsn."
+
+; The default is to not add a cyclic point.
+
+    if(get_res_value(res2,"gsnAddCyclic",False)) then
+        datanew = gsn_add_cyclic_point(data)
+    else
+        datanew = data
+    end if
+;
+; Check if frame and/or draw are not supposed to be called.
+;
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+; 
+; Check if a POP grid is to be overlaid.
+;
+    popgrid = get_res_value(res2,"gsnPopGrid","")
+;
+; If adding a POP grid, then don't label the X and Y axis since the
+; axes will have lat/lon labels.
+;
+    if(popgrid.ne."")
+      set_attr(res2,"tiXAxisString","")
+      set_attr(res2,"tiYAxisString","")
+    end if
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(datanew,res2,res2)
+    set_left_subtitle(datanew,res2,res2)
+
+; Check for existence of the left, center, and right subtitles.
+
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(res2,left_string,center_string,right_string)
+
+    if(left_string.or.center_string.or.right_string)
+      main_zone   = main_zone+1
+    end if
+
+; Check if gsnShape set.
+
+    if(check_attr(res2,"gsnShape",True,False))
+      main_zone     = main_zone+1 ; Zone for main title
+    end if
+
+; Use coordinate variables for X and/or Y if they exist.
+
+    check_for_coord_arrays(datanew,res2,"contour")
+;
+; Turn on a labelbar if fill is True and if the labelbar is not
+; explicitly being turned off.
+;
+    if(check_attr(res2,"cnFillOn",True,False).and. \
+       (.not.isatt(res2,"lbLabelBarOn").or.\
+        .not.check_attr(res2,"lbLabelBarOn",False,False)))
+      lbar_on   = True
+      set_attr(res2,"cnLineLabelsOn",False)
+      set_attr(res2,"cnInfoLabelOn",False)
+    end if
+    if(isatt(res2,"lbLabelBarOn"))
+      delete(res2@lbLabelBarOn)
+    end if
+
+    res2          = True
+    res2@gsnDraw  = False   ; Internally, don't draw plot or advance
+    res2@gsnFrame = False   ; frame since we take care of that later.
+    res2@gsnScale = tm_scale  ; Force labels and ticks to be same, if True.
+
+    cnres = get_res_ne(res2,(/"tx","am"/))
+    contour_object = gsn_contour(wks,datanew,cnres)
+
+; Get some information from contour plot that was created.
+
+    contour_plot = check_class_name(contour_object,"contour")
+
+; Add lat/lon labels to X/Y axes if appropriate coordinate arrays exist.
+
+    add_latlon_labels(contour_plot,datanew,res2)
+
+    getvalues contour_plot
+      "vpWidthF"             : width
+      "vpHeightF"            : height
+  
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make subtitle label sizes a
+                                          ; function of the size of the
+                                          ; X/Y axis labels.
+
+; If the plot is close to square in size, then make the 
+; three top titles and the tick marks smaller.
+
+    font_scale = (/1.0,0.8,0.8/)
+    ratios     = (/0.5,0.75,1.0/)
+
+    ratio = height/width
+    if(ratio.gt.1) 
+      ratio = 1./ratio
+    end if
+    index = ind(ratio.le.ratios)
+
+    scale = font_scale(index(0))
+    font_height  = scale * font_height
+
+    if(popgrid.ne."") then
+      pop_latlon_grid(wks,contour_object,popgrid)  ; Add a POP grid.
+    else
+;
+; Make tick marks same length and point outward.
+;
+      if(tm_scale.and.is_tm_obj_valid(contour_plot)) then
+        getvalues contour_plot
+          "tmYLMajorLengthF"     : ylength
+          "tmXBMajorLengthF"     : xlength
+          "tmYLMinorLengthF"     : ymlength
+          "tmXBMinorLengthF"     : xmlength
+        end getvalues
+
+        major_length = scale * min((/ylength,xlength/))
+        minor_length = scale * min((/ymlength,xmlength/))
+
+        tmres = get_res_eq(res2,"tm")
+
+        gsnp_point_tickmarks_outward(contour_plot,tmres,xlength,ylength,\
+                                     xmlength,ymlength,\
+                                     major_length,minor_length,point_outward)
+      end if
+    end if
+
+; Create a labelbar.
+
+    if (lbar_on)
+      lbres = get_res_eq(res2,(/"lb","pm"/))
+      add_labelbar(wks,contour_object,3,font_height,"contour",lbres)
+    end if
+  
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,(/"tx","am"/))  ; Get textitem resources
+    subres                  = True
+    set_attr(subres,"txFontHeightF",font_height)
+    add_subtitles(wks,contour_object,left_string,center_string,\
+                  right_string,subres)
+
+; Draw all this stuff: contour plot and subtitles.
+    draw_and_frame(wks,contour_object,calldraw,callframe,0,maxbb)
+
+; Return contour plot object.
+
+    return(contour_object)
+end
+;***********************************************************************;
+; Function : gsn_csm_hov                                                ;
+;                     wks: workstation object                           ;
+;                    data: data to be contoured                         ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled Hovmueller plot to the       ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks"). "resources" is an optional list of  resources. The   ;
+; Id of the contour plot is returned.                                   ;
+;                                                                       ;
+; This function behaves differently from gsn_csm_contour in that it     ;
+; draws a specially-labelled longitude X axis.                          ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_hov")
+function gsn_csm_hov(wks:graphic,data[*][*]:numeric,resources:logical)
+local res, contour_object, res2, font_height, calldraw, callframe, \
+datanew, lon_spacing, contour_plot
+begin
+
+; Initialize.
+    res2         = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float),"gsn_csm_hov",res2,1)
+    end if
+
+    calldraw     = get_res_value(res2,"gsnDraw", True)
+    callframe    = get_res_value(res2,"gsnFrame",True)
+    maxbb        = get_bb_res(res2)
+    lon_spacing  = get_res_value(res2,"gsnMajorLonSpacing",0)
+    mlon_spacing = get_res_value(res2,"gsnMinorLonSpacing",0)
+
+    if(is_valid_latlon_coord(data,"x","lat",res2).or.\
+       is_valid_latlon_coord(data,"x","lon",res2))
+      set_attr(res2,"tiXAxisString","")
+    end if
+
+; Use coordinate variable for X if it exists.
+
+    if(is_valid_coord(data,"x").and..not.(isatt(res2,"sfXCStartV").and. \
+       isatt(res2,"sfXCEndV")))
+      set_attr(res2,"sfXArray",data&$data!1$)
+    end if
+
+    res2           = True
+    res2@gsnDraw   = False
+    res2@gsnFrame  = False
+
+    contour_object = gsn_csm_contour(wks,data,res2) ; Create a contour plot.
+
+; Check if we should label X axis with nice longitude labels.
+
+    if(is_valid_latlon_coord(data,"x","lon",res2)) then
+
+; Get min and max X axis values (longitude units)
+
+      contour_plot = check_class_name(contour_object,"contour")
+
+      getvalues contour_plot
+        "trXMinF"   : min_lon
+        "trXMaxF"   : max_lon
+      end getvalues
+;
+; We want different defaults for longitude spacing, so set them up here.
+;
+      lon_range        = (/ 20,  40,  60, 180, 360/)
+      lon_spacing_arr  = (/ 10,  20,  30,  45,  60/)
+      mlon_spacing_arr = (/  5,   5,  10,  15,  30/)
+      add_lon_labels(contour_plot,min_lon,max_lon,lon_spacing,mlon_spacing,\
+                     lon_range,lon_spacing_arr,mlon_spacing_arr,res2)
+    end if
+
+; Draw all this stuff: contour plot and subtitles.
+    draw_and_frame(wks,contour_object,calldraw,callframe,0,maxbb)
+
+; Return contour plot object.
+
+    return(contour_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_lat_time                                           ;
+;                     wks: workstation object                           ;
+;                    data: data to be contoured                         ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled Lat/time plot to the         ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks"). "resources" is an optional list of  resources. The   ;
+; Id of the contour plot is returned.                                   ;
+;                                                                       ;
+; This function behaves differently from gsn_csm_contour in that it     ;
+; draws a specially-labelled latitude Y axis.                           ;
+;                                                                       ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_lat_time")
+function gsn_csm_lat_time(wks:graphic,data[*][*]:numeric,resources:logical)
+local res, contour_object, res2, font_height, calldraw, callframe, \
+datanew, lat_spacing
+begin
+
+; Initialize.
+    res2         = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float),"gsn_csm_lat_time",res2,1)
+    end if
+
+    calldraw     = get_res_value(res2,"gsnDraw", True)
+    callframe    = get_res_value(res2,"gsnFrame",True)
+    maxbb        = get_bb_res(res2)
+    lat_spacing  = get_res_value(res2,"gsnMajorLatSpacing",0)
+    mlat_spacing = get_res_value(res2,"gsnMinorLatSpacing",0)
+
+    if((res2).and..not.any(ismissing(getvaratts(res2))))
+      set_attr(res2,"tiYAxisString","")
+    end if
+
+; Use coordinate variable for Y if it exists.
+
+    check_for_y_lat_coord(data,res2,"contour")
+
+    res2           = True
+    res2@gsnDraw   = False
+    res2@gsnFrame  = False
+
+    contour_object = gsn_csm_contour(wks,data,res2) ; Create a contour plot.
+
+; Get min and max Y axis values (latitude units)
+
+    contour_plot = check_class_name(contour_object,"contour")
+
+    getvalues contour_plot
+      "trYMinF"   : min_lat
+      "trYMaxF"   : max_lat
+    end getvalues
+
+    add_lat_labels_yaxis(contour_plot,min_lat,max_lat,\
+                         lat_spacing,mlat_spacing,res2)
+
+; Draw all this stuff: contour plot and subtitles.
+    draw_and_frame(wks,contour_object,calldraw,callframe,0,maxbb)
+
+; Return contour plot object.
+
+    return(contour_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_time_lat                                           ;
+;                     wks: workstation object                           ;
+;                    data: data to be contoured                         ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled time/lat plot to the         ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks"). "resources" is an optional list of  resources. The   ;
+; Id of the contour plot is returned.                                   ;
+;                                                                       ;
+; This function behaves differently from gsn_csm_contour in that it     ;
+; draws a specially-labeled latitude X axis.                            ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_time_lat")
+function gsn_csm_time_lat(wks:graphic,data[*][*]:numeric,resources:logical)
+local res, contour_object, res2, font_height, calldraw, callframe, \
+datanew, lat_spacing
+begin
+
+; Initialize.
+    res2         = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float),"gsn_csm_time_lat",res2,1)
+    end if
+
+    calldraw     = get_res_value(res2,"gsnDraw", True)
+    callframe    = get_res_value(res2,"gsnFrame",True)
+    maxbb        = get_bb_res(res2)
+    lat_spacing  = get_res_value(res2,"gsnMajorLatSpacing",15)
+    mlat_spacing = get_res_value(res2,"gsnMinorLatSpacing",5)
+
+    if((res2).and..not.any(ismissing(getvaratts(res2))))
+      set_attr(res2,"tiXAxisString","")
+    end if
+
+; Use coordinate variable for X if it exists.
+
+    check_for_x_lat_coord(data,res2,"contour")
+
+    res2           = True
+    res2@gsnDraw   = False
+    res2@gsnFrame  = False
+
+    contour_object = gsn_csm_contour(wks,data,res2) ; Create a contour plot.
+
+; Get min and max X axis values (latitude units)
+
+    contour_plot = check_class_name(contour_object,"contour")
+
+    getvalues contour_plot
+      "trXMinF"   : min_lat
+      "trXMaxF"   : max_lat
+    end getvalues
+
+    add_lat_labels_xaxis(contour_plot,min_lat,max_lat,lat_spacing,\
+                         mlat_spacing,res2)
+
+; Draw all this stuff: contour plot and subtitles.
+    draw_and_frame(wks,contour_object,calldraw,callframe,0,maxbb)
+
+; Return contour plot object.
+
+    return(contour_object)
+end
+
+
+;***********************************************************************;
+; Function : gsn_csm_pres_hgt                                           ;
+;                     wks: workstation object                           ;
+;                    data: data to be contoured                         ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled contour plot to the          ;
+; workstation "wks" (the variable returned from a previous call to      ;
+; "gsn_open_wks"). "resources" is an optional list of  resources. The   ;
+; Id of the contour plot is returned.                                   ;
+;                                                                       ;
+; This function behaves differently from gsn_csm_contour in that it     ;
+; draws a specially-labelled pressure axis on one side and a height axis;
+; on the other side.  It also labels the longitude X axis, if one       ;
+; exists.                                                               ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_pres_hgt")
+function gsn_csm_pres_hgt(wks:graphic,data[*][*]:numeric,resources:logical)
+local res, contour_object, res2, xfontf, yfontf, font_height, \
+calldraw, callframe, add_hgt, contour_plot
+begin
+
+; Initialize.
+    add_hgt       = False
+    pres_reverse  =  True  ; Default is to assume pressure values
+                           ; already reversed.
+    res2          = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(data,new(1,float),new(1,float),"gsn_csm_pres_hgt",res2,1)
+    end if
+
+    add_hgt_label = get_res_value(res2,"gsnPresHgtHeightLabelOn",True)
+    calldraw      = get_res_value(res2,"gsnDraw", True)
+    callframe     = get_res_value(res2,"gsnFrame",True)
+    maxbb         = get_bb_res(res2)
+    lat_spacing   = get_res_value(res2,"gsnMajorLatSpacing",0)
+    mlat_spacing  = get_res_value(res2,"gsnMinorLatSpacing",0)
+
+    if(is_valid_coord(data,"y"))
+      title = get_csm_long_name_units_string(data&$data!0$)
+      if(.not.ismissing(title)) then
+        set_attr(res2,"tiYAxisString",title)
+      end if
+    end if
+
+;
+; If this is a pressure/hgt plot, then do stuff to the pressure values.
+;
+    if(is_valid_coord(data,"y"))
+      npres = dimsizes(data&$data!0$)
+;
+; Check for pressure values.  If they are not in descending order, then
+; reverse 'em.
+;
+      if(data&$data!0$(0).lt.data&$data!0$(npres-1))
+        pres = tofloat_wunits(data&$data!0$(::-1))  ; reverse the values
+        pres_reverse =  False          ; pres values weren't already reversed
+       else
+        pres = tofloat_wunits(data&$data!0$)
+      end if
+;
+; Check the units.
+;
+      if(isatt(data&$data!0$,"units").and.\
+         any(data&$data!0$@units.eq.get_allowed_pres_units()))
+;
+; If pressure values are Pascals, convert them to millibars.
+;
+        if(any(data&$data!0$@units.eq.get_allowed_pres_units_pa()))
+          pres = tofloat_wunits(data&$data!0$) * 0.01  ; convert to mb
+          pres@units = "mb"
+        end if
+      else
+        print("gsn_csm_pres_hgt: Fatal: The coordinate array for the first dimension of the input data must be in Pascals, Hecto-pascals, or millibars")
+        print("and it must contain the attribute 'units' set to one of the following strings (depending on your units):")
+        print("    " + cat_strings(get_allowed_pres_units))
+        print("Cannot create plot.")
+        return
+      end if
+
+      set_pres_hgt_axes(pres,res2,add_hgt)
+    else
+      print("gsn_csm_pres_hgt: Fatal: The first dimension of the input data must")
+      print("have a coordinate variable called 'lev.'")
+      print("Cannot create plot.")
+      return
+    end if
+
+    log_y = get_res_value(res2,"trYLog",True)  ; Check if Y axis to stay linear.
+    res2           = True
+    res2@gsnDraw   = False
+    res2@gsnFrame  = False
+
+    if(pres_reverse)
+      contour_object = gsn_csm_hov(wks,data,res2) ; Create a contour plot.
+    else
+      contour_object = gsn_csm_hov(wks,data(::-1,:),res2)  ; reverse Y
+    end if
+
+; Retrieve some values from the contour plot so we can create a LogLin
+; plot with the same information.
+
+    contour_plot = check_class_name(contour_object,"contour")
+
+    getvalues contour_plot
+      "vpXF"                 : xvp
+      "vpYF"                 : yvp
+      "vpWidthF"             : widthvp
+      "vpHeightF"            : heightvp
+      "trXMinF"              : xmin
+      "trXMaxF"              : xmax
+      "trYMinF"              : ymin
+      "trYMaxF"              : ymax
+      "tiYAxisFontHeightF"   : yaxis_font_height
+      "tmYLLabelFontHeightF" : yaxis_label_height
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make subtitles sizes a function of
+                                          ; the size of the X/Y axis labels.
+    setvalues contour_plot
+      "tmYLLabelFontHeightF" : yaxis_label_height * 0.8
+      "tmYRLabelFontHeightF" : yaxis_label_height * 0.8
+      "tmXBLabelFontHeightF" : yaxis_label_height * 0.8
+    end setvalues
+
+; Check if we should label X axis with nice latitude labels.
+
+    if(is_valid_latlon_coord(data,"x","lat",res2)) then
+      add_lat_labels_xaxis(contour_plot,xmin,xmax,lat_spacing,  \
+                           mlat_spacing,res2)
+    end if
+;
+; Add a right Y axis "height" label.
+;
+    if(add_hgt.and.add_hgt_label)
+      rightaxis_string = create "right_axis" textItemClass wks
+        "txString"      : "Height (km)"
+        "txFontHeightF" : yaxis_font_height
+        "txAngleF"      : 90.
+      end create
+
+      anno = NhlAddAnnotation(contour_object,rightaxis_string)
+
+      setvalues anno
+        "amZone"          : 3      ; Just outside plot area
+        "amJust"          : "centercenter"
+        "amSide"          : "right" 
+        "amParallelPosF"  : 0.5
+        "amOrthogonalPosF": 0.03
+        "amResizeNotify"  : True     ; Resize if plot resized.
+      end setvalues
+    end if
+
+    wksname = get_res_value_keep(wks,"name","gsnapp")
+
+    loglin_object = create wksname + "_loglin" logLinPlotClass wks
+      "vpXF"       : xvp
+      "vpYF"       : yvp
+      "vpWidthF"   : widthvp
+      "vpHeightF"  : heightvp
+      "trYReverse" : True
+      "trXMinF"    : xmin
+      "trXMaxF"    : xmax
+      "trYMinF"    : ymin
+      "trYMaxF"    : ymax
+      "trYLog"     : log_y
+    end create
+;
+; Check for transformation resources and apply them to loglin plot.
+; Not all transformation resources can be applied to the loglin plot.
+; For example, you can't apply IrregularTransformation resources. So,
+; we have to explicitly test for these. 
+;
+    trres = get_res_eq(res2,"tr")
+
+    irreg_res = (/"trXAxisType","trXCoordPoints","trXInterPoints", \
+                  "trXTensionF","trXSamples","trYAxisType","trYCoordPoints",\
+                  "trYInterPoints","trYTensionF","trYSamples"/)
+
+    do i = 0, dimsizes(irreg_res)-1
+      if(isatt(trres,irreg_res(i))) then
+        delete(trres@$irreg_res(i)$)        ; Remove irreg trans resource.
+      end if
+    end do
+
+    attsetvalues_check(loglin_object,trres)
+
+; Overlay this on a LogLin plot so we can get a logarithmic Y axis.
+
+    overlay(loglin_object,contour_object)
+
+; Draw all this stuff: contour plot and subtitles.
+    draw_and_frame(wks,loglin_object,calldraw,callframe,0,maxbb)
+
+; Return loglin plot with contour plot object as an attribute.
+
+    loglin_object@contour = contour_object
+    loglin_object@data    = contour_object@data
+    return(loglin_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_vector                                             ;
+;                     wks: workstation object                           ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled vector plot to the           ;
+; workstation  "wks" (the variable returned from a previous call to     ;
+; "gsn_open_wks"). "resources" is an optional list of  resources. The   ;
+; Id of the vector plot is returned.                                    ;
+;                                                                       ;
+; This function behaves differently from gsn_vector in that it will     ;
+; add additional titles to the top of the plot if any of the special    ;
+; GSUN resources "gsnLeftString," "gsnCenterString," and/or             ;
+; "gsnRightString" are set, They are used to title the top left, center,;
+; and right of the plot (in addition, the regular resource              ;
+; "tiMainString" can be set to create a regular title).                 ;
+;                                                                       ;
+; Tick marks will be made to point outwards.                            ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_vector")
+function gsn_csm_vector(wks:graphic,u[*][*]:numeric,v[*][*],resources:logical)
+local res, vector_object, res2, xfontf, yfontf, font_height, lbar_on, \
+calldraw, callframe, left_string, center_string, right_string, \
+main_zone, unew, vnew
+begin
+
+; Initialize.
+    lbar_on       = False     ; Labelbar flag
+    main_zone     = 2         ; Zone for main title (may change later)
+    res2          = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_vector",res2,2)
+    end if
+
+    tm_scale      = get_res_value_keep(res2,"gsnScale",True)
+    point_outward = get_res_value(res2,"gsnTickMarksPointOutward",True)
+
+; This section tests for more special resources: those that start
+; with "gsn."
+
+; The default is to not add a cyclic point.
+
+    if(get_res_value(res2,"gsnAddCyclic",False)) then
+      unew    = gsn_add_cyclic_point(u)
+      vnew    = gsn_add_cyclic_point(v)
+    else
+      unew    = u
+      vnew    = v
+    end if
+;
+; Check if frame and/or draw are not supposed to be called.
+;
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,res2)
+    set_left_subtitle(unew,res2,res2)
+
+; Check for existence of the left, center, and right subtitles.
+
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(res2,left_string,center_string,right_string)
+
+    if(left_string.or.center_string.or.right_string)
+      main_zone   = main_zone+1
+    end if
+
+; Check if gsnShape set.
+
+    if(check_attr(res2,"gsnShape",True,False))
+      main_zone     = main_zone+1 ; Zone for main title
+    end if
+
+; Use coordinate variables for X and/or Y if they exist.
+
+    check_for_coord_arrays(unew,res2,"vector")
+;
+; Turn on a labelbar if fill is True and if the labelbar is not
+; explicitly being turned off.
+;
+    if(check_attr(res2,"vcMonoLineArrowColor",False,False).and.\
+       (.not.isatt(res2,"lbLabelBarOn").or.\
+        check_attr(res2,"lbLabelBarOn",True,False)))
+      lbar_on   = True
+    end if
+    if(isatt(res2,"lbLabelBarOn"))
+      delete(res2@lbLabelBarOn)
+    end if
+
+    res2          = True
+    res2@gsnDraw  = False     ; Internally, don't draw plot or advance
+    res2@gsnFrame = False     ; frame since we take care of that later.
+    res2@gsnScale = tm_scale  ; Force labels and ticks to be same.
+
+    vcres = get_res_ne(res2,(/"tx"/))
+    vector_object = gsn_vector(wks,unew,vnew,vcres)
+
+; Get some information from vector plot that was created.
+
+    vector_plot = check_class_name(vector_object,"vector")
+
+; Add lat/lon labels to X/Y axes if appropriate coordinate arrays exist.
+
+    add_latlon_labels(vector_plot,unew,res2)
+
+    getvalues vector_plot
+      "vpWidthF"             : width
+      "vpHeightF"            : height
+  
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make subtitle label sizes a
+                                          ; function of the size of the
+                                          ; X/Y axis labels.
+
+; If the plot is close to square in size, then make the 
+; three top titles and the tick marks smaller.
+
+    font_scale = (/1.0,0.8,0.8/)
+    ratios     = (/0.5,0.75,1.0/)
+
+    ratio = height/width
+    if(ratio.gt.1) 
+      ratio = 1./ratio
+    end if
+    index = ind(ratio.le.ratios)
+
+    scale = font_scale(index(0))
+    font_height  = scale * font_height
+
+    if(tm_scale.and.is_tm_obj_valid(vector_plot)) then
+;
+; Make tick marks same length and point outward.
+;
+      getvalues vector_plot
+        "tmYLMajorLengthF"     : ylength
+        "tmXBMajorLengthF"     : xlength
+        "tmYLMinorLengthF"     : ymlength
+        "tmXBMinorLengthF"     : xmlength
+      end getvalues
+
+      major_length = min((/ylength,xlength/))    ; New length for major ticks.
+      minor_length = min((/ymlength,xmlength/))  ; New length for minor ticks.
+
+      major_length = scale * major_length
+      minor_length = scale * minor_length
+
+      tmres = get_res_eq(res2,"tm")
+      gsnp_point_tickmarks_outward(vector_plot,tmres,xlength,ylength,\
+                                   xmlength,ymlength,\
+                                   major_length,minor_length,point_outward)
+    end if
+
+; Create a labelbar.
+
+    if (lbar_on)
+      lbres = get_res_eq(res2,(/"lb","pm"/))
+      add_labelbar(wks,vector_object,3,font_height,"vector",lbres)
+    end if
+  
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,(/"am","tx"/))  ; Get textitem resources
+    subres                  = True
+    set_attr(subres,"txFontHeightF",font_height)
+    add_subtitles(wks,vector_object,left_string,center_string,\
+                  right_string,subres)
+
+; Draw all this stuff: vector plot and subtitles.
+    draw_and_frame(wks,vector_object,calldraw,callframe,0,maxbb)
+
+; Return vector plot object.
+
+    return(vector_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_pres_hgt_vector                                    ;
+;                     wks: workstation object                           ;
+;                    data: data to be contoured                         ;
+;                       u: u component of vectors                       ;
+;                       v: u component of vectors                       ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function behaves like gsn_csm_pres_hgt, only it overlays a       ;
+; vector plot as well.                                                  ;
+;***********************************************************************;
+undef("gsn_csm_pres_hgt_vector")
+function gsn_csm_pres_hgt_vector(wks:graphic,data[*][*]:numeric, \
+                                 u[*][*]:numeric, v[*][*]:numeric, \
+                                 resources:logical)
+local res2, cnres, vcres, calldraw, callframe, npres, lbar_zone, anno_zone
+begin
+  res2      = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res2,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(data,u,v,"gsn_csm_pres_hgt_vector",res2,3)
+  end if
+
+  calldraw  = get_res_value(res2,"gsnDraw", True)
+  callframe = get_res_value(res2,"gsnFrame",True)
+  maxbb     = get_bb_res(res2)
+  anno_zone = get_res_value(res2,"vcRefAnnoZone",3)
+  ypos      = get_res_value(res2,"vpYF",0.87)
+  info_para = get_res_value(res2,"cnInfoLabelParallelPosF",0.)
+  info_just = get_res_value(res2,"cnInfoLabelJust","TopLeft")
+  refanno_on= get_res_value_keep(res2,"vcRefAnnoOn",True)
+
+  if(refanno_on)
+    lbar_zone = get_res_value(res2,"pmLabelBarZone",4)
+    lbar_orth = get_res_value(res2,"pmLabelBarOrthogonalPosF",0.05)
+  else
+    lbar_zone = get_res_value(res2,"pmLabelBarZone",3)
+    lbar_orth = get_res_value(res2,"pmLabelBarOrthogonalPosF",0.0)
+  end if
+
+  cnres = get_res_ne(res2,(/"vc","vf","pm"/))
+  vcres = get_res_eq(res2,(/"vc","vf","tr"/))
+
+;
+; Set some contour resources.
+;
+  cnres = True
+  cnres@gsnDraw                  = False
+  cnres@gsnFrame                 = False
+  cnres@vpYF                     = ypos
+  cnres@cnInfoLabelParallelPosF  = info_para  ; Change locations of info
+  cnres@cnInfoLabelJust          = info_just  ; label and label bar so 
+  cnres@pmLabelBarZone           = lbar_zone  ; they don't run into vector
+  cnres@pmLabelBarOrthogonalPosF = lbar_orth  ; reference anno.
+;
+; Create contour pressure/height plot.
+;
+  contour = gsn_csm_pres_hgt(wks,data,cnres)
+
+;
+; Set some vector resources.
+;
+  vcres = True
+  vcres@vcRefAnnoZone   = anno_zone  ; change zones so ref anno and
+                                     ; labelbar don't run into each other
+  vcres@gsnDraw         = False
+  vcres@gsnFrame        = False
+  vcres@gsnRightString  = ""  ; Use gsnRightString and gsnLeftString
+  vcres@gsnLeftString   = ""  ; from contour plot.
+
+;---If pressure values are Pascals, convert them to millibars.
+  if(is_valid_coord(u,"y").and.isatt(u&$u!0$,"units").and.\
+     any(u&$u!0$@units.eq.get_allowed_pres_units_pa()))
+    set_attr(vcres,"vfYArray",tofloat_wunits(u&$u!0$) * 0.01)
+  end if
+;---If pressure values are not in descending order, reverse them.
+  if(is_valid_coord(u,"y")) then
+    npres = dimsizes(u&$u!0$)
+    if(u&$u!0$(0).lt.u&$u!0$(npres-1))
+      vector = gsn_csm_vector(wks,u(::-1,:),v(::-1,:),vcres)
+    else
+      vector = gsn_csm_vector(wks,u,v,vcres)
+    end if
+  else
+    vector = gsn_csm_vector(wks,u,v,vcres)
+  end if
+
+;
+; Overlay the vectors on the contour plot.
+; 
+  overlay(contour,vector)
+
+; Draw all this stuff: vector over contour plot.
+
+  draw_and_frame(wks,contour,calldraw,callframe,0,maxbb)
+
+; Return contour/vector plot with data objects as attributes.
+
+  contour@sfdata = contour@data
+  contour@vcdata = vector@data
+  return(contour)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_streamline                                         ;
+;                     wks: workstation object                           ;
+;                     u: 2-dimensional data                             ;
+;                     v: 2-dimensional data                             ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function creates and draws a titled streamline plot to the       ;
+; workstation  "wks" (the variable returned from a previous call to     ;
+; "gsn_open_wks"). "resources" is an optional list of  resources. The   ;
+; Id of the streamline plot is returned.                                ;
+;                                                                       ;
+; This function behaves differently from gsn_streamline in that it will ;
+; add additional titles to the top of the plot if any of the special    ;
+; GSUN resources "gsnLeftString," "gsnCenterString," and/or             ;
+; "gsnRightString" are set, They are used to title the top left, center,;
+; and right of the plot (in addition, the regular resource              ;
+; "tiMainString" can be set to create a regular title).                 ;
+;                                                                       ;
+; Tick marks will be made to point outwards.                            ;
+;                                                                       ;
+;***********************************************************************;
+undef("gsn_csm_streamline")
+function gsn_csm_streamline(wks:graphic,u[*][*]:numeric,v[*][*],\
+                            resources:logical)
+local res, stream_object, res2, xfontf, yfontf, font_height, \
+calldraw, callframe, left_string, center_string, right_string, \
+main_zone, unew, vnew
+begin
+
+; Initialize.
+    main_zone     = 2         ; Zone for main title (may change later)
+    res2          = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+    if(isatt(res2,"gsnDebugWriteFileName")) then
+      gsnp_write_debug_info(u,v,new(1,float),"gsn_csm_streamline",res2,2)
+    end if
+
+    tm_scale      = get_res_value_keep(res2,"gsnScale",True)
+    point_outward = get_res_value(res2,"gsnTickMarksPointOutward",True)
+
+; This section tests for more special resources: those that start
+; with "gsn."
+
+; The default is to not add a cyclic point.
+
+    if(get_res_value(res2,"gsnAddCyclic",False)) then
+      unew    = gsn_add_cyclic_point(u)
+      vnew    = gsn_add_cyclic_point(v)
+    else
+      unew    = u
+      vnew    = v
+    end if
+;
+; Check if frame and/or draw are not supposed to be called.
+;  
+    calldraw  = get_res_value(res2,"gsnDraw", True)
+    callframe = get_res_value(res2,"gsnFrame",True)
+    maxbb     = get_bb_res(res2)
+
+; Check for left/right titles at top. Use valid "long_name" type attributes
+; and "units" if they exist.
+
+    set_right_subtitle(unew,res2,res2)
+    set_left_subtitle(unew,res2,res2)
+
+; Check for existence of the left, center, and right subtitles.
+
+    left_string   = new(1,logical)
+    center_string = new(1,logical)
+    right_string  = new(1,logical)
+
+    check_for_subtitles(res2,left_string,center_string,right_string)
+
+    if(left_string.or.center_string.or.right_string)
+      main_zone   = main_zone+1
+    end if
+
+    if(check_attr(res2,"gsnShape",True,False))
+      main_zone     = main_zone+1 ; Zone for main title
+    end if
+
+; Use coordinate variables for X and/or Y if they exist.
+
+    check_for_coord_arrays(unew,res2,"vector")
+
+    res2          = True
+    res2@gsnDraw  = False     ; Internally, don't draw plot or advance
+    res2@gsnFrame = False     ; frame since we take care of that later.
+    res2@gsnScale = tm_scale  ; Force labels and ticks to be same.
+
+    stres = get_res_ne(res2,(/"tx"/))
+    stream_object = gsn_streamline(wks,unew,vnew,stres)
+
+; Get some information from streamline plot that was created.
+
+    streamline_plot = check_class_name(stream_object,"streamline")
+
+; Add lat/lon labels to X/Y axes if appropriate coordinate arrays exist.
+
+    add_latlon_labels(streamline_plot,unew,res2)
+
+; Get some information from streamline plot that was created.
+
+    getvalues streamline_plot
+      "vpWidthF"             : width
+      "vpHeightF"            : height
+  
+      "tiXAxisFontHeightF"   : xfontf
+      "tiYAxisFontHeightF"   : yfontf
+    end getvalues
+
+    font_height = min((/xfontf,yfontf/))  ; Make subtitle label sizes a
+                                          ; function of the size of the
+                                          ; X/Y axis labels.
+
+; If the plot is close to square in size, then make the 
+; three top titles and the tick marks smaller.
+
+    font_scale = (/1.0,0.8,0.8/)
+    ratios     = (/0.5,0.75,1.0/)
+
+    ratio = height/width
+    if(ratio.gt.1) 
+      ratio = 1./ratio
+    end if
+    index = ind(ratio.le.ratios)
+
+    scale = font_scale(index(0))
+    font_height  = scale * font_height
+
+    if(tm_scale.and.is_tm_obj_valid(streamline_plot)) then
+;
+; Make tick marks same length and point outward.
+;
+      getvalues streamline_plot
+        "tmYLMajorLengthF"     : ylength
+        "tmXBMajorLengthF"     : xlength
+        "tmYLMinorLengthF"     : ymlength
+        "tmXBMinorLengthF"     : xmlength
+      end getvalues
+
+      major_length = min((/ylength,xlength/))    ; New length for major ticks.
+      minor_length = min((/ymlength,xmlength/))  ; New length for minor ticks.
+
+      major_length = scale * major_length
+      minor_length = scale * minor_length
+
+      tmres = get_res_eq(res2,"tm")
+      gsnp_point_tickmarks_outward(streamline_plot,tmres,xlength,ylength,\
+                                   xmlength,ymlength,\
+                                   major_length,minor_length,point_outward)
+    end if
+
+; Set up three subtitles at top, if they exist.
+    subres = get_res_eq(res2,(/"am","tx"/))  ; Get textitem resources
+    subres                  = True
+    set_attr(subres,"txFontHeightF",font_height)
+    add_subtitles(wks,stream_object,left_string,center_string,\
+                  right_string,subres)
+
+; Draw all this stuff: streamline plot and subtitles.
+    draw_and_frame(wks,stream_object,calldraw,callframe,0,maxbb)
+
+; Return streamline plot object.
+
+    return(stream_object)
+end
+
+;***********************************************************************;
+; Function : gsn_csm_pres_hgt_streamline                                ;
+;                     wks: workstation object                           ;
+;                    data: data to be contoured                         ;
+;                       u: u component of streamlines                   ;
+;                       v: u component of streamlines                   ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; This function behaves like gsn_csm_pres_hgt, only it overlays a       ;
+; streamline plot as well.                                              ;
+;***********************************************************************;
+undef("gsn_csm_pres_hgt_streamline")
+function gsn_csm_pres_hgt_streamline(wks:graphic,data[*][*]:numeric, \
+                                     u[*][*]:numeric, v[*][*]:numeric, \
+                                     resources:logical)
+local res2, cnres, stres, calldraw, callframe, npres
+begin
+  res2      = get_resources(resources)
+;
+; Write data and plot resource information to a file so we can 
+; reconstruct plot if desired, without all the computational
+; code beforehand.
+;
+  if(isatt(res2,"gsnDebugWriteFileName")) then
+    gsnp_write_debug_info(data,u,v,"gsn_csm_pres_hgt_streamline",res2,3)
+  end if
+
+  calldraw  = get_res_value(res2,"gsnDraw", True)
+  callframe = get_res_value(res2,"gsnFrame",True)
+  maxbb     = get_bb_res(res2)
+
+  cnres = get_res_ne(res2,(/"st","vf","pm"/))
+  stres = get_res_eq(res2,(/"st","vf"/))
+
+;
+; Set some contour resources.
+;
+  cnres = True
+  cnres@gsnDraw                  = False
+  cnres@gsnFrame                 = False
+;
+; Create contour pressure/height plot.
+;
+  contour = gsn_csm_pres_hgt(wks,data,cnres)
+
+;
+; Set some streamline resources.
+;
+  stres = True
+  stres@gsnDraw         = False
+  stres@gsnFrame        = False
+  stres@gsnRightString  = ""  ; Use gsnRightString and gsnLeftString
+  stres@gsnLeftString   = ""  ; from contour plot.
+;
+; Create streamline plot. We have to check the pressure values.  If they
+; are not in descending order, then reverse 'em.
+;
+  if(is_valid_coord(u,"y"))
+    npres = dimsizes(u&$u!0$)
+    if(u&$u!0$(0).lt.u&$u!0$(npres-1))
+      streamline = gsn_csm_streamline(wks,u(::-1,:),v(::-1,:),stres)
+    else
+      streamline = gsn_csm_streamline(wks,u,v,stres)
+    end if
+  else
+    streamline = gsn_csm_streamline(wks,u,v,stres)
+  end if
+
+;
+; Overlay the streamlines on the contour plot.
+; 
+  overlay(contour,streamline)
+
+; Draw all this stuff: streamline over contour plot.
+
+  draw_and_frame(wks,contour,calldraw,callframe,0,maxbb)
+
+; Return contour/streamline plot with data objects as attributes.
+
+  contour@sfdata = contour@data
+  contour@vcdata = streamline@data
+  return(contour)
+end
+

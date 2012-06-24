@@ -1,0 +1,20 @@
+#
+#       $Id: yMakefile,v 1.16 2010-02-09 17:14:36 haley Exp $
+#
+
+MYNAME  = nnalg
+
+SRCS = nadisp.f  nadraw.f  naskln.f  nasort.f
+OBJS = nadisp.o  nadraw.o  naskln.o  nasort.o
+
+#if defined(Darwin)
+PROG_LIBS	=	$(NCARGLIBS) $(CTOFLIBS) $(CAIROLIB) $(PNGLIB)
+#else
+PROG_LIBS	=	$(NCARGLIBS) $(CAIROLIB) $(PNGLIB)
+#endif
+
+DEP_LIBS = $(DEPNCARGLIBS)
+SYS_LIBS = $(XLIB)
+
+FortranProgram($(MYNAME),$(OBJS),$(DEP_LIBS))
+

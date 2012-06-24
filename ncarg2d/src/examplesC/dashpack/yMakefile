@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.5 1997-04-11 18:49:59 haley Exp $
+#
+
+SRCS = c_tdshpk.c
+OBJS = c_tdshpk.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(TESTSPATH))
+
+CExampleTarget(c_tdshpk,c_tdshpk.o)

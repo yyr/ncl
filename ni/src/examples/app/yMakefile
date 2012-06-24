@@ -1,0 +1,47 @@
+#
+#      $Id: yMakefile,v 1.7 1999-03-25 03:47:47 haley Exp $
+#
+#########################################################################
+#									#
+#			   Copyright (C)  1995				#
+#	     University Corporation for Atmospheric Research		#
+#			   All Rights Reserved				#
+#									#
+#########################################################################
+#
+#	File:		yMakefile
+#
+#	Author:		Jeff W. Boote
+#			National Center for Atmospheric Research
+#			PO 3000, Boulder, Colorado
+#
+#	Date:		Thu Mar 23 17:06:52 MST 1995
+#
+#	Description:	
+MYNAME      = app
+
+PROG_LIBS   =   $(HLULIBS) $(NCARGLIBS)
+EXTRA_LIBS  =   $(XLIB)
+SYS_LIBS    =   $(CTOFLIBS) -lm
+
+CSRCS     = ap01c.c
+FSRCS     = ap01f.f
+NSRCS     = ap01n.ncl
+COBJS     = ap01c.o
+FOBJS     = ap01f.o
+SRCS      = $(CSRCS) $(FSRCS)
+OBJS      = $(COBJS) $(FOBJS)
+NCGMS     = ap01c.ncgm ap01f.ncgm
+RESFILES  = ap01.res
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(HLUEXROOT)/$(MYNAME))
+#if !defined(CRAY)
+InstallTarget($(NSRCS),$(INSTALL_LIB),$(NCLEXROOT)/$(MYNAME))
+#endif
+InstallTarget($(RESFILES),$(INSTALL_LIB),$(RESFILEROOT)/$(MYNAME))
+
+CExampleTarget(ap01c,ap01c.o)
+FExampleTarget(ap01f,ap01f.o)
+
+CleanFilesTarget($(OBJS) $(NCGMS))
+DependTarget($(CSRCS))

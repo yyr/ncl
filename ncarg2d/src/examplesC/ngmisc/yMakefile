@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.6 1997-04-11 18:50:11 haley Exp $
+#
+
+SRCS = c_fngwsym.c
+OBJS = c_fngwsym.o
+
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+CExampleTarget(c_fngwsym,c_fngwsym.o)

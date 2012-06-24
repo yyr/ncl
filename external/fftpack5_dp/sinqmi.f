@@ -1,0 +1,33 @@
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+C
+C   FFTPACK 5.0
+C   Copyright (C) 1995-2004, Scientific Computing Division,
+C   University Corporation for Atmospheric Research
+C   Licensed under the GNU General Public License (GPL)
+C
+C   Authors:  Paul N. Swarztrauber and Richard A. Valent
+C
+C   $Id: sinqmi.f,v 1.2 2006-11-21 01:10:19 haley Exp $
+C
+CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+
+      SUBROUTINE DSINQMI(N,WSAVE,LENSAV,IER)
+      INTEGER N,LENSAV,IER
+      DOUBLE PRECISION WSAVE(LENSAV)
+C
+      IER = 0
+C
+      IF (LENSAV.LT.2*N+INT(LOG(DBLE(N)))+4) THEN
+          IER = 2
+          CALL DXERFFT('SINQMI',3)
+          GO TO 300
+      END IF
+C
+      CALL DCOSQMI(N,WSAVE,LENSAV,IER1)
+      IF (IER1.NE.0) THEN
+          IER = 20
+          CALL DXERFFT('SINQMI',-5)
+      END IF
+  300 CONTINUE
+      RETURN
+      END

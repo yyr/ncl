@@ -1,0 +1,58 @@
+#
+#   $Id: yMakefile,v 1.18 1999-03-25 03:48:06 haley Exp $
+#
+#   Makefile for HLU VectorPlot examples
+#
+
+MYNAME      = vectorplot
+
+PROG_LIBS   = $(HLULIBS) $(NCARGLIBS)
+EXTRA_LIBS  = $(XMOTIFCLIENTLIBS) -lnetcdf
+SYS_LIBS    = $(CTOFLIBS) -lm
+
+CSRCS       = vc01c.c vc02c.c vc03c.c vc04c.c vc05c.c vc06c.c vc07c.c \
+              vc08c.c vc09c.c
+FSRCS       = vc01f.f vc02f.f vc03f.f vc04f.f vc05f.f vc06f.f vc07f.f \
+              vc08f.f vc09f.f
+NSRCS       = vc01n.ncl vc02n.ncl vc03n.ncl vc04n.ncl vc05n.ncl vc06n.ncl \
+			  vc07n.ncl vc08n.ncl vc09n.ncl
+
+COBJS       = vc01c.o vc02c.o vc03c.o vc04c.o vc05c.o vc06c.o vc07c.o \
+              vc08c.o vc09c.o
+FOBJS       = vc01f.o vc02f.o vc03f.o vc04f.o vc05f.o vc06f.o vc07f.o \
+              vc08f.o vc09f.o
+SRCS        = $(CSRCS) $(FSRCS)
+OBJS        = $(COBJS) $(FOBJS)
+
+RESFILES    = vc01.res vc02.res vc03.res vc04.res vc05.res vc06.res \
+              vc07.res vc09.res
+EXFILES     = $(SRCS) $(INCLUDES)
+
+InstallTarget($(EXFILES),$(INSTALL_LIB),$(HLUEXROOT)/$(MYNAME))
+InstallTarget($(RESFILES),$(INSTALL_LIB),$(RESFILEROOT)/$(MYNAME))
+#if !defined(CRAY)
+InstallTarget($(NSRCS),$(INSTALL_LIB),$(NCLEXROOT)/$(MYNAME))
+#endif
+
+CExampleTarget(vc01c,vc01c.o)
+CExampleTarget(vc02c,vc02c.o)
+CExampleTarget(vc03c,vc03c.o)
+CExampleTarget(vc04c,vc04c.o)
+CExampleTarget(vc05c,vc05c.o)
+CExampleTarget(vc06c,vc06c.o)
+CExampleTarget(vc07c,vc07c.o)
+FExampleTarget(vc08c,vc08c.o)
+FExampleTarget(vc09c,vc09c.o)
+
+FExampleTarget(vc01f,vc01f.o)
+FExampleTarget(vc02f,vc02f.o)
+FExampleTarget(vc03f,vc03f.o)
+FExampleTarget(vc04f,vc04f.o)
+FExampleTarget(vc05f,vc05f.o)
+FExampleTarget(vc06f,vc06f.o)
+FExampleTarget(vc07f,vc07f.o)
+FExampleTarget(vc08f,vc08f.o)
+FExampleTarget(vc09f,vc09f.o)
+
+CleanFilesTarget($(OBJS))
+DependTarget($(CSRCS))

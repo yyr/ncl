@@ -1,0 +1,241 @@
+#
+#      $Id: yMakefile,v 1.83 2010-03-16 02:00:10 haley Exp $
+#
+#########################################################################
+#                                                                       #
+#			   Copyright (C)  1993                          #
+#	     University Corporation for Atmospheric Research            #
+#			   All Rights Reserved                          #
+#                                                                       #
+#########################################################################
+#
+#	File:		yMakefile
+#
+#	Author:		Jeff W. Boote
+#			National Center for Atmospheric Research
+#			PO 3000, Boulder, Colorado
+#
+#	Date:		Tue Apr 27 15:05:52 MDT 1993
+#
+#	Description:	yMakefile for ncarg/ni/src/lib/hlu
+MYNAME		= libhlu
+MYNAME_CAIRO	= libhlu_cairo
+
+#ifdef Build32BITS
+ALLDEFINES = $(ALLDEFINES) -DNCL32BITS
+#endif
+
+#ifdef BuildPNG
+PNG_DEF = -DBuildPNG
+#else
+#define PNG_DEF
+#endif
+
+#ifdef BuildTRIANGLE
+TRIANGLE_DEF = -DBuildTRIANGLE
+TRIANGLE_HDR = triangle.h
+TRIANGLE_SRC = triangle.c
+TRIANGLE_OBJ = triangle.o
+#else
+#define TRIANGLE_DEF
+#define TRIANGLE_HDR
+#define TRIANGLE_SRC
+#define TRIANGLE_OBJ
+#endif 
+
+EXTRA_CDEFINES	=	$(OS_DEF) $(TRIANGLE_DEF) $(PNG_DEF)
+
+HDRS1   	= Base.h BaseI.h BaseP.h Convert.h ConvertP.h ConvertersP.h\
+		CoordApprox.h Error.h ErrorI.h ErrorP.h IrregularTransObj.h \
+		IrregularTransObjP.h IrregularType2TransObj.h \
+		IrregularType2TransObjP.h LogLinTransObj.h LogLinTransObjP.h \
+		MapTransObj.h MapTransObjP.h MultiText.h MultiTextP.h \
+		NcgmWorkstation.h NcgmWorkstationP.h NresDB.h ResourcesP.h \
+		Segments.h TextItem.h TextItemP.h TickMark.h TickMarkP.h \
+		Title.h TitleP.h TransObj.h TransObjI.h TransObjP.h \
+		Transform.h TransformP.h TransformI.h VarArg.h \
+		View.h ViewI.h ViewP.h \
+		Workstation.h WorkstationI.h WorkstationP.h XWorkstation.h \
+		XWorkstationP.h XyPlot.h XyPlotP.h NgSizeT.h defs.h hluutil.h hlu.h \
+		hluP.h DataComm.h DataCommP.h DataCommF.h DataItem.h \
+		DataItemP.h DataMgr.h DataMgrF.h DataMgrP.h Legend.h \
+		LegendP.h LabelBar.h LabelBarP.h  CoordArrTable.h \
+		CoordArrTableP.h CoordArrTableFloatP.h CoordArrays.h \
+		CoordArraysP.h ContourPlot.h ContourPlotP.h PlotManager.h \
+		PlotManagerI.h PlotManagerP.h LogLinPlot.h LogLinPlotP.h \
+		IrregularPlot.h IrregularPlotP.h MapPlot.h MapPlotP.h \
+		ResList.h ResListP.h Workspace.h WorkspaceI.h WorkspaceP.h
+HDRS2           = FortranP.h ScalarField.h ScalarFieldP.h ScalarFieldFloatP.h \
+		AnnoManager.h AnnoManagerP.h FormatI.h App.h AppI.h AppP.h \
+		PSWorkstation.h PSWorkstationP.h VectorField.h \
+		VectorFieldFloatP.h VectorFieldP.h VectorPlot.h VectorPlotP.h \
+		VecAnno.h VecAnnoP.h StreamlinePlot.h StreamlinePlotP.h \
+		Style.h StyleP.h GraphicStyle.h GraphicStyleP.h SubStylesP.h \
+		Callbacks.h CallbacksP.h ContourPlotI.h MapDataHandler.h \
+		MapDataHandlerP.h MapV40DataHandler.h MapV40DataHandlerP.h \
+		MapV41DataHandler.h MapV41DataHandlerP.h \
+		MapRGDataHandler.h MapRGDataHandlerP.h \
+		Primitive.h PrimitiveP.h \
+		CurvilinearTransObj.h CurvilinearTransObjP.h \
+		SphericalTransObj.h SphericalTransObjP.h SphericalGeometryP.h \
+	        PDFWorkstation.h PDFWorkstationP.h \
+		CnRenderer.h CnRendererP.h CnStdRenderer.h CnStdRendererP.h \
+		CnTriMeshRenderer.h CnTriMeshRendererP.h \
+		TriMeshTransObj.h TriMeshTransObjP.h \
+		ImageWorkstation.h ImageWorkstationP.h \
+		MeshScalarField.h MeshScalarFieldP.h \
+		CairoWorkstation.h CairoWorkstationP.h \
+		pageutil.h
+
+HDRS            = $(HDRS1) $(HDRS2) $(TRIANGLE_HDR) 
+
+CSRCS1   	= Base.c BoundingBox.c Close.c Convert.c Converters.c \
+		Create.c Destroy.c Draw.c Error.c GetValues.c \
+		IrregularTransObj.c IrregularType2TransObj.c LogLinTransObj.c \
+		MapTransObj.c MultiText.c NcgmWorkstation.c NresDB.c Open.c \
+		Quarks.c Reparent.c Resources.c Segments.c SetValues.c \
+		SplineCoord.c TextItem.c TickMark.c Title.c Trans.c \
+		TransObj.c Transform.c VarArg.c View.c Workstation.c \
+		XWorkstation.c hlu.c DataComm.c DataItem.c DataMgr.c \
+		Legend.c LabelBar.c CoordArrTable.c CoordArrays.c \
+		ContourPlot.c PlotManager.c LogLinPlot.c IrregularPlot.c
+CSRCS2          = MapPlot.c XyPlot.c ResList.c Workspace.c Fortran.c Futil.c \
+		ScalarField.c AnnoManager.c Format.c App.c PSWorkstation.c \
+		Palette.c VectorField.c VectorPlot.c VecAnno.c \
+		StreamlinePlot.c Style.c GraphicStyle.c SubStyles.c \
+		Callbacks.c MapDataHandler.c MapV40DataHandler.c \
+		MapV41DataHandler.c MapRGDataHandler.c Primitive.c \
+		CurvilinearTransObj.c SphericalTransObj.c SphericalGeometry.c \
+		bsearch.c linaprox.c wksisact.c simpletrans.c wksisopn.c \
+		cmpf.c nicevals.c \
+	        PDFWorkstation.c CnRenderer.c CnStdRenderer.c \
+		CnTriMeshRenderer.c TriMeshTransObj.c ImageWorkstation.c \
+		MeshScalarField.c pageutil.c
+
+DUMCAIROSRCS	 = CairoWorkstation.c
+
+CSRCS            = $(CSRCS1) $(CSRCS2) $(TRIANGLE_SRC) $(DUMCAIROSRCS)
+
+COBJS1    	= Base.o BoundingBox.o Close.o Convert.o Converters.o \
+		Create.o Destroy.o Draw.o Error.o GetValues.o \
+		IrregularTransObj.o IrregularType2TransObj.o LogLinTransObj.o \
+		MapTransObj.o MultiText.o NcgmWorkstation.o NresDB.o Open.o \
+		Quarks.o Reparent.o Resources.o Segments.o SetValues.o \
+		SplineCoord.o TextItem.o TickMark.o Title.o Trans.o \
+		TransObj.o Transform.o VarArg.o View.o Workstation.o \
+		XWorkstation.o hlu.o DataComm.o DataItem.o DataMgr.o \
+		Legend.o LabelBar.o CoordArrTable.o CoordArrays.o \
+		ContourPlot.o PlotManager.o LogLinPlot.o IrregularPlot.o \
+		MapPlot.o XyPlot.o ResList.o Workspace.o Fortran.o Futil.o
+COBJS2          = ScalarField.o AnnoManager.o Format.o App.o PSWorkstation.o \
+		Palette.o VectorField.o VectorPlot.o VecAnno.o \
+		StreamlinePlot.o Style.o GraphicStyle.o SubStyles.o \
+		Callbacks.o MapDataHandler.o MapV40DataHandler.o \
+		MapV41DataHandler.o MapRGDataHandler.o Primitive.o \
+		CurvilinearTransObj.o SphericalTransObj.o SphericalGeometry.o \
+		bsearch.o linaprox.o wksisact.o simpletrans.o wksisopn.o \
+		cmpf.o nicevals.o \
+	        PDFWorkstation.o CnRenderer.o CnStdRenderer.o \
+		CnTriMeshRenderer.o TriMeshTransObj.o ImageWorkstation.o \
+		MeshScalarField.o pageutil.o
+
+DUMCAIROOBJS	= CairoWorkstation.o
+
+HLUCOBJS	= $(COBJS1) $(COBJS2) $(TRIANGLE_OBJ) $(DUMCAIROOBJS)
+
+FSRCS		= DATACOMMF.f ERRORF.f HLUF.f PLOTMANAGERF.f RLGEN.f RLSET.f \
+		RLGET.f TRANSFORMF.f VIEWF.f WORKSPACEF.f WORKSTATIONF.f \
+		DATAITEMF.f APPF.f dashchar.f\
+		coeff1.f interp.f sdot.f sgesl.f trip.f fitpack.f isamax.f \
+		search.f sscal.f saxpy.f sgefa.f terp1.f gerhnd.f \
+		trmrectgrid.f gproj.f
+
+FOBJS		= DATACOMMF.o ERRORF.o HLUF.o PLOTMANAGERF.o RLGEN.o RLSET.o \
+		RLGET.o TRANSFORMF.o VIEWF.o WORKSPACEF.o WORKSTATIONF.o \
+		DATAITEMF.o APPF.o dashchar.o \
+		coeff1.o interp.o sdot.o sgesl.o trip.o fitpack.o isamax.o \
+		search.o sscal.o saxpy.o sgefa.o terp1.o gerhnd.o \
+		trmrectgrid.o gproj.o
+
+LIBHOBJS	= $(HLUCOBJS) $(FOBJS)
+
+BuildSharedLibTarget(libNGhlu,$(LIBHOBJS),1,0,$(NCARGLIB) $(NCARGGKSLIB) $(NCARGCLIB) $(CTOFLIBS) -lm -lc)
+LibraryTarget($(MYNAME),$(LIBHOBJS))
+
+#ifdef BuildCAIRO
+CAIROOBJS	= CairoWorkstation_cairo.o
+HLUCCOBJS	= $(COBJS1) $(COBJS2) $(TRIANGLE_OBJ) $(CAIROOBJS)
+LIBHCOBJS	= $(HLUCCOBJS) $(FOBJS)
+
+CAIRO_DEFINES   =  -DBuildCAIRO
+
+CairoWorkstation_cairo.o: CairoWorkstation_cairo.c
+        $(CC) $(CCOPTIONS) $(ALLDEFINES) $(CAIRO_DEFINES) -c CairoWorkstation_cairo.c
+
+LibraryTarget($(MYNAME_CAIRO),$(LIBHCOBJS))
+
+CairoWorkstation_cairo.c: CairoWorkstation.c
+	$(LN) CairoWorkstation.c CairoWorkstation_cairo.c
+
+CleanFilesTarget(CairoWorkstation_cairo.c CairoWorkstation_cairo.o)
+#endif
+
+BuildIncludes($(HDRS),ncarg/hlu,../..)
+InstallTarget($(HDRS),$(INSTALL_INC),$(HLUINCPATH))
+InstallTarget(sysresfile,$(INSTALL_INC),$(LIBNCARGPATH))
+#ifdef BuildPyNGL
+InstallTarget(sysresfile,$(INSTALL_INC),$(PYNGLNCARGPATH))
+#endif
+DependTarget($(CSRCS))
+
+#ifdef BuildTRIANGLE
+triangle.o: triangle.c
+	$(CC) $(CCOPTIONS) -DNO_TIMER -DTRILIBRARY -c triangle.c
+#endif
+
+#if defined(IRIX64)
+cmpf.o: cmpf.c
+	$(CC) $(CCOPTIONS) $(ALLDEFINES) -g -c cmpf.c
+#endif
+
+#if defined(linux) && defined(x86_64)
+Quarks.o: Quarks.c
+        $(CC) $(CCOPTIONS) $(ALLDEFINES) -g -c Quarks.c
+
+#endif
+
+#if defined(linux)
+Format.o: Format.c
+        $(CC) $(CCOPTIONS) $(ALLDEFINES) -g -c Format.c
+
+#endif
+
+#if defined(AIX)
+SetValues.o: SetValues.c
+        $(CC) $(CCOPTIONS) $(ALLDEFINES) -O2 -qstrict -g -c SetValues.c
+View.o: View.c
+        $(CC) $(CCOPTIONS) $(ALLDEFINES) -g -c View.c
+#endif
+
+/* This is used to expand the huge macros in this file	*/
+#if	defined(DEBUG) && defined(SunOS)  && defined(ExpandMacros)
+
+CleanFilesTarget(Converters.tmp.o Converters.tmp.c Converters.sed.c)
+
+Converters.o:	Converters.tmp.o
+	$(CP) Converters.tmp.o Converters.o
+
+Converters.tmp.c:	Converters.sed.c
+	acc -Xc -P Converters.sed.c
+	perl -n \
+	-e "s%^SED_INC%#include%;" \
+	-e "print;" \
+	< Converters.sed.i > Converters.tmp.c
+	indent Converters.tmp.c
+
+Converters.sed.c:	Converters.c
+	perl -n \
+	-e "s%^#include%SED_INC%;" \
+	-e "print;" \
+	< Converters.c > Converters.sed.c
+#endif

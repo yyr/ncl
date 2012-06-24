@@ -1,0 +1,10 @@
+#
+#	$Id: yMakefile,v 1.17 2007-02-25 16:50:07 haley Exp $
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = \
+	eareas eautog ecolcv econpa econpt eezmap eezmpa elblba emisc \
+	epltch eppack esoftf espps esrfac estitl estrml etpack evaspt \
+	evelvc ewmap

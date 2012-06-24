@@ -1,0 +1,24 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-19 14:52:22 haley Exp $
+#
+MYNAME	= dashline
+
+GENERIC_SRCS = \
+	dashdb.f drawpv.f cfvld.f frstd.f vectd.f lastd.f \
+	curved.f lined.f dashbd.f
+
+GENERIC_OBJS = \
+	dashdb.o drawpv.o cfvld.o frstd.o vectd.o lastd.o \
+	curved.o lined.o dashbd.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS = $(GENERIC_OBJS)
+
+#if defined(alpha) && (MAJOR==1)
+InstallTarget($(OBJECTS),$(INSTALL_LIB),$(ROBJPATH)/$(MYNAME))
+#else
+RelocatableTarget(libdashline.o,$(OBJECTS))
+#endif
+
+SourceLibraryTarget($(MYNAME),srcdashline.a,$(SOURCES))

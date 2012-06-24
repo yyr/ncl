@@ -1,0 +1,9 @@
+#
+#	$Id: yMakefile,v 1.2 1993-10-19 17:19:47 boote Exp $
+#
+
+MYNAME	= findg
+GENERIC_OBJS = findg.o lw2up.o fngbkd.o
+GENERIC_SRCS = findg.f lw2up.f fngbkd.f
+
+FortranTarget(findg,$(GENERIC_OBJS))

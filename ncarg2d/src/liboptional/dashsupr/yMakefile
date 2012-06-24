@@ -1,0 +1,33 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-19 14:55:57 haley Exp $
+#
+MYNAME	= dashsupr
+
+FSOURCES = \
+	fdvdld.f cutup.f drawpv.f markl.f \
+	intmsk.f reset.f dashdc.f dashdb.f cfvld.f frstd.f \
+	vectd.f lastd.f curved.f lined.f pwrtm.f
+
+FOBJECTS = \
+	fdvdld.o cutup.o drawpv.o markl.o \
+	intmsk.o reset.o dashdc.o dashdb.o cfvld.o frstd.o \
+	vectd.o lastd.o curved.o lined.o pwrtm.o
+
+#ifdef CRAY
+OTHER_SRCS = removecray.f dashbd1024.f
+OTHER_OBJS = removecray.o dashbd1024.o
+#else
+OTHER_SRCS = remove32.f dashbd1024.f
+OTHER_OBJS = remove32.o dashbd1024.o
+#endif
+
+SOURCES = $(FSOURCES) $(OTHER_SRCS)
+OBJECTS = $(FOBJECTS) $(OTHER_OBJS)
+
+#if defined(alpha) && (MAJOR==1)
+InstallTarget($(OBJECTS),$(INSTALL_LIB),$(ROBJPATH)/$(MYNAME))
+#else
+RelocatableTarget(libdashsupr.o,$(OBJECTS))
+#endif
+
+SourceLibraryTarget($(MYNAME),srcdashsupr.a,$(SOURCES))

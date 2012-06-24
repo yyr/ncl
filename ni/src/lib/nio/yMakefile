@@ -1,0 +1,338 @@
+#
+#      $Id: yMakefile,v 1.6.6.1 2010/05/13 00:14:54 dbrown Exp $
+#
+###########################################################################
+#			   Copyright (C)  1993			 	  #
+#	     University Corporation for Atmospheric Research		  #
+#			   All Rights Reserved				  #
+#									  #
+###########################################################################
+#
+#	File:		yMakefile for the NIO library
+#
+#	Author:		David Brown
+#			National Center for Atmospheric Research
+#			POB 3000, Boulder, Colorado
+#
+#	Date:		2009/05/12
+#
+#	Description:	
+#
+#	Usage:
+#
+#	Environment:
+#
+#	Files:
+#
+#
+#	Options:
+
+
+MYLIB_IO        =       libnio
+
+
+#if defined(linux)
+EXTRA_CCOPTIONS = -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE
+#endif
+
+#ifdef BuildNetCDF4
+NETCDF4_DEFS = -DUSE_NETCDF4
+#else
+#define NETCDF4LIB
+#endif
+
+#ifdef BuildHDF4
+HDF4_DEFS = -DBuildHDF4 $(HDF4_NETCDF)
+HDF4_SRCS = NclHDF.c
+HDF4_OBJS = NclHDF.o
+#else
+#define HDF4_SRCS
+#define HDF4_OBJS
+#define HDFLIB
+#endif
+
+#if defined BuildHDF4 && defined BuildHDFEOS
+HDFEOS_DEFS = -DBuildHDFEOS $(HDF4_NETCDF)
+HDFEOS_SRCS = NclHDFEOS.c
+HDFEOS_OBJS = NclHDFEOS.o
+#else
+#define HDFEOS_SRCS
+#define HDFEOS_OBJS
+#define HDFEOSLIB
+#endif
+
+#ifdef BuildHDF5
+HDF5_DEFS = -DBuildHDF5
+HDF5_SRCS = NclHDF5.c h5reader.c h5writer.c
+HDF5_OBJS = NclHDF5.o h5reader.o h5writer.o
+#else
+#define HDF5_SRCS
+#define HDF5_OBJS
+#define HDF5LIB
+#endif
+
+#ifdef BuildHDFEOS5
+HDFEOS5_DEFS = -DBuildHDFEOS5 $(HDF4_NETCDF)
+HDFEOS5_SRCS = NclHDFEOS5.c
+HDFEOS5_OBJS = NclHDFEOS5.o
+#else
+#define HDFEOS5_SRCS
+#define HDFEOS5_OBJS
+#define HDFEOS5LIB
+#endif
+
+#ifdef BuildGRIB2
+#if defined(IRIX64) || defined(x86_64) || defined(__LP64__)
+GRIB2_DEFS = -DBuildGRIB2 -D__64BIT__
+#else
+GRIB2_DEFS = -DBuildGRIB2
+#endif
+GRIB2_SRCS = NclGRIB2.c
+GRIB2_OBJS = NclGRIB2.o
+#else
+#define GRIB2_SRCS
+#define GRIB2_OBJS
+#define GRIB2LIB
+#endif
+
+#ifdef BuildGDAL
+GDAL_DEFS = -DBuildGDAL
+GDAL_SRCS = NclOGR.c
+GDAL_OBJS = NclOGR.o
+#else
+#define GDAL_SRCS
+#define GDAL_OBJS
+#define GDALLIB
+#endif
+
+NIO_DEFS = -DNIO_LIB_ONLY
+
+
+#define APPEND_UNDERSCORE 1
+#define NO_APPEND_UNDERSCORE 2
+#define CAPS_NO_APPEND_UNDERSCORE 3
+
+#if defined(AIX) 
+NGCALLF_DEF= -DFORTRAN_CALLING_METHOD=NO_APPEND_UNDERSCORE
+#endif
+
+EXTRA_CDEFINES = $(OS1_DEF) $(MAJOR_DEF) $(NETCDF4_DEFS) $(HDFEOS_DEFS) $(HDF4_DEFS) $(HDFEOS5_DEFS) $(HDF5_DEFS) $(GRIB2_DEFS) $(GDAL_DEFS) $(NIO_DEFS) $(NGCALLF_DEF)
+
+GEN_HDRS	=	NclTypeobj.h NclTypelogical.h \
+			NclTypedouble.h NclTypefloat.h \
+			NclTypeint.h NclTypelong.h \
+			NclTypeshort.h NclTypestring.h \
+			NclTypeushort.h NclTypeuint.h NclTypeulong.h \
+			NclTypeint64.h NclTypeuint64.h \
+			NclTypeubyte.h NclTypebyte.h NclTypechar.h TypeSupport.h 
+
+STATIC_HDRS	=	ApiRecords.h AttSupport.h DataSupport.h FileSupport.h  \
+			NclAtt.h NclCallBacksI.h NclData.h \
+			NclFile.h NclFileInterfaces.h NclMdInc.h NclHLUObj.h\
+			NclMultiDValData.h NclMultiDValHLUObjData.h \
+			OpsList.h Symbol.h VarSupport.h \
+			NclFileVar.h NclHLUVar.h HLUSupport.h NclCoordVar.h \
+			NclType.h defs.h NclGroup.h NclVar.h NclDataDefs.h NclFileInterfaces.h \
+			NclList.h NclMultiDValnclfileData.h \
+			NclOneDValCoordData.h h5data_struct.h \
+			date.h NclCCM.h NclGRIB.h NclGRIB2.h date.h tables.h \
+			NclMultiDVallistData.h NclTypelist.h ccmhdr.h \
+			cptec_254_gtb.h dwd_002_gtb.h dwd_201_gtb.h dwd_202_gtb.h \
+			dwd_203_gtb.h dwd_204_gtb.h dwd_205_gtb.h dwd_206_gtb.h dwd_207_gtb.h \
+			ecmwf_128_gtb.h ecmwf_129_gtb.h ecmwf_130_gtb.h ecmwf_131_gtb.h \
+			ecmwf_132_gtb.h ecmwf_133_gtb.h ecmwf_140_gtb.h ecmwf_150_gtb.h ecmwf_151_gtb.h \
+			ecmwf_160_gtb.h ecmwf_162_gtb.h ecmwf_170_gtb.h ecmwf_171_gtb.h ecmwf_172_gtb.h \
+			ecmwf_173_gtb.h ecmwf_174_gtb.h ecmwf_175_gtb.h ecmwf_180_gtb.h ecmwf_190_gtb.h \
+			ecmwf_200_gtb.h ecmwf_201_gtb.h ecmwf_210_gtb.h ecmwf_211_gtb.h ecmwf_228_gtb.h \
+			ecmwf_230_gtb.h ecmwf_234_gtb.h fnmoc_gtb.h \
+			fsl0_gtb.h fsl1_gtb.h fsl2_gtb.h ncep_opn_gtb.h \
+			ncep_reanal_gtb.h ncep_128_gtb.h ncep_129_gtb.h	 ncep_130_gtb.h \
+			ncep_131_gtb.h	ncep_133_gtb.h	ncep_140_gtb.h	ncep_141_gtb.h jma_3_gtb.h
+
+INSTALL_HDRS	=	nio.h niohlu.h nioNresDB.h defs.h Symbol.h NclDataDefs.h NclFile.h \
+			nioc.h nioError.h NclData.h nioBase.h nioCallbacks.h nioConvertP.h NclType.h \
+			nioConvert.h niohluP.h nioNgSizeT.h \
+			NclGroup.h NclVar.h NclFileInterfaces.h DataSupport.h FileSupport.h NclMdInc.h \
+			TypeSupport.h NclTypedouble.h NclTypefloat.h NclTypelong.h NclTypeint.h \
+			NclTypeshort.h NclTypestring.h NclTypelogical.h NclTypeubyte.h NclTypebyte.h NclTypechar.h \
+			NclTypeobj.h NclTypeint64.h NclTypeulong.h NclTypeuint.h NclTypeushort.h \
+			NclTypeuint64.h NclMultiDValData.h NclMultiDValHLUObjData.h \
+			NclMultiDValnclfileData.h NclOneDValCoordData.h NclMultiDVallistData.h
+
+NIO_ONLY_HDRS	=	cmpf.h nioBase.h nioBaseI.h nioBaseP.h nioCallbacks.h nioCallbacksP.h \
+			nioc.h nioConvert.h nioConvertP.h nioError.h nio.h niohlu.h niohluP.h \
+			nioNresDB.h nio_path.h nioResList.h nioVarArg.h nioNgSizeT.h 
+
+HDRS		=	$(GEN_HDRS) $(STATIC_HDRS) $(NIO_ONLY_HDRS)
+
+
+GEN_TYPE_SRCS	=	NclTypedouble.c NclTypefloat.c \
+			NclTypeint.c NclTypelogical.c \
+			NclTypelong.c NclTypeobj.c \
+			NclTypeshort.c NclTypestring.c \
+			NclTypeushort.c NclTypeuint.c NclTypeulong.c \
+			NclTypeint64.c NclTypeuint64.c \
+			NclTypebyte.c NclTypeubyte.c NclTypechar.c TypeSupport.c \
+			NclMultiDValData.c 
+
+STATIC_SRCS	=	AddFileFormats.c AttSupport.c DataSupport.c \
+			FileSupport.c Formats.c GetGrids.c \
+			InitData.c Memory.c NclAtt.c NclCCM.c \
+			NclCoordVar.c NclData.c NclFile.c NclFileVar.c \
+			NclGRIB.c NclMultiDValnclfileData.c \
+			NclNetCdf.c NclOneDValCoordData.c NclType.c \
+			NclTypelist.c NclGroup.c NclVar.c VarSupport.c \
+			ctoiee.c date.c cmpf.c 
+
+NIO_ONLY_CSRCS	=	cmpf.c nioBase.c nio.c nioCallbacks.c nioConvert.c nioError.c niohlu.c nio_io.c \
+			nioNclHLUStub.c nioNresDB.c nioQuarks.c nio_path.c
+
+NIO_ONLY_FSRCS	=	llmap.f llmisc.f
+
+
+GEN_SRCS	=	$(GEN_TYPE_SRCS)
+
+CSRCS		=	$(STATIC_SRCS) $(HDFEOS_SRCS) $(HDF4_SRCS) $(HDFEOS5_SRCS) $(HDF5_SRCS) $(GRIB2_SRCS) $(GDAL_SRCS)
+
+OPT_CSRCS	=	NclHDF.c NclHDFEOS.c NclHDFEOS5.c NclHDF5.c NclGRIB2.c NclOGR.c h5reader.c h5writer.c
+
+FSRCS		=	qu2reg3.f rowina3.f scm0.f ncepcode.f
+
+SRCS		=	$(GEN_SRCS) $(IO_SRCS) $(NIO_ONLY_CSRCS) $(NIO_ONLY_FSRCS) $(FSRCS)
+
+NIO_CP_SRCS	=	$(GEN_TYPE_SRCS) $(STATIC_SRCS) $(NIO_ONLY_CSRCS) $(NIO_ONLY_FSRCS) $(FSRCS) $(OPT_CSRCS)
+
+
+GEN_TYPE_OBJS	=	NclTypedouble.o NclTypefloat.o \
+			NclTypeint.o NclTypelogical.o \
+			NclTypelong.o NclTypeobj.o \
+			NclTypeshort.o NclTypestring.o \
+			NclTypeushort.o NclTypeuint.o NclTypeulong.o \
+			NclTypeint64.o NclTypeuint64.o \
+			NclTypebyte.o NclTypeubyte.o NclTypechar.o TypeSupport.o \
+			NclMultiDValData.o 
+
+STATIC_OBJS	=	AddFileFormats.o AttSupport.o DataSupport.o \
+			FileSupport.o Formats.o GetGrids.o \
+			InitData.o Memory.o NclAtt.o NclCCM.o \
+			NclCoordVar.o NclData.o NclFile.o NclFileVar.o \
+			NclGRIB.o NclHDF.o NclMultiDValnclfileData.o \
+			NclNetCdf.o NclOneDValCoordData.o NclType.o \
+			NclTypelist.o NclGroup.o NclVar.o VarSupport.o \
+			ctoiee.o date.o 
+
+NIO_ONLY_COBJS	=	nio.o nio_io.o nioError.o nioNresDB.o nioCallbacks.o \
+			nioQuarks.o cmpf.o nioBase.o \
+			nioConvert.o  niohlu.o \
+			nioNclHLUStub.o nio_path.o
+
+NIO_ONLY_FOBJS	=	llmap.o llmisc.o
+
+FOBJS		=	qu2reg3.o rowina3.o scm0.o ncepcode.o
+
+COMMON_OBJS	=	$(GEN_TYPE_OBJS) $(STATIC_OBJS) $(FOBJS) $(HDFEOS_OBJS) $(HDF4_OBJS) $(HDFEOS5_OBJS) $(HDF5_OBJS) $(GRIB2_OBJS) $(GDAL_OBJS) 
+OBJS		=	$(COMMON_OBJS) $(NIO_ONLY_COBJS) $(NIO_ONLY_FOBJS) 
+
+
+ConditionalInstallTarget($(HDRS),$(INSTALL_INC),$(PYNIOSRC),$(PYNIOSRC)/libsrc)
+ConditionalInstallTarget($(NIO_CP_SRCS),$(INSTALL_INC),$(PYNIOSRC),$(PYNIOSRC)/libsrc)
+
+LibraryTarget($(MYLIB_IO),$(OBJS))
+InstallTarget($(INSTALL_HDRS),$(INSTALL_INC),$(NCARGINCPATH)/nio)
+
+depend-local:: $(HDRS) $(SRCS)
+DependTarget($(SRCS))
+
+CleanFilesTarget($(GEN_HDRS) $(GEN_SRCS))
+
+TypeSupport.h: TypeSupport.h.sed TypeSupportMatTemplate.h.sed TypeSupportOpTemplate.h.sed TypeSupportMonoOpTemplate.h.sed
+	@$(SHELL) type_support_h.sh
+
+TypeSupport.c: TypeSupport.c.sed TypeSupportMatTemplate.c.sed TypeSupportOpTemplate.c.sed TypeSupportMonoOpTemplate.c.sed
+	@$(SHELL) type_support_c.sh
+
+NclMultiDValData.c: NclMultiDValData.c.sed MultiDValOp.c.sed NclMultiDValData.h math_funcs.sh MatMulDValOp.c.sed
+	@$(SHELL) multid_data_c.sh
+#
+# Data Object dependancies
+#
+
+#define	NclTypeRule_h(type)\
+]\
+NclType##type.h:	data_h.sh NclType.h.sed]\
+	@$(SHELL) data_h.sh type]
+
+#define NclTypeRule_c(type,xtra_dep)\
+]\
+NclType##type.c:	type##_data_c.sh op_funcs.sh NclType##type.c.specific xtra_dep]\
+	@$(SHELL) type##_data_c.sh]
+
+#define NclTypeRule(type,xtra_dep)\
+NclTypeRule_h(type)\
+NclTypeRule_c(type,xtra_dep)
+
+NUM_OP_TMPL	=	TypeDivOpTemplate.c.sed \
+			TypeFunctionOpTemplate.c.sed \
+			TypeMatMulOpTemplate.c.sed \
+			TypeIsMonoFunc.c.sed \
+			TypeMonoOpTemplate.c.sed \
+			TypeResetMissing.c.sed \
+			TypeSelectOpTemplate.c.sed \
+			TypeSimpleOpTemplate.c.sed \
+			TypeXorOpTemplate.c.sed \
+			TypeInitClassTemplate.c.sed \
+			NclType.c.sed \
+			NclType.h.sed 
+
+STR_OP_TMPL	=	TypestringCompareOpTemplate.c.sed \
+			TypestringSelectOpTemplate.c.sed \
+			TypeInitClassTemplate.c.sed \
+			NclTypestring.c.sed
+
+FILE_OP_TMPL	=	NclMultiDValData.c.sed MultiDValOp.c.sed 
+
+
+NclTypeRule(double,$(NUM_OP_TMPL))
+NclTypeRule(float,$(NUM_OP_TMPL))
+NclTypeRule(int,$(NUM_OP_TMPL))
+NclTypeRule(long,$(NUM_OP_TMPL))
+NclTypeRule(short,$(NUM_OP_TMPL))
+NclTypeRule(logical,$(NUM_OP_TMPL))
+NclTypeRule(string,$(STR_OP_TMPL))
+NclTypeRule(obj,$(NUM_OP_TMPL))
+NclTypeRule(char,$(NUM_OP_TMPL))
+NclTypeRule(byte,$(NUM_OP_TMPL))
+NclTypeRule(ubyte,$(NUM_OP_TMPL))
+NclTypeRule(int64,$(NUM_OP_TMPL))
+NclTypeRule(ushort,$(NUM_OP_TMPL))
+NclTypeRule(uint,$(NUM_OP_TMPL))
+NclTypeRule(ulong,$(NUM_OP_TMPL))
+NclTypeRule(uint64,$(NUM_OP_TMPL))
+
+
+#
+# Data Format Dependencies
+#
+ 
+NclHDF.o: NclHDF.c
+	  @echo 
+	  @echo Compiling NclHDF.c will generate warning messages.
+	  @echo These can safely be ignored.
+      $(CC) -c $(HDFDEFINES) $(HDF4_NETCDF) $(CFLAGS) NclHDF.c
+	  @echo 
+
+NclHDFEOS.o: NclHDFEOS.c
+	  @echo 
+	  @echo Compiling NclHDFEOS.c will generate warning messages.
+	  @echo These can safely be ignored.
+      $(CC) -c $(HDFDEFINES) $(HDF4_NETCDF) $(CFLAGS) NclHDFEOS.c
+	  @echo 
+
+NclHDFEOS5.o: NclHDFEOS5.c
+	  @echo 
+	  @echo Compiling NclHDFEOS5.c will generate warning messages.
+	  @echo These can safely be ignored.
+      $(CC) -c $(HDFDEFINES) $(HDF4_NETCDF) $(CFLAGS) NclHDFEOS5.c
+	  @echo 
+
+

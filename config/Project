@@ -1,0 +1,633 @@
+/*
+ *      $Id: Project,v 1.125 2010-05-03 18:22:29 haley Exp $
+ */
+
+/************************************************************************
+*                                                                       *
+*           Copyright (C) 1993                                          *
+*       University Corporation for Atmospheric Research                 *
+*           All Rights Reserved                                         *
+*                                                                       *
+************************************************************************/
+
+/*
+ *	File:		Project
+ *
+ *	Author:		Jeff W. Boote
+ *			National Center for Atmospheric Research
+ *			PO 3000, Boulder, Colorado
+ *
+ *	$Date: 2010-05-03 18:22:29 $
+ *
+ *	Description:	This file sets up defaults for all variables specific
+ *			to the ncarg project.  System defaults - ie compilers
+ *			etc are in the Template file.
+ */
+
+#define NcargVersion 6.0.0
+#define NclVersion 6.0.0
+
+#ifndef	BuildNCL
+#define	BuildNCL
+#else
+#if	!BuildNCL
+#undef	BuildNCL
+#endif
+#endif	/* BuildNCL */
+
+#ifndef    BuildNetCDF4
+#define    BuildNetCDF4
+#else
+#if    !BuildNetCDF4
+#undef BuildNetCDF4
+#endif
+#endif /* BuildNetCDF4 */
+
+#ifndef	BuildHDF4
+#define	BuildHDF4
+#else
+#if	!BuildHDF4
+#undef	BuildHDF4
+#endif
+#endif	/* BuildHDF4 */
+
+#ifndef	BuildHDFEOS
+#define	BuildHDFEOS
+#else
+#if	!BuildHDFEOS
+#undef	BuildHDFEOS
+#endif
+#endif	/* BuildHDFEOS */
+
+#ifndef	BuildHDFEOS5
+#define	BuildHDFEOS5
+#else
+#if	!BuildHDFEOS5
+#undef	BuildHDFEOS5
+#endif
+#endif	/* BuildHDFEOS5 */
+
+#ifndef BuildHDF5
+#define BuildHDF5
+#else
+#if     !BuildHDF5
+#undef  BuildHDF5
+#endif
+#endif  /* BuildHDF5 */
+
+#ifndef	BuildGRIB2
+#define	BuildGRIB2
+#else
+#if	!BuildGRIB2
+#undef	BuildGRIB2
+#endif
+#endif	/* BuildGRIB2 */
+
+#ifndef	BuildTRIANGLE
+#define	BuildTRIANGLE
+#else
+#if	!BuildTRIANGLE
+#undef	BuildTRIANGLE
+#endif
+#endif	/* BuildTRIANGLE */
+
+#ifndef	BuildUdunits
+#define	BuildUdunits
+#else
+#if	!BuildUdunits
+#undef	BuildUdunits
+#endif
+#endif	/* BuildUdunits */
+
+#ifndef    BuildV5D
+#undef BuildV5D
+#endif /* BuildV5D */
+
+/* No longer build the old PNG driver since we have the new cairo one. */
+#if !BuildPNG
+#undef	BuildPNG
+#endif
+
+/* Cairo and GDAL support are not yet built by default. */
+#if !BuildCAIRO
+#undef BuildCAIRO
+#endif
+
+#if !BuildGDAL
+#undef BuildGDAL
+#endif
+
+#if !BuildGRIDSPEC
+#undef BuildGRIDSPEC
+#endif
+
+#ifndef	BuildRasterHDF
+#define	BuildRasterHDF
+#else
+#if	!BuildRasterHDF
+#undef	BuildRasterHDF
+#endif
+#endif	/* BuildRasterHDF */
+
+#ifndef	BuildRasterHPPCL
+#define	BuildRasterHPPCL
+#else
+#if	!BuildRasterHPPCL
+#undef	BuildRasterHPPCL
+#endif
+#endif	/* BuildRasterHPPCL */
+
+#ifndef	BuildRasterNrif
+#define	BuildRasterNrif
+#else
+#if	!BuildRasterNrif
+#undef	BuildRasterNrif
+#endif
+#endif	/* BuildRasterNrif */
+
+#ifndef	BuildRasterSun
+#define	BuildRasterSun
+#else
+#if	!BuildRasterSun
+#undef	BuildRasterSun
+#endif
+#endif	/* BuildRasterSun */
+
+#ifndef	BuildRasterAVS
+#define	BuildRasterAVS
+#else
+#if	!BuildRasterAVS
+#undef	BuildRasterAVS
+#endif
+#endif	/* BuildRasterAVS */
+
+#ifndef	BuildRasterSGI
+#define	BuildRasterSGI
+#else
+#if	!BuildRasterSGI
+#undef	BuildRasterSGI
+#endif
+#endif	/* BuildRasterSGI */
+
+#ifndef	BuildRasterAbekas
+#define	BuildRasterAbekas
+#else
+#if	!BuildRasterAbekas
+#undef	BuildRasterAbekas
+#endif
+#endif	/* BuildRasterAbekas */
+
+#ifndef	BuildRasterBinary
+#define	BuildRasterBinary
+#else
+#if	!BuildRasterBinary
+#undef	BuildRasterBinary
+#endif
+#endif	/* BuildRasterBinary */
+
+#ifndef	BuildRasterYUV
+#define	BuildRasterYUV
+#else
+#if	!BuildRasterYUV
+#undef	BuildRasterYUV
+#endif
+#endif	/* BuildRasterYUV */
+
+#ifndef BuildXlibDependentCode
+#define BuildXlibDependentCode
+#else
+#if	!BuildXlibDependentCode
+#undef	BuildXlibDependentCode
+#endif
+#endif	/* BuildXlibDependentCode */
+
+#ifdef	BuildSunViewctrans
+#if	!(BuildSunViewctrans)
+#undef	BuildSunViewctrans
+#endif
+#endif	/* BuildSunViewctrans */
+
+#ifndef	HDFlib
+#define	HDFlib	-lmfhdf -ldf -ljpeg -lz
+#endif	/* HDFlib */
+
+#ifndef	PNGlib
+#define	PNGlib	-lpng -lz
+#endif	/* PNGlib */
+
+#ifdef BuildCAIRO
+#ifndef CAIROlib
+#define CAIROlib  -lcairo -lfontconfig -lpixman-1 -lfreetype -lexpat -lpng -lz
+#endif
+#else
+#define CAIROlib
+#endif
+
+#ifndef	HDFEOSlib
+#define	HDFEOSlib   -lhdfeos -lGctp
+#endif	/* HDFEOSlib */
+
+#ifndef	HDFEOS5lib
+#define	HDFEOS5lib   -lhe5_hdfeos -lGctp
+#endif	/* HDFEOS5lib */
+
+#ifndef	HDF5lib
+#define	HDF5lib	-lhdf5_hl -lhdf5 -lsz -lz
+#endif	/* HDF5lib */
+
+#ifdef BuildGDAL
+#ifndef	GDALlib
+#define	GDALlib   -lgdal -lproj
+#endif
+#else
+#define GDALlib
+#endif
+
+#ifdef BuildGRIDSPEC
+#ifndef	GRIDSPEClib
+#define	GRIDSPEClib   -lcf
+#endif
+#else
+#define GRIDSPEClib
+#endif
+
+#ifndef	GRIB2lib
+#define       GRIB2lib   -lgrib2c -ljasper -lpng -lz
+#endif	/* GRIB2lib */
+
+#ifndef	NetCDFlib
+#define	NetCDFlib	-lnetcdf -lcurl
+#endif	/* NetCDFlib */
+
+#ifndef	NetCDF4lib
+#define	NetCDF4lib	-lhdf5_hl -lhdf5 -lsz
+#endif	/* NetCDF4lib */
+
+#ifndef	UdUnitslib
+#define	UdUnitslib	-ludunits2 -lexpat
+#endif	/* UdUnitslib */
+
+#ifndef    V5Dlib
+#define    V5Dlib  -lv5d
+#endif /* V5Dlib */
+
+#ifndef	XdrLibrary
+#define	XdrLibrary	/**/
+#endif	/* XdrLibrary */
+
+#ifndef	ProjectDefines
+#define	ProjectDefines	-DNeedFuncProto
+#endif
+
+#ifndef	GksBufferSize
+#define GksBufferSize 0
+#endif	/* GksBufferSize */
+
+#ifdef BETA
+NGVERSION       = NcargVersion-BETA
+NCLVERSION      = NclVersion-BETA
+#else
+#ifdef DEVEL
+NGVERSION       = NcargVersion-$(DATE)
+NCLVERSION      = NclVersion-$(DATE)
+#else
+NGVERSION       = NcargVersion
+NCLVERSION      = NclVersion
+#endif
+#endif
+
+NCARGDIR		= ncarg
+HLUDIR			= hlu
+HLUEXDIR		= hluex
+NCLDIR			= ncl
+NCLEXDIR		= nclex
+PYNGLEXDIR		= pynglex
+PYNGLDIR		= PyNGL
+NGODIR			= ngo
+NFPDIR			= nfp
+NFPFORTDIR		= nfpfort
+DATADIR			= data
+GRIB2CODETABLEDIR	= grib2_codetables
+DBDIR			= database
+FONTCAPDIR		= fontcaps
+GRAPHCAPDIR		= graphcaps
+EXAMPLESDIR		= examples
+TUTORIALDIR		= tutorial
+TESTSDIR		= tests
+RESDIR			= resfiles
+ROBJDIR			= robj
+WWWDIR			= ngwww
+XAPPDIR			= xapp
+
+LIBNCARGROOT		= $(LIBROOT)/$(NCARGDIR)
+CONFIGROOT		= $(LIBNCARGROOT)/$(CONFIGDIR)
+DBROOT			= $(LIBNCARGROOT)/$(DBDIR)
+FONTCAPROOT		= $(LIBNCARGROOT)/$(FONTCAPDIR)
+GRAPHCAPROOT		= $(LIBNCARGROOT)/$(GRAPHCAPDIR)
+DATAROOT		= $(LIBNCARGROOT)/$(DATADIR)
+DOCROOT			= $(LIBNCARGROOT)/$(DOCDIR)
+EXAMPLESROOT		= $(LIBNCARGROOT)/$(EXAMPLESDIR)
+ROBJROOT		= $(LIBNCARGROOT)/$(ROBJDIR)
+TESTSROOT		= $(LIBNCARGROOT)/$(TESTSDIR)
+TUTORIALROOT		= $(LIBNCARGROOT)/$(TUTORIALDIR)
+WWWROOT			= $(LIBNCARGROOT)/$(WWWDIR)
+XAPPROOT		= $(LIBNCARGROOT)/$(XAPPDIR)
+HLUEXROOT		= $(LIBNCARGROOT)/$(HLUEXDIR)
+RESFILEROOT		= $(LIBNCARGROOT)/$(RESDIR)
+NCLEXROOT		= $(LIBNCARGROOT)/$(NCLEXDIR)
+GRIB2CODETABLEROOT	= $(LIBNCARGROOT)/$(GRIB2CODETABLEDIR)
+LIBNCARGPATH		= $(LIBPATH)/$(NCARGDIR)
+CONFIGPATH		= $(LIBNCARGPATH)/$(CONFIGDIR)
+DBPATH			= $(LIBNCARGPATH)/$(DBDIR)
+FONTCAPPATH		= $(LIBNCARGPATH)/$(FONTCAPDIR)
+GRAPHCAPPATH		= $(LIBNCARGPATH)/$(GRAPHCAPDIR)
+DATAPATH		= $(LIBNCARGPATH)/$(DATADIR)
+DOCPATH			= $(LIBNCARGPATH)/$(DOCDIR)
+EXAMPLESPATH		= $(LIBNCARGPATH)/$(EXAMPLESDIR)
+ROBJPATH		= $(LIBNCARGPATH)/$(ROBJDIR)
+TESTSPATH		= $(LIBNCARGPATH)/$(TESTSDIR)
+TUTORIALPATH		= $(LIBNCARGPATH)/$(TUTORIALDIR)
+WWWPATH			= $(LIBNCARGPATH)/$(WWWDIR)
+XAPPPATH		= $(LIBNCARGPATH)/$(XAPPDIR)
+LIBNCLPATH		= $(LIBNCARGPATH)/$(NCLDIR)
+HLUEXPATH		= $(LIBNCARGPATH)/$(HLUEXDIR)
+RESFILEPATH		= $(LIBNCARGPATH)/$(RESDIR)
+NCLEXPATH		= $(LIBNCARGPATH)/$(NCLEXDIR)
+NCARGINCPATH		= $(INCPATH)/$(NCARGDIR)
+HLUINCPATH		= $(NCARGINCPATH)/$(HLUDIR)
+NCLINCPATH		= $(NCARGINCPATH)/$(NCLDIR)
+NGOINCPATH		= $(NCARGINCPATH)/$(NGODIR)
+PYNGLDOCPATH		= webdoc/pyngl
+PYNGLBINPATH		= $(PYTHONBINDIR)
+PYNGLNCARGPATH		= $(PYTHONPKGSDIR)/$(PYNGLDIR)/$(NCARGDIR)
+USRRESFILE		= "~/.hluresfile"
+NCARGURL		= "ngurl"
+NCARGSITEFILE   = "ncargsite"
+
+ROOTPATHCHECK		= "/lib/ncarg/fontcaps/font1"
+
+/*
+ * This huge define is used to define all the Environment variables
+ * that NCAR Graphics uses.  Each env var is specified by a single
+ * line, with the list being terminated with a NULL.
+ *
+ * Field 1)	The name that the env var is reference by when ncargpath
+ *		is called from the shell.  Or the name sent in as the
+ *		parameter to the libncarg_c functions GetNCARGPath and
+ *		_NGGetNCARGEnv.
+ *
+ * Field 2)	The actual Environment variable that will contain the value.
+ *		If this field is NULL, then it is assumed that the name
+ *		of the env var is NCARG_{CAPS(Field 1)} - the prefix
+ *		NCARG_ with Field one capitolized and concatinated.
+ *
+ * Field 3)	If the current env var is a subdirectory of one of the other
+ *		env vars, then that name is placed here.  If the current
+ *		env var is not set, then the parent env var is retrieved
+ *		and VAL(Field 3)/(Field 1) is returned.  If field 3 is
+ *		set, then field 4 and 5 are not used.
+ *
+ * Field 4)	This specifies a default value for the env var if it is not
+ *		set, and it is not a subdirectory of another env var.
+ *
+ * Field 5)	If Field 4 is used, then Field 5 is a file/directory that
+ *		can be concatenated to Field 4 and stat'd to determine if
+ *		Field 4 is valid or not.  If (Field 4)/(Field 5) exists
+ *		then a warning message is printed out that (Field 4) is
+ *		being used as a default.  If it doesn't exist, then
+ *		an error message is reported and NULL is returned from the
+ *		functions and ncargpath reports the error.
+ */
+NGENV_DESCRIPT	= \
+		{"tmp","TMPDIR",NULL,"$(TMPROOT)",NULL,	\
+		"fontcap","FONTCAP",NULL,NULL,NULL,		\
+		"graphcap","GRAPHCAP",NULL,NULL,NULL,		\
+		"root",NULL,NULL,"$(ROOTPATH)",$(ROOTPATHCHECK),\
+		"usrresfile",NULL,NULL,$(USRRESFILE),NULL,	\
+		"gks_output",NULL,NULL,"gmeta",NULL,		\
+		"bin",NULL,"root",NULL,NULL,			\
+		"lib",NULL,"root",NULL,NULL,			\
+		"include",NULL,"root",NULL,NULL,		\
+		"man",NULL,"root",NULL,NULL,			\
+		"ncarg",NULL,"lib",NULL,NULL,			\
+		"config",NULL,"ncarg",NULL,NULL,		\
+		"data",NULL,"ncarg",NULL,NULL,			\
+		"database",NULL,"ncarg",NULL,NULL,		\
+		"doc",NULL,"ncarg",NULL,NULL,			\
+		"fontcaps",NULL,"ncarg",NULL,NULL,		\
+		"graphcaps",NULL,"ncarg",NULL,NULL,		\
+		"colormaps",NULL,"ncarg",NULL,NULL,		\
+		"rangs","NCARG_RANGS","database",NULL,NULL,	\
+		"udunits","NCARG_UDUNITS","ncarg",NULL,NULL,	\
+		"psadilookup","PSADILOOKUP_PATH",NULL,NULL,NULL,\
+		"examples",NULL,"ncarg",NULL,NULL,		\
+		"hluex",NULL,"ncarg",NULL,NULL,			\
+		"nclex",NULL,"ncarg",NULL,NULL,			\
+		"pynglex",NULL,"ncarg",NULL,NULL,		\
+		"resfiles",NULL,"ncarg",NULL,NULL,		\
+		"tests",NULL,"ncarg",NULL,NULL,			\
+		"tutorial",NULL,"ncarg",NULL,NULL,		\
+		"xapp",NULL,"ncarg",NULL,NULL,			\
+		"ngwww",NULL,"ncarg",NULL,NULL,			\
+		"ngurl",NULL,"ngwww",NULL,NULL,			\
+		"sysresfile",NULL,"ncarg",NULL,NULL,		\
+		"sysappres",NULL,"ncarg",NULL,NULL,		\
+		"grib2_codetables","NIO_GRIB2_CODETABLES","ncarg",NULL,NULL, \
+		"ftfonts",NULL,"database",NULL,NULL,            \
+		NULL}
+
+NGENVDEF	=	-DENV_DEFS=$(NGENV_DESCRIPT)
+
+#ifdef	UseInstalled
+#define _UseLib(a,b) b
+#define	_DepLib(a,b,c) b/c
+#define	_UseProg(a,b) b
+#else
+#define _UseLib(a,b) a b
+#define	_DepLib(a,b,c) a/c
+#define	_UseProg(a,b) a/b
+#endif
+
+COMMONSRC	= $(TOP)/common/src
+NCARG2DSRC	= $(TOP)/ncarg2d/src
+NGMATHSRC	= $(TOP)/ngmath/src
+NGMATHLIBSRC= $(NGMATHSRC)/lib
+NVIEWSRC	= $(TOP)/ncarview/src
+NVIEWBINSRC	= $(NVIEWSRC)/bin
+NVIEWLIBSRC	= $(NVIEWSRC)/lib
+NISRC		= $(TOP)/ni/src
+NIBINSRC	= $(NISRC)/bin
+NILIBSRC	= $(NISRC)/lib
+EXTERNALSRC	= $(TOP)/external
+PYNIOSRC        = $(TOP)/pynio
+NCARGCLIBSRC	= $(COMMONSRC)/libncarg_c
+NCARGLIBSRC	= $(NCARG2DSRC)/libncarg
+NCARGGKSLIBSRC	= $(NCARG2DSRC)/libncarg_gks
+NCARGOPTLIBSRC	= $(NCARG2DSRC)/liboptional
+CGMLIBSRC	= $(NVIEWLIBSRC)/libcgm
+CTRANSLIBSRC	= $(NVIEWLIBSRC)/libctrans
+ICTRANSLIBSRC	= $(NVIEWLIBSRC)/libictrans
+NCARGRASLIBSRC	= $(NVIEWLIBSRC)/libncarg_ras
+HLULIBSRC	= $(NILIBSRC)/hlu
+BLASSRC	        = $(EXTERNALSRC)/blas
+LAPACKSRC       = $(EXTERNALSRC)/lapack
+SPHERESRC	= $(EXTERNALSRC)/sphere3.1_dp
+FFTPACK5SRC	= $(EXTERNALSRC)/fftpack5_dp
+NGOLIBSRC	= $(NILIBSRC)/ngo
+XCBLIBSRC	= $(NILIBSRC)/xcb
+NFPLIBSRC	= $(NILIBSRC)/nfp
+NFPFORTLIBSRC	= $(NILIBSRC)/nfpfort
+NCLLIBSRC	= $(NISRC)/ncl
+NIOLIBSRC	= $(NILIBSRC)/nio
+
+#ifdef	BuildShared
+NCARGCLIB	= -lNGc
+NCARGLIB	= -lNGllu
+CNCARGLIB	= -lNGlluC
+NCARGGKSLIB	= -lNGgks
+NGMATHLIB	= -lNGmath
+CGMLIB		= -lNGcgm
+NCARGRASLIB	= -lNGras
+HLULIB		= -lNGhlu
+NGOLIB		= -lNGgo
+XCBLIB		= -lXcb
+NFPLIB		= -lnfp
+NFPFORTLIB	= -lnfpfort
+NIOLIB		= -lnio
+NCLLIB		=
+NCLAPILIB	= -lNGncl
+BLASLIB	        = -lblas_ncl
+LAPACKLIB       = -llapack_ncl
+SPHERELIB	= -lsphere3.1_dp
+FFTPACK5LIB	= -lfftpack5_dp
+
+CTRANSLIB	= -lNGctrans
+ICTRANS_LIB	= -lNGictrans
+
+DEPNCARGCLIB	=
+DEPNCARGLIB	=
+DEPNCARGGKSLIB	=
+DEPNCARGGKSCAIROLIB	=
+DEPNGMATHLIB	=
+DEPCGMLIB	=
+DEPNCARGRASLIB	=
+DEPHLULIB	=
+DEPHLUCAIROLIB	=
+DEPNGOLIB	=
+DEPNCLLIB	=
+DEPNCLAPILIB	=
+DEPNFPLIB	=
+DEPNIOLIB	=
+DEPNFPFORTLIB	=
+DEPBLASLIB	=
+DEPLAPACKLIB	=
+DEPSPHERELIB	=
+DEPFFTPACK5LIB	=
+
+DEPCTRANSLIB	=
+DEPICTRANS_LIB	=
+
+#else	/* BuildShared */
+NCARGCLIB	= _UseLib(-L$(NCARGCLIBSRC),-lncarg_c)
+NCARGLIB	= _UseLib(-L$(NCARGLIBSRC),-lncarg)
+NCARGGKSLIB	= _UseLib(-L$(NCARGGKSLIBSRC),-lncarg_gks)
+NCARGGKSCAIROLIB= _UseLib(-L$(NCARGGKSLIBSRC),-lncarg_gks_cairo)
+NGMATHLIB	= _UseLib(-L$(NGMATHLIBSRC),-lngmath)
+CGMLIB		= _UseLib(-L$(CGMLIBSRC),-lcgm)
+NCARGRASLIB	= _UseLib(-L$(NCARGRASLIBSRC),-lncarg_ras)
+HLULIB		= _UseLib(-L$(HLULIBSRC),-lhlu)
+HLUCAIROLIB	= _UseLib(-L$(HLULIBSRC),-lhlu_cairo)
+NGOLIB		= _UseLib(-L$(NGOLIBSRC),-lngo)
+NFPLIB		= _UseLib(-L$(NFPLIBSRC),-lnfp)
+NFPFORTLIB	= _UseLib(-L$(NFPFORTLIBSRC),-lnfpfort)
+NIOLIB		= _UseLib(-L$(NIOLIBSRC),-lnio)
+XCBLIB		= _UseLib(-L$(XCBLIBSRC),-lXcb)
+NCLLIB		= _UseLib(-L$(NCLLIBSRC),-lncl)
+NCLAPILIB	= _UseLib(-L$(NCLLIBSRC),-lnclapi)
+BLASLIB         = _UseLib(-L$(BLASSRC),-lblas_ncl)
+LAPACKLIB       = _UseLib(-L$(LAPACKSRC),-llapack_ncl)
+SPHERELIB	= _UseLib(-L$(SPHERESRC),-lsphere3.1_dp)
+FFTPACK5LIB	= _UseLib(-L$(FFTPACK5SRC),-lfftpack5_dp)
+
+CTRANSLIB	= _DepLib($(CTRANSLIBSRC),$(ROBJROOT),libctrans.o)
+ICTRANS_LIB	= _DepLib($(ICTRANSLIBSRC),$(ROBJROOT),libictrans_.o)
+
+DEPNCARGCLIB	= _DepLib($(NCARGCLIBSRC),$(LIBROOT),libncarg_c.a)
+DEPNCARGLIB	= _DepLib($(NCARGLIBSRC),$(LIBROOT),libncarg.a)
+DEPNCARGGKSLIB	= _DepLib($(NCARGGKSLIBSRC),$(LIBROOT),libncarg_gks.a)
+DEPNCARGGKSCAIROLIB= _DepLib($(NCARGGKSLIBSRC),$(LIBROOT),libncarg_gks_cairo.a)
+DEPNGMATHLIB	= _DepLib($(NGMATHLIBSRC),$(LIBROOT),libngmath.a)
+DEPCGMLIB	= _DepLib($(CGMLIBSRC),$(LIBROOT),libcgm.a)
+DEPNCARGRASLIB	= _DepLib($(NCARGRASLIBSRC),$(LIBROOT),libncarg_ras.a)
+DEPHLULIB	= _DepLib($(HLULIBSRC),$(LIBROOT),libhlu.a)
+DEPHLUCAIROLIB	= _DepLib($(HLULIBSRC),$(LIBROOT),libhlu_cairo.a)
+DEPNGOLIB	= _DepLib($(NGOLIBSRC),$(LIBROOT),libngo.a)
+DEPNFPLIB	= _DepLib($(NFPLIBSRC),$(LIBROOT),libnfp.a)
+DEPNFPFORTLIB	= _DepLib($(NFPFORTLIBSRC),$(LIBROOT),libnfpfort.a)
+DEPNIOLIB	= _DepLib($(NIOLIBSRC),$(LIBROOT),libnio.a)
+DEPNCLLIB	= _DepLib($(NCLLIBSRC),$(LIBROOT),libncl.a)
+DEPNCLAPILIB	= _DepLib($(NCLLIBSRC),$(LIBROOT),libnclapi.a)
+
+DEPCTRANSLIB	= $(CTRANSLIB)
+DEPICTRANS_LIB	= $(ICTRANS_LIB)
+#endif	/* BuildShared */
+
+ICTRANSLIB	= _DepLib($(ICTRANSLIBSRC),$(ROBJROOT),libictrans.o)
+DEPICTRANSLIB	= $(ICTRANSLIB)
+
+NCARGLIBS	= $(NCARGLIB) $(NCARGGKSLIB) $(NCARGCLIB)
+NCARGCAIROLIBS	= $(NCARGLIB) $(NCARGGKSCAIROLIB) $(NCARGCLIB)
+NGMATHLIBS	= $(NGMATHLIB)
+HLULIBS		= $(HLULIB)
+HLUCAIROLIBS	= $(HLUCAIROLIB)
+NCLLIBS		= $(NCLAPILIB)
+NFPLIBS		= $(NFPLIB) $(NFPFORTLIB)
+NIOLIBS		= $(NIOLIB)
+EXTERNALLIBS    = $(SPHERELIB) $(FFTPACK5LIB) $(LAPACKLIB) $(BLASLIB)
+
+DEPNCARGLIBS	= $(DEPNCARGLIB) $(DEPNCARGGKSLIB) $(DEPNCARGCLIB)
+DEPNCARGCAIROLIBS= $(DEPNCARGLIB) $(DEPNCARGGKSCAIROLIB) $(DEPNCARGCLIB)
+DEPHLULIBS	= $(DEPHLULIB)
+DEPHLUCAIROLIBS	= $(DEPHLUCAIROLIB)
+DEPNCLLIBS	= $(DEPHLULIB) $(DEPNCLAPILIB)
+DEPNCLCAIROLIBS	= $(DEPHLUCAIROLIB) $(DEPNCLAPILIB)
+DEPNFPLIBS	= $(DEPNFPLIB) $(DEPNFPFORTLIB)
+DEPNIOLIBS	= $(DEPNIOLIB)
+
+GRAPHCSRC	= $(COMMONSRC)/graphcap
+FONTCSRC	= $(COMMONSRC)/fontcap
+
+GRAPHC		= _UseProg($(GRAPHCSRC),graphc)
+FONTC		= _UseProg($(FONTCSRC),fontc)
+IFTRAN      = $(NCARGLIBSRC)/Iftran/Iftran
+FSPLIT      = $(NCARGLIBSRC)/Iftran/Fsplit
+NYACC      = $(NISRC)/nyacc/nyacc
+
+#ifdef	BuildRasterNetcdf
+NETCDFLIB	= $(NCDFLIBS) $(XDRLIB)
+#else
+NETCDFLIB	=
+#endif
+
+NCDFLIBS	= NetCDFlib
+PNGLIB		= PNGlib
+CAIROLIB	= CAIROlib
+HDFLIB		= HDFlib
+NETCDF4LIB      = NetCDF4lib
+HDFEOSLIB	= HDFEOSlib
+HDFEOS5LIB	= HDFEOS5lib
+HDF5LIB		= HDF5lib
+GDALLIB		= GDALlib
+GRIB2LIB	= GRIB2lib
+UDUNITSLIB	= UdUnitslib
+V5DLIB      	= V5Dlib
+GRIDSPECLIB     = GRIDSPEClib
+XDRLIB		= XdrLibrary
+HDFDEFINES	= HdfDefines
+VDEFINE		= -DNGVERSION='"$(NGVERSION)"'  -DNCLVERSION='"$(NCLVERSION)"'
+PROJECTDEFINES	= ProjectDefines
+GKS_BUFFER_SIZE	= GksBufferSize
+PERL = /bin/perl
+NCLWEBROOT      = /web/ncl
+PYNGLWEBROOT      = /web/pyngl
+

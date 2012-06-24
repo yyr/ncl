@@ -1,0 +1,16 @@
+#
+#	$Id: yMakefile,v 1.7 1994-04-08 22:24:21 haley Exp $
+#
+
+MAN =	sfgetc sfgeti sfgetp sfgetr sfnorm sfsetc sfseti sfsetp sfsetr sfsgfa \
+	sfwrld softfill softfill_params
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

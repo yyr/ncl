@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.9 1994-04-08 22:24:34 haley Exp $
+#
+
+MAN =	ezsrfc pwrzs setr srface surface surface_params
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

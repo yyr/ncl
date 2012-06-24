@@ -1,0 +1,428 @@
+
+/*
+ *      $Id: NclTypestring.c.specific 12144 2011-03-02 01:48:11Z dbrown $
+ */
+/************************************************************************
+*									*
+*			     Copyright (C)  1995			*
+*	     University Corporation for Atmospheric Research		*
+*			     All Rights Reserved			*
+*									*
+************************************************************************/
+/*
+ *	File:		
+ *
+ *	Author:		Ethan Alpert
+ *			National Center for Atmospheric Research
+ *			PO 3000, Boulder, Colorado
+ *
+ *	Date:		Fri Jan 27 18:28:03 MST 1995
+ *
+ *	Description:	
+ */
+#include "NclTypelogical.h"
+#include "NclTypefloat.h"
+
+static NhlErrorTypes Ncl_Type_string_print
+#if     NhlNeedProto
+(FILE *fp, void * val)
+#else
+(fp,val)
+FILE *fp;
+void *val;
+#endif
+{
+        string *sp = (string*)val;
+	int ret;
+
+        ret = nclfprintf(fp,"%s",NrmQuarkToString(*sp));
+	if(ret < 0) {
+                return(NhlWARNING);
+        } else {
+                return(NhlNOERROR);
+        }
+
+}
+
+
+
+
+
+
+
+
+
+static NhlErrorTypes Ncl_Type_string_coerce
+#if	NhlNeedProto
+(void * result, void* from, ng_size_t n, NclScalar* from_m, NclScalar *to_m,NclTypeClass fc)
+#else
+(result, from, n, from_m, to_m, fc)
+void * result;
+void* from;
+ng_size_t n;
+NclScalar* from_m;
+NclScalar *to_m;
+NclTypeClass fc;
+#endif
+{
+	ng_size_t i;
+	string *res = (string*)result;
+	int tmp;
+	NclTypeOp eq;
+	char buffer[NCL_MAX_STRING];
+	NclScalar tmp_mis;
+	
+
+        if((fc == NULL)||(fc->type_class.eq == NULL)
+                ||(result == NULL)
+                ||(from==NULL))
+                return(NhlFATAL);
+        else
+                eq = fc->type_class.eq;
+
+        if(to_m == NULL) {  
+		tmp_mis.stringval = ((NclTypeClass)nclTypestringClass)->type_class.default_mis.stringval;
+        } else {
+		tmp_mis.stringval = to_m->stringval;
+	}
+
+	switch(fc->type_class.type) {
+	case Ncl_Typelogical: {
+		string true = NrmStringToQuark("True");
+		string false = NrmStringToQuark("False");
+		string missing = NrmStringToQuark("Missing");
+		logical *fl = (logical*)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+			      *res = (*fl == (logical) -1) ? missing :  (*fl?true:false) ;	
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					*res = (*fl?true:false) ;
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+	case Ncl_Typestring: {
+		string *fl = (string*)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				*res = *fl;
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					*res = *fl;
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+	case Ncl_Typedouble: {
+		double *fl = (double*)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				sprintf(buffer,"%g",*fl);
+				*res = NrmStringToQuark(buffer);
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					sprintf(buffer,"%g",*fl);
+					*res = (string)NrmStringToQuark(buffer);
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+	case Ncl_Typefloat: {
+		float *fl = (float*)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				sprintf(buffer,"%g",*fl);
+				*res = NrmStringToQuark(buffer);
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					sprintf(buffer,"%g",*fl);
+					*res = (string)NrmStringToQuark(buffer);
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+	case Ncl_Typelong: {
+		long *fl = (long *)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				sprintf(buffer,"%ld",*fl);
+				*res = (string)NrmStringToQuark(buffer);
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					sprintf(buffer,"%ld",*fl);
+					*res = (string)NrmStringToQuark(buffer);
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+        case Ncl_Typeulong: {
+                unsigned long *fl = (unsigned long *)from;
+                if((from_m == NULL)||(to_m == NULL)) {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                sprintf(buffer,"%lu",*fl);
+                                *res = (string)NrmStringToQuark(buffer);
+                        }
+                } else {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                tmp = 0;
+                                (*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+                                if(tmp) {
+                                        *res = tmp_mis.stringval;
+                                } else {
+                                        sprintf(buffer,"%lu",*fl);
+                                        *res = (string)NrmStringToQuark(buffer);
+                                }
+                        }
+                }
+                return(NhlNOERROR);
+	}
+        case Ncl_Typeint64: {
+                long long *fl = (long long *)from;
+                if((from_m == NULL)||(to_m == NULL)) {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                sprintf(buffer,"%lld",*fl);
+                                *res = (string)NrmStringToQuark(buffer);
+                        }
+                } else {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                tmp = 0;
+                                (*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+                                if(tmp) {
+                                        *res = tmp_mis.stringval;
+                                } else {
+                                        sprintf(buffer,"%lld",*fl);
+                                        *res = (string)NrmStringToQuark(buffer);
+                                }
+                        }
+                }
+                return(NhlNOERROR);
+        }
+        case Ncl_Typeuint64: {
+                unsigned long long *fl = (unsigned long long *)from;
+                if((from_m == NULL)||(to_m == NULL)) {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                sprintf(buffer,"%llu",*fl);
+                                *res = (string)NrmStringToQuark(buffer);
+                        }
+                } else {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                tmp = 0;
+                                (*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+                                if(tmp) {
+                                        *res = tmp_mis.stringval;
+                                } else {
+                                        sprintf(buffer,"%llu",*fl);
+                                        *res = (string)NrmStringToQuark(buffer);
+                                }
+                        }
+                }
+                return(NhlNOERROR);
+        }
+	case Ncl_Typeint: {
+		int *fl = (int*)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				sprintf(buffer,"%d",*fl);
+				*res = (string)NrmStringToQuark(buffer);
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					sprintf(buffer,"%d",*fl);
+					*res = (string)NrmStringToQuark(buffer);
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+        case Ncl_Typeuint: {
+                unsigned int *fl = (unsigned int*)from;
+                if((from_m == NULL)||(to_m == NULL)) {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                sprintf(buffer,"%u",*fl);
+                                *res = (string)NrmStringToQuark(buffer);
+                        }
+                } else {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                tmp = 0;
+                                (*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+                                if(tmp) {
+                                        *res = tmp_mis.stringval;
+                                } else {
+                                        sprintf(buffer,"%u",*fl);
+                                        *res = (string)NrmStringToQuark(buffer);
+                                }
+                        }
+                }
+                return(NhlNOERROR);
+	}
+	case Ncl_Typeshort: {
+		short *fl = (short*)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				sprintf(buffer,"%d",*fl);
+				*res = (string)NrmStringToQuark(buffer);
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					sprintf(buffer,"%d",*fl);
+					*res = (string)NrmStringToQuark(buffer);
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+        case Ncl_Typeushort: {
+                unsigned short *fl = (unsigned short*)from;
+                if((from_m == NULL)||(to_m == NULL)) {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                sprintf(buffer,"%u",*fl);
+                                *res = (string)NrmStringToQuark(buffer);
+                        }
+                } else {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                tmp = 0;
+                                (*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+                                if(tmp) {
+                                        *res = tmp_mis.stringval;
+                                } else {
+                                        sprintf(buffer,"%u",*fl);
+                                        *res = (string)NrmStringToQuark(buffer);
+                                }
+                        }
+                }
+                return(NhlNOERROR);
+	}
+        case Ncl_Typeubyte: {
+                unsigned char *fl = (unsigned char*)from;
+                if((from_m == NULL)||(to_m == NULL)) {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                sprintf(buffer,"%u",*fl);
+                                *res = (string)NrmStringToQuark(buffer);
+                        }
+                } else {
+                        for(i = 0; i < n;i++,res++,fl++)  {
+                                tmp = 0;
+                                (*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+                                if(tmp) {
+                                        *res = tmp_mis.stringval;
+                                } else {
+                                        sprintf(buffer,"%u",*fl);
+                                        *res = (string)NrmStringToQuark(buffer);
+                                }
+                        }
+                }
+                return(NhlNOERROR);
+	}
+	case Ncl_Typebyte: {
+		byte *fl = (byte*)from;
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				sprintf(buffer,"0x%02x",*fl);
+				*res = (string)NrmStringToQuark(buffer);
+			}
+		} else {
+			for(i = 0; i < n;i++,res++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				if(tmp) {
+					*res = tmp_mis.stringval;
+				} else {
+					sprintf(buffer,"0x%02x",*fl);
+					*res = (string)NrmStringToQuark(buffer);
+				}
+			}
+		}
+		return(NhlNOERROR);
+	}
+/*
+* By definition the entire vector of characters is turned into a
+* single string
+*/
+	case Ncl_Typechar: {
+		char *fl = (char*)from;
+		int is_mis = 0;
+		char *lbuf;
+		int allocated = 0;
+		if(n > NCL_MAX_STRING -1) {
+			lbuf = NclMalloc((n+1) * sizeof(char));
+			allocated = 1;
+		}
+		else {
+			lbuf = buffer;
+		}
+		if((from_m == NULL)||(to_m == NULL)) {
+			for(i = 0; i < n;i++,fl++)  {
+				lbuf[i] = *fl;
+			}
+			lbuf[n] = '\0';
+			*res = (string)NrmStringToQuark(lbuf);
+		} else {
+			for(i = 0; i < n;i++,fl++)  {
+				tmp = 0;
+				(*eq)((void*)&tmp,(void*)fl,(void*)from_m,NULL,NULL,1,1);
+				lbuf[i] = *fl;
+				if(tmp) {
+					is_mis = 1;
+				} 
+			}
+			if(is_mis) {
+				*res = tmp_mis.stringval;
+			} else {
+				*res = NrmStringToQuark(lbuf);
+			}
+		}
+		if (allocated) {
+			NclFree(lbuf);
+		}
+		return(NhlNOERROR);
+	}
+	default:
+		return(NhlFATAL);
+	}
+}

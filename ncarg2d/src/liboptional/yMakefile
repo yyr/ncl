@@ -1,0 +1,25 @@
+#
+#	$Id: yMakefile,v 1.3 2007-02-25 15:16:13 haley Exp $
+#
+#
+#	Makefile for nonstandard dash, conran, and conrec routines.
+#
+#	This family of routines	share entry point names, 
+#	thus causing symbol clashes when sharing a library.  
+#	These routines are saved in relocatable
+#	object files, and may be loaded before the standard libraries
+#	are searched.
+#
+#	The default routines exist in libncarg.a and are currently
+#	dashsmth, conran, and conrec.
+#	The remaining members of these families are managed from
+#	within the libmisc subtree of the distribution.
+#
+
+#define IHaveSubdirs
+
+COMMON_SUBDIRS = \
+		conraq conras conrcqck conrcspr \
+		dashsmth dashline dashsupr agupwrtx ncarbd
+
+SUBDIRS = $(COMMON_SUBDIRS) $(OTHER_SUBDIRS)

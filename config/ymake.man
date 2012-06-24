@@ -1,0 +1,598 @@
+.\" The first line of this file must contain the '\"[e][r][t][v] line
+.\" to tell man to run the appropriate filter "t" for table.
+.\"
+.\"	$Id: ymake.man,v 1.17 1997-06-12 15:08:23 haley Exp $
+.\"
+.\"######################################################################
+.\"#									#
+.\"#			   Copyright (C)  1993 				#
+.\"#	     University Corporation for Atmospheric Research		#
+.\"#			   All Rights Reserved				#
+.\"#									#
+.\"######################################################################
+.\"
+.\"	File:		ymake.man
+.\"
+.\"	Author:		Jeff W. Boote
+.\"			National Center for Atmospheric Research
+.\"			PO 3000, Boulder, Colorado
+.\"
+.\"	Date:		Mon Jun 14 17:10:14 1993
+.\"
+.\"	Description:	This file explains what ymake is, and how to use it.
+.\"
+.ps 12
+.TH ymake 1NCARG "June 1993" "NCAR Graphics Local" "NCAR Graphics"
+.SH NAME
+.nh
+ymake \- C preprocessor interface to the \fBmake\fP utility
+.ny
+.SH SYNOPSIS
+\fBymake\fP [\fB\-config\fP \fIconfigpath\fP] [\fB\-noproject\fP] [\fB\-D\fP\fIdefine\fP] [\fB\-I\fP\fIdir\fP]
+.SH OPTIONS
+The following command line options may be passed to \fBymake\fP:
+.TP 8
+.B \-\fIconfig\fP
+This option should only be used by \fBymkmf\fP or by an existing \fIMakefile\fP.
+It is used to indicate that the \fBymake\fP program is being used from within
+the \fBNCARG\fP Distribution tree, and to indicate where the \fIconfig\fP
+directory is found.
+.TP 8
+.B \-\fInoproject\fP
+This option should only be used if \fBymake\fP is being used to manage software
+other than \fBNCAR Graphics\fP.  It causes \fBymake\fP to not use a
+\fIProject\fP file.
+.TP 8
+.B \-D\fIdefine\fP
+This option is passed directly to \fBcpp\fP.  It is typically used to set
+directory-specific variables.  For example, the NCAR Graphics distribution uses
+this flag to set \fITOPDIR\fP to the name of the directory containing the top
+of the distribution and \fICURDIR\fP to the name of the current 
+directory, relative to the top. Multiple -D flags may be sent to \fBymake\fP.
+.TP 8
+.B \-I\fIdirectory\fP
+This option is passed directly to \fBcpp\fP.  It is typically used to 
+indicate the directory in which the \fBymake\fP template and configuration
+files may be found. Multiple -I flags may be sent to \fBymake\fP, although
+it is usually not necessary to use this flag at all.
+.SH DESCRIPTION
+.B ymake
+is used to 
+generate \fIMakefiles\fP from a template, a set of \fBcpp\fP macro functions,
+and a per-directory input file called a \fIyMakefile\fP.  This allows machine
+dependencies (such as compiler options, alternate command names, and special
+\fBmake\fP rules) to be kept separate from the descriptions of the
+various items to be built. \fBymake\fP is usually used from within the
+NCAR Graphics source distribution tree.  When it is used in this way, it
+and all of the configuration files listed below can be found in the config
+subdirectory.  \fBymake\fP can also be used from the systems NCARG bin
+directory.
+When it is used in this way, it uses the \fINCARG_ROOT\fP environment
+variable to find the configuration files in
+.I $(NCARG_ROOT)/lib/ncarg/config.
+.SH "HOW IT WORKS"
+\fBymake\fP invokes \fBcpp\fP with any \fB\-I\fP or \fB\-D\fP flags passed
+on the command line and passes it the following line:
+.sp
+.nf
+	#include Template
+.fi
+.sp
+.PP
+The Template file reads in
+a machine-specific configuration file,
+a site-specific parameters file,
+a Project file defining variables,
+a file containing \fBcpp\fP macro functions for generating \fBmake\fP rules,
+and the \fIyMakefile\fP in the current directory.
+Additionally, if the \fIYMAKE_DEV_FILE\fP environment variable is set to an
+existing file,\fBymake\fP reads that file in directly after the \fISite\fP
+file.
+.PP
+The \fIyMakefile\fP uses the macro functions to indicate what
+targets should be built; \fBymake\fP takes care of generating the appropriate
+rules.
+.PP
+.I yMakefiles
+contain two types of macros, \fBcpp\fP macros
+and \fBmake\fP macros.  The \fBcpp\fP macros are interpreted by
+\fBcpp\fP when
+.B ymake
+is run.  By convention they are mixed case.  The \fBmake\fP variables are
+written into the
+.I Makefile
+for later interpretation by
+.B make.
+By convention
+.B make
+variables are upper case.
+.PP
+The rules file (named \fIRules\fP in the configuration directory) contains a
+variety of \fBcpp\fP macro functions that are
+configured according to the current platform.  \fBymake\fP replaces 
+any occurrences of the charactor (]) with a newline to allow macros that
+generate more than one line of \fBmake\fP rules.
+For example, the macro
+.ta .5i 1.5i 2.1i 5.5i
+.nf
+
+	#ifndef	CleanFilesTarget
+	#define	CleanFilesTarget(files)\e
+	]\e
+	clean::]\e
+		-@$(RM) files]
+	#endif	/* CleanFilesTarget */
+
+.fi
+when called with
+.I "CleanFilesTarget(foo foo1.o foo2.o)"
+in the \fIyMakefile\fP will expand to
+.nf
+
+	clean::
+		-@$(RM) foo foo1.o foo2.o
+
+.fi
+.ta
+in the \fIMakefile\fP.  To actually include the
+(]) charactor in a \fBmake\fP rule, escape the (]) charactor by preceding
+it with the backslash (\\) charactor.
+.PP
+On systems whose \fBcpp\fP reduces multiple tabs and spaces to a single
+space, \fBymake\fP attempts to put back any necessary tabs (\fBmake\fP is
+very picky about the difference between tabs and spaces).  For this reason,
+colons (:), and equals (=) in command lines must be preceded by a
+backslash (\\) to escape them. \fBymake\fP assumes lines with colons (:) and
+equals (=) should not have a tab before them unless they are escaped.
+.SH "USE IN NCAR GRAPHICS DISTRIBUTION"
+The NCARG distribution uses \fBymake\fP extensively for builds
+within the source tree.  It is also useful to build portions of the source tree
+or even external software, if it is used from the system's NCARG bin directory.
+As mentioned above,
+two special variables, \fITOPDIR\fP and \fICURDIR,\fP are set to make
+referencing files using relative path names easier.  For example, the
+following command is generated automatically to build the \fIMakefile\fP in
+the directory \fIncarg2d/src/libncarg\fP (relative to the top of the sources):
+.ta .5i 1i
+.sp
+.nf
+	%  ../../.././config/ymake -config ../../.././config \\
+		-DTOPDIR\=../../../. -DCURDIR\=./ncarg2d/src/libncarg
+.fi
+.sp
+.ta
+The \fIconfig\fP option to \fBymake\fP is used to tell \fBymake\fP that it
+is being invoked from within the NCAR Graphics full source tree.  It should
+only be used by the \fIMakefile.ini\fP and \fIMakefile\fP files in the NCAR
+Graphics full source tree, or from the \fBymkmf\fP program.
+.PP
+\fBymkmf\fP can be used to create a \fIMakefile\fP in the NCAR Graphics full
+source tree. It generates the above \fBymake\fP command.
+.SH "USE OUTSIDE OF NCAR GRAPHICS DISTRIBUTION"
+When building programs outside the full source tree \fBymake\fP should not
+be called directly.  Instead the \fBymkmf\fP command should be used.
+The typical way it would be used is to go to a directory in your
+source tree and then execute
+.B ``ymkmf topname''.
+.PP
+You would call it with the name of your top-level directory.
+For example if you had the \fIni\fP source tree you could create
+the \fIMakefile\fP in the \fIhlu\fP sub-directory like this:
+.ta .5i
+.sp
+.nf
+	host:~/src/ni/src/lib/hlu% ymkmf ni
+.fi
+.sp
+.ta
+The \fBymkmf\fP script will search up the directory hierarachy until it finds
+the \fItopdir\fP that was passed to it.  In this case it would create a
+\fIMakefile\fP with:
+.ta .5i 2i 2.5i 3.5i
+.sp
+	\fITOP\fP	=	../../../.
+.br
+	\fICURRENT_DIR\fP	=	./src/lib/hlu
+.ta
+.PP
+The \fITOP\fP and \fICURRENT_DIR\fP symbols are used to keep a common
+\fBinclude\fP tree from the \fITOP\fP directory.
+.PP
+Another feature of \fBymake\fP that is provided to support using it outside
+of the NCARG distribution tree is "local" configuration files.  If there
+is a file \fITOP\fP/ymake.project, then it is included instead of the
+default Project file in the config directory.  Also, if there is a file
+\fITOP\fP/ymake.conf, then it is included directly before the
+\fI$(YMAKE_DEV_FILE)\fP described below.
+.PP
+Additionally,
+you can set the environment variable \fI$(YMAKE_DEV_FILE)\fP to an additional
+configuration file that you provide.  The \fIYMAKE_DEV_FILE\fP gets
+included into the \fIMakefile\fP directly after the \fISite\fP file so it
+can over-ride cpp symbols set in the \fIArchitecture\fP file, or the
+\fISite\fP file.
+.PP
+There are also some \fImake\fP symbols reserved for use in the
+\fIYMAKE_DEV_FILE\fP.  They make it possible to configure the way programs
+are compiled and linked.  For example, if you are working on
+some of the functions in libncarg_gks.a, then you would want your test programs
+to use your version of the libncarg_gks.a library, not the one in the system's
+lib directory.  The way to do this would be to use the \fIDEV_LIB_SEARCH\fP
+\fBmake\fP symbol described below:
+.RS .5i
+.IP \fIDEV_DEFINES\fP 1.5i
+This symbol is used to add additional "-D" flags to the compile line.
+.IP \fIDEV_INCLUDES\fP 1.5i
+This symbol is used to add additional "-I" flags to the compile line.  These
+flags get added to the front of the compile line so they will take precedence
+over the other "-I" flags.
+.IP \fIDEV_LIB_SEARCH\fP 1.5i
+This symbol is used to add additional "-L" flags to the link line.  These
+flags get added to the front of the link line so they will take precedence
+over the other "-L" flags.
+.IP \fIDEV_SYS_LIBS\fP 1.5i
+This symbol is used to add additional libraries to the link line, with
+"-l" flags.  This symbol is often used in combination with the
+\fIDEV_LIB_SEARCH\fP symbol.
+.RE
+.PP
+The \fIDEV_LIB_SEARCH\fP flag can be used to change the libncarg_gks.a file
+that gets linked as follows:
+.sp
+.ta .5i 2i 2.5i
+.nf
+	DEV_LIB_SEARCH	=	-Lmy_dev_dir
+.fi
+.ta
+.sp
+.SH "INPUT FILES"
+Here is a summary of the files read by
+.B ymake.
+.nf
+.sp
+.ta .5i 2.5i
+Template		generic variables
+	$Site	site-specific, FirstSite defined
+	$Architecture	machine-specific
+	$Site	site-specific, SecondSite defined
+	$DevelopersFile	developers override file
+	Project	NCARG-specific variables
+	Rules	rules
+	yMakefile	per-directory control file
+.fi
+.ta
+.LP
+The Template file determines which Architecture file needs to be included and
+includes all the other files.  It also provides defaults for the generic
+variables.
+.LP
+The Site file is used to provide Site specific definitions.For example,
+this is the place the installer would set the install directories.  That
+way, they use that same directory for all the architectures.  Within the
+distribution, the Configure script sets up a Site.local file that will be
+used in place of the default Site file.    If the installer
+wants different directories they can provide different values to the
+Configure script.
+Note that \fISite\fP file gets included twice, once before the
+\fIArchitecture\fP file and once after.  Although most site customizations
+should be specified after the \fIArchitecture\fP file, some, such as the
+choice of compiler, need to be specified before, because
+variable settings in the \fIArchitecture\fP may depend on them.
+(There are currently no cases of this.)
+.LP
+The first time \fI$Site\fP file is included, the variable \fIFirstSite\fP
+is defined, and the second time, the variable \fISecondSite\fP is
+defined.  All code in \fISite\fP should be inside a \fBcpp\fP conditional for
+one of these symbols.
+.LP
+The \fIArchitecture\fP file sets Architecture specific \fBcpp\fP symbols.  There
+is a separate \fIArchitecture\fP file for each Machine/Operating System
+combination supported by \fBymake\fP.  These
+files should only set variables that are different from the defaults.
+.LP
+The \fIDevelopersFile\fP is a file specified by the YMAKE_DEV_FILE environment
+variable.  This file is used to override the \fBcpp\fP symbols set
+in any of the above files for development purposes.  The \fBcpp\fP symbols
+that are used to set the Optimization flags can also be set in this file.
+For example, the
+.I #define DEBUG
+line can go in this file, and all \fIMakefiles\fP created using
+it will use the debugging Optimization flags.
+.LP
+The \fIProject\fP file sets defaults for all the NCAR Graphics specific
+variables.
+For example this is where all the \fBmake\fP symbols that point to specific
+libraries are set.
+.LP
+The \fIRules\fP file contains all the \fBcpp\fP macros that are used in the
+\fIyMakefiles\fP.
+.SH "NCAR GRAPHICS LIBRARY SYMBOLS"
+The following list of \fBmake\fP symbols are defined by \fBymake\fP in the
+\fIProject\fP file.  These should be used in \fIyMakefiles\fP instead of
+specifying the file with a direct path name or "\-l" flag. If you use
+the \fI-local\fP parameter to \fBymake\fP these will not be defined.
+.LP
+.ta .5i 2i
+	\fINCARGCLIB\fP	libncarg_c.a
+.br
+	\fINCARGLIB\fP	libncarg.a
+.br
+	\fINCARGGKSLIB\fP	libncarg_gks.a
+.br
+	\fINGMATHLIB\fP	libngmath.a
+.br
+	\fICGMLIB\fP	libcgm.a
+.br
+	\fINCARGRASLIB\fP	libncarg_ras.a
+.br
+	\fIHLULIB\fP	libhlu.a
+.br
+	\fICTRANSLIB\fP	libctrans.o
+.br
+	\fIICTRANSLIB\fP	libictrans.o
+.br
+	\fIICTRANS_LIB\fP	libictrans_.o
+.LP
+Additionally, the following symbols have been defined that combine the above
+\fBmake\fP symbols into the groups they are usually used in:
+.RS .5i
+.IP \fINCARGLIBS\fP 1.5i
+$(NCARGLIB) $(NCARGGKSLIB) $(NCARGCLIB)
+.IP \fIHLULIBS\fP 1.5i
+$(HLULIB)
+.RE
+.LP
+There are also a full set of \fBdependent\fP library symbols to go along with
+the above symbols.  These \fBmake\fP symbols indicate the full path name
+of the library they represent.  This is useful for putting the libraries on
+the dependency list of a link command. (See the \fBFortranProgram\fP and
+\fBCProgram\fP rules in the \fBCOMPILE/LINK RULES\fP section.)
+.LP
+	\fIDEPNCARGLOCLIB\fP
+.br
+	\fIDEPNCARGCLIB\fP
+.br
+	\fIDEPNCARGLIB\fP
+.br
+	\fIDEPNCARGGKSLIB\fP
+.br
+	\fIDEPNGMATHLIB\fP
+.br
+	\fIDEPCGMLIB\fP
+.br
+	\fIDEPNCARGRASLIB\fP
+.br
+	\fIDEPHLULIB\fP
+.br
+	\fIDEPCTRANSLIB\fP
+.br
+	\fIDEPICTRANSLIB\fP
+.br
+	\fIDEPICTRANS_LIB\fP
+.br
+	\fIDEPNCARGLIBS\fP
+.br
+	\fIDEPHLULIBS\fP
+.SH "COMPILE/LINK RULES"
+.B ymake
+has some basic rules that are used to compile executables.
+.PP
+.B ymake
+uses three \fBmake\fP symbols to define the libraries to link with the object
+code in the current directory to create executables.  These three symbols
+are:
+.RS .5i
+.IP \fIPROG_LIBS\fP 1.5i
+This symbol defines the libraries that are part of the current directory
+hierarchy.  These libraries are linked in \fBstatically\fP and they come
+before the "\-L" flags on the link line.
+.IP \fIEXTRA_LIBS\fP 1.5i
+This symbol defines the libraries on the system that are not part of the
+current directory hierarchy, but that may not exist on all systems.  These
+libraries must also be linked \fBstatically\fP but they come after the
+"\-L" flags on the link line.
+.IP \fISYS_LIBS\fP 1.5i
+This symbol defines the system libraries that need to be linked into the
+executable.  These libraries should be standard libraries on the system.
+They should be linked in \fBdynamically\fP so the executable has a better
+chance of running on multiple versions of the OS.
+.RE
+.LP
+These \fBmake\fP symbols are used with the following rules to create
+an executable.  \fIprogram\fP indicates the name of the executable to
+create. \fIobjects\fP indicates the object files that need to be linked
+to create the executable.  \fIdeplibs\fP indicate the libraries that the
+executable is dependent upon.
+.RS .5i
+.IP \fBFortranProgram\fP(\fIprogram\fP,\fIobjects\fP,\fIdeplibs\fP) 1.5i
+This rule creates a program by linking the listed objects with the
+libraries indicated by setting the $(PROG_LIBS), $(EXTRA_LIBS) and
+$(SYS_LIBS) make symbols. This rule also puts the install rule in.
+It installs the executable into the \fIBIN_PATH\fP defined in the \fISite\fP
+file.  The deplibs indicate a full
+path name to the libraries used in this link that should be put on the
+dependency line of the link rule.  If the DEP[...] Library \fBmake\fP
+symbols are used \fBymake\fP will determine the path.
+.IP \fBFortranTarget\fP(\fIprogram\fP,\fIobjects\fP) 1.5i
+This rule is essentially identical to \fBFortranProgram\fP except that it
+doesn't keep track of the dependent libraries, so it doesn't re-link
+if the libraries are re-compiled.
+.IP \fBFNotInstalledTarget\fP(\fIprogram\fP,\fIobjects\fP) 1.5i
+This rule is essentially identical to \fBFortranTarget\fP except that it
+doesn't put the install rule in.  It is intended to be used to create
+programs that are only used within the distribution or are installed
+into a different directory than the default \fIBIN_PATH\fP.
+.IP \fBCProgram\fP(\fIprogram\fP,\fIobjects\fP,\fIdeplibs\fP) 1.5i
+This rule is the same as \fBFortranProgram\fP except
+that it uses the C Compiler
+to link instead of the Fortran Compiler as the \fBFortranProgram\fP rule does.
+.IP \fBCTarget\fP(\fIprogram\fP,\fIobjects\fP) 1.5i
+This rule is the same as \fBFortranTarget\fP except
+that it uses the C Compiler
+to link instead of the Fortran Compiler as the \fBFortranTarget\fP rule does.
+.IP \fBCNotInstalledTarget\fP(\fIprogram\fP,\fIobjects\fP) 1.5i
+This rule is the same as the \fBFNotInstalledTarget\fP except
+that it uses the C Compiler
+to link instead of the Fortran Compiler as the \fBFNotInstalledTarget\fP rule
+does.
+.RE
+.SH "MANAGING SUBDIRECTORIES"
+.B ymake
+manages all subdirectory handling itself.  It just needs to be told that the
+given directory has subdirectories, and what those subdirectories are.  To
+do that, you use the
+.I #define IHaveSubdirs
+.B cpp
+directive and set the \fBmake\fP symbol \fISUBDIRS\fP to the list of
+subdirectories in the \fIyMakefile\fP.  If a subdirectory listed in the
+\fISUBDIRS\fP symbol doesn't exist, then ymake reports it and continues.
+That way, it is possible to be working with portions of a build tree
+without having to edit the \fIyMakefiles\fP.
+.SH "MAKE SYMBOLS"
+The following is a list of many of the \fBmake\fP symbols that are reserved
+for use in \fIyMakefiles\fP:
+.RS .5i
+.IP EXTRA_CDEFINES 1.8i
+Used as part of CFLAGS to compile C programs.  It should be used to put in
+additional -D flags for the compile line.
+.IP EXTRA_FDEFINES 1.8i
+Used as part of FFLAGS to compile Fortran programs.  It should be used to put
+in -D flags for the compile line.  Be careful since the -D flag is not
+supported for all Fortran compilers.
+.IP EXTRA_DEFINES 1.8i
+Used to add -D flags to both fortran and C compiles.
+Same warning applies for Fortran compiles.
+.IP EXTRA_INCLUDES 1.8i
+Used to add -I flags to C compiles.
+.IP EXTRA_CLDFLAGS 1.8i
+Used to add additional LD flags for the linking of C
+programs.
+.IP EXTRA_FLDFLAGS 1.8i
+Used to add additional LD flags for the linking of
+Fortran programs.
+.IP EXTRA_LDFLAGS 1.8i
+Used to add additional LD flags for the linking of
+Fortran and C programs.
+.IP PROG_LIBS 1.8i
+Used to specify the libraries that need to be linked
+into a program that are part of the distribution.
+Only make symbols should be used to set this make
+symbol. ex. PROG_LIBS = $(NCARGLIB) $(NCARGLOCLIB)
+.IP EXTRA_LIBS 1.8i
+Used to specify the libraries that need to be linked
+into a program that are not part of the distribution,
+but that may not be installed on all systems - so they
+need to be linked into the executable statically for
+the architectures that support dynamic libs.
+.IP SYS_LIBS 1.8i
+Used to specify the system libraries that need to be
+linked into a program.  These libraries include the
+libc.a and all other libraries that are sure to be
+installed on the target system.  These should be linked
+dynamically so our programs work no matter which version
+of the OS is being used on the target system.
+.IP SUBDIRS 1.8i
+Used in conjunction with the IHaveSubdirs cpp symbol
+to manage sub-directories. It should be set to the list of sub-directories
+that should be built.
+.RE
+.SH "SYSTEM SPECIFIC SYMBOLS"
+For each supported system, there will be a set of \fBcpp\fP symbols defined
+in \fBymake\fP that can be used in the \fIyMakefile\fP to conditionally
+set things in that \fIymakefile\fP. There are six possible symbols that can
+be set:
+.RS .5i
+.IP Os 2i
+Name of Operating system
+.br
+.IP MajorOs Version 2i
+Major Version Number/Designator
+.IP MinorOs Version 2i
+Minor Version Number/Designator
+.IP SubMinorOs Version 2i
+SubMinor Version Number/Designator
+.IP Vendor Name 2i
+Vendor Name
+.IP Architecture 2i
+Architecture Name, possibly including Model number.
+.RE
+.PP
+This table shows the actual symbols that are defined, or the values the given
+symbols are defined to, for the currently supported systems:
+.sp
+.ta 1i 1.8i 2.5i 3.3i 4.1i 4.8i 5.6i 6.4i
+.nf
+VENDOR	HP	IBM	SUN	SUN	CRAY	SGI	DEC	DEC
+ARCH	HP9k7xx	RS6kxx	sun[34]	sun4	YMP	IPxx	RISC	alpha
+OS	HPUX	AIX	SunOS	Solaris	UNICOS	IRIX	ULTRIX	OSF1
+MAJOR=	A	3	4,5	5	6	4	4	1
+MINOR=	09	1	1,?	?	1	0	3	1
+SUBMINOR=	01	null	2,3,?	?	null	5[C-F]	null	null
+.fi
+.ta 
+.PP
+If you want to have any of these symbols defined in the source code you
+can set the \fIEXTRA_DEFINES\fP symbol described above to the following
+\fBmake\fP symbols that are defined by the \fITemplate\fP:
+.RS .5i
+.IP VENDOR_DEF
+This
+.B make
+symbol is set to -D\fIsym\fP where \fIsym\fP is the Vendor name listed above
+for the given system.
+.IP ARCH_DEF
+This
+.B make
+symbol is set to -D\fIsym\fP where \fIsym\fP is the Architecture name as listed
+above for the given system.
+.IP OS_DEF
+This
+.B make
+symbol is set to -D\fIsym\fP where \fIsym\fP is the Os name as listed above
+for the given system.
+.IP MAJOR_DEF
+This
+.B make
+symbol is set to -D\fIMAJOR=n\fP where \fIn\fP is the major revision
+designator for the given system.
+.IP MINOR_DEF
+This
+.B make
+symbol is set to -D\fIMINOR=n\fP where \fIn\fP is the minor revision
+designator for the given system.
+.IP SUBMINOR_DEF
+This
+.B make
+symbol is set to -D\fISUBMINOR=n\fP where \fIn\fP is the sub-minor revision
+designator for the given system.
+If it is null above, then \fISUBMINOR_DEF\fP will also be null.
+.RE
+.SH "ENVIRONMENT VARIABLES"
+The following environment variables may be used by \fBymake\fP.
+.RS .5i
+.TP 5
+.B YMAKE_DEV_FILE
+If defined, this should be a valid file including \fBmake\fP symbol definitions
+to override the default ones.  This Environment variable is only used
+if \fBymake\fP is being used from the bin directory; it will not affect a full
+NCAR Graphics distribution build.
+.TP 5
+.B NCARG_ROOT
+This is used by \fBymake\fP to find its config directory if \fBymake\fP is
+being used from the system's bin directory.
+.TP 5
+.B NCARG_CONFIG
+This is used by \fBymake\fP to find its config directory if \fBymake\fP is
+being used from the system's bin directory.  It is more specific, thus more
+binding than the \fINCARG_ROOT\fP environment variable.
+.RE
+.SH "SEE ALSO"
+make(1),ncargpath(1)
+.SH BUGS
+.B ymake
+isn't particularly easy to use.
+.SH COPYRIGHT
+Copyright 1987, 1988, 1989, 1991, 1993 University Corporation for Atmospheric
+Research
+.br
+All Rights Reserved

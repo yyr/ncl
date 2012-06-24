@@ -1,0 +1,1461 @@
+#!/bin/csh -f
+#
+#      $Id: Configure,v 1.58.2.1 2010-05-02 16:55:13 haley Exp $
+#
+#########################################################################
+#																		#
+#			   Copyright (C)  1994										#
+#	     University Corporation for Atmospheric Research				#
+#			   All Rights Reserved										#
+#########################################################################
+#
+#	File:		Configure		
+#
+#	Author:		Jeff W. Boote
+#				National Center for Atmospheric Research
+#				POB 3000, Boulder, Colorado
+#
+#	$Date: 2010-05-02 16:55:13 $
+#
+#	Description:	I took pieces of the old configure script to
+#					build this one.
+
+onintr cleanup
+
+set cmd = $0
+set cmddir = ${cmd:h}
+set cmdname = ${cmd:t}
+if (($cmddir != $cmdname) && ($cmddir != ".")) then
+	echo "Must be at top of NCARG source tree."
+	echo "cd to $cmddir and try again."
+	goto cleanup
+endif
+
+if ((! -d config) || (! -x config/ymkmf)) then
+	echo "Where is the config/ymkmf program???"
+	echo "It should be at ./config/ymkmf"
+	goto cleanup
+endif
+
+set ymkmfcmd=./config/ymkmf
+
+if ($#argv > 0) then
+	while ($#argv)
+		switch($argv[1])
+		case "-debug":
+			set verbose
+			breaksw
+		case "-v":
+			set verbose_option
+			breaksw
+		case "-ncar":
+			set ncar_option
+			breaksw
+		default:
+			echo "Error: Unknown command-line argument."
+			exit 1
+			breaksw
+		endsw
+		shift
+	end
+endif
+
+foreach dir ($path)
+	if (-x $dir/make) then
+		set makecmd=$dir/make
+		break
+	endif
+end
+
+if (! $?makecmd) then
+	echo "This Configure Script depends upon the 'make' program."
+	echo "It doesn't appear to be available.  Please check your PATH"
+	echo "and restart this script."
+	goto cleanup
+endif
+
+foreach dir ($path)
+	if (-x $dir/makedepend) then
+		set makedependcmd=$dir/makedepend
+		break
+	endif
+end
+
+if(! $?makedependcmd) set nomakedepend
+
+if (-e ./config/Site.local) then
+	echo "	*** WARNING:There is a previous configuration saved."
+	echo ""
+	echo "Overwrite existing configuration? (n)"
+	echo -n "Enter Return(default), y(yes), n(no), or q(quit) > "
+	set answer="$<"
+	if ("$answer" == "q") goto cleanup
+	if ("$answer" == "y") then
+		if ($?ncar_option) then
+			rm ./config/Site.local
+		endif
+		goto overwrite
+	endif
+	goto shortcut
+endif
+
+overwrite:
+
+if ($?ncar_option) goto shortcut
+
+onintr extra_cleanup
+
+echo "/* Default Config */" > config/Site.local
+echo "#define EmptySite" >> config/Site.local
+if ($?nomakedepend) echo "#define NoMakeDepend" >> config/Site.local
+
+echo ""
+echo "Building top-level Makefile to determine System defaults"
+echo ""
+$ymkmfcmd
+if ($status) then
+	echo "Unable to build Makefile - fix above errors and re-run."
+	goto cleanup
+endif
+echo ""
+echo "Makefile built, checking defaults..."
+echo ""
+echo ""
+
+set parentdir=`$makecmd ROOT`
+echo -n "..."
+set tmpdir=`$makecmd TROOT`
+echo -n "..."
+set loclib=`$makecmd LSEARCH`
+echo -n "..."
+set locinc=`$makecmd ISEARCH`
+echo -n "..."
+#
+# The python stuff is commented out for now. One should use
+# the "setup.py" method for building python software, and not
+# the ymake system.
+#
+set buildncl=`$makecmd NCLSTUFF`
+echo -n "..."
+# set pythondir=`$makecmd PYTHONDIR`
+# echo -n "..."
+# set pythonversion=`$makecmd PYTHONVERS`
+# echo -n "..."
+set buildxlibstuff=`$makecmd XSTUFF`
+echo -n "..."
+set buildtriangle=`$makecmd TRIANGLESTUFF`
+echo -n "..."
+# set buildpng=`$makecmd PNGSTUFF`
+# echo -n "..."
+set buildcairo=`$makecmd CAIROSTUFF`
+echo -n "..."
+set buildgdal=`$makecmd GDALSTUFF`
+echo -n "..."
+set buildhdf4=`$makecmd HDF5STUFF`
+echo -n "..."
+set buildrasterhdf=`$makecmd RASTERHDFSTUFF`
+echo -n "..."
+set buildnetcdf4=`$makecmd NETCDF4STUFF`
+echo -n "..."
+set buildudunits=`$makecmd UDUNITSSTUFF`
+echo -n "..."
+set buildhdfeos=`$makecmd HDFEOSSTUFF`
+echo -n "..."
+echo -n "..."
+set buildhdfeos5=`$makecmd HDFEOS5STUFF`
+echo -n "..."
+echo -n "..."
+set buildhdf5=`$makecmd HDF5STUFF`
+echo -n "..."
+set buildgrib2=`$makecmd GRIB2STUFF`
+echo -n "..."
+set buildv5d=`$makecmd V5DSTUFF`
+echo -n "..."
+# set buildpyngl=`$makecmd PYNGLSTUFF`
+# echo -n "..."
+set builddods=`$makecmd DODSSTUFF`
+echo -n "..."
+set buildgridspec=`$makecmd GRIDSPECSTUFF`
+echo -n "..."
+set ncargversion=`$makecmd NGVERS`
+echo -n "..."
+set nclversion=`$makecmd NCLVERS`
+echo ""
+/bin/rm Makefile
+
+onintr cleanup
+
+QuestionAndAnswer:
+echo ""
+echo "*** Configuration Procedure for NCL and NCAR Graphics V$nclversion ***"
+echo ""
+
+if ($?verbose_option) then
+  cat <<"EOF"
+======================================================================
+
+	This question and answer session will allow you to configure
+	NCL and NCAR Graphics for installation.  It creates a file
+	"Site.local" in the "config" directory that defines Site
+	specific information.  This procedure will also check that the
+	directories specified are accessible and that the required
+	system support is available.
+
+======================================================================
+"EOF"
+
+  echo -n "Enter Return to continue, or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+
+  cat <<"EOF"
+======================================================================
+
+	Informational text (like the paragraph you are reading) is
+	indented by one tab stop.  Questions are left justified;
+	usually, the default answer is in parentheses at the end of
+	the question.  At the prompt, you may select the default by
+	entering a Return (carriage return) or you may enter any of
+	the other valid responses.
+
+======================================================================
+"EOF"
+
+endif
+
+if (! $?verbose_option) then
+  echo "======================================================================"
+  echo "Run 'Configure -v' if you want more information about the"
+  echo "questions that follow."
+  echo "======================================================================"
+endif
+
+echo -n "Enter Return to continue, or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+
+
+#
+# Whether to build NCL or not.
+#
+if (-e ni) then
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	The NCAR Command Language (NCL) is a free interpreted language
+	designed specifically for scientific data processing and
+	visualization. NCL has robust file input and output. It can
+	read in netCDF, HDF4, HDF-EOS2, HDF-EOS5, HDF5, GRIB 1/2, binary
+	and ASCII data.
+
+	It requires some external packages (like netCDF),
+	and has several optional packages you can build in (HDF4, UDUNITS2,
+	Triangle, HDF-EOS2, HDF-EOS5, HDF5, and Vis5D functions).
+
+	NCL is a separate software package from NCAR Graphics. You
+	don't don't need it in order to build or use NCAR Graphics.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build NCL ($buildncl)?"
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildncl")) then
+    set buildncl = $answer
+    set newbuildncl
+    set altered
+  endif
+else
+#  echo ""
+#  echo "Not building NCL...source code directory is not available."
+  set buildncl = "n"
+  set buildudunits = "n"
+  set buildtriangle = "n"
+  set newbuildncl
+  set altered
+endif
+
+#
+# Parent installation directory for NCL/NCAR Graphics.
+#
+
+proc_parent:
+if ($?verbose_option) then
+  cat <<"EOF"
+======================================================================
+
+	The NCL/NCAR Graphics software must be installed in a parent 
+	directory containing subdirectiries 'bin', 'include', 'lib',
+	and 'man'. This procedure will make sure that these
+	directories are writable by the installation process.
+
+======================================================================
+"EOF"
+endif
+
+echo ""
+echo "Parent installation directory : $parentdir"
+echo -n "Enter Return (default), new directory, or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+if ("$answer" != "") then
+  set parentdir="$answer"
+  set altered
+endif
+
+if (-d $parentdir) then
+  if (! -w "$parentdir") then
+    echo "<$parentdir> is not writable."
+    echo "New directory name? (y)"
+    echo -n "Enter Return(default), y(yes), n(no), or q(quit) > "
+    set answer="$<"
+    if ("$answer" == "q") goto cleanup
+    if ("$answer" == "y" || "$answer" == "") goto proc_parent
+  endif
+endif
+
+#
+# Make sure subdirs bin, include, lib, and man are writable.
+#
+
+set instdirs = ("bin" "include" "lib" "man")
+
+foreach d($instdirs)
+  set dir = "$parentdir/$d"
+  if (-d "$dir") then
+    if (! -w "$dir") then
+      echo "<$dir> is not writable"
+      echo "New parent directory name? (y)"
+      echo -n "Enter Return(default), y(yes), n(no), or q(quit) > "
+      set answer="$<"
+      if ("$answer" == "q") goto cleanup
+      if ("$answer" == "y" || "$answer" == "") goto proc_parent
+    endif
+  endif
+end
+
+#
+# Temp space directory.
+#
+
+proc_tmp:
+
+if ($?verbose_option) then
+  cat <<"EOF"
+======================================================================
+
+	A couple of the translators make use of temporary
+	file space.  On most systems, the directory "/tmp" is the
+	logical choice.  You may specify a different directory to
+	use for this purpose.  The directory must be writable by
+	NCL/NCAR Graphics users.  This procedure will check only to
+	make sure that the directory specified is writable by the
+	installation process.
+
+======================================================================
+"EOF"
+endif
+
+echo ""
+echo "System temp space directory   : $tmpdir"
+echo -n "Enter Return (default), new directory, or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+if ("$answer" != "") then
+  set tmpdir="$answer"
+  set newtmp
+  set altered
+endif
+
+if (-d "$tmpdir") then
+  if (! -w "$tmpdir") then
+    echo "<$tmpdir> is not writable"
+    echo "New directory name? (y)"
+    echo -n "Enter Return(default), y(yes), n(no), or q(quit) > "
+    set answer="$<"
+    if ("$answer" == "q") goto cleanup
+    if ("$answer" == "y" || "$answer" == "") goto proc_tmp
+  endif
+endif
+
+#
+# NCAR View stuff.
+#
+
+if ($?verbose_option) then
+  cat <<"EOF"
+======================================================================
+
+	The next few questions concern some of the applications in
+	NCAR Graphics that allow the user to manipulate and view
+	NCAR Graphics Computer Graphics	Metafiles (NCGM's).  For
+	example, "ctrans" is an NCGM translator that can support the
+	X Window System, PostScript, and many other graphics
+	devices, and "idt" is an X window interactive image display
+	tool which allows the user to do animation among other
+	things.  There are also several raster applications which
+	allow you to convert from one raster format to another,
+	split raster files, and view raster files.
+
+	In order to build pieces of these applications, you need the
+	basic X11 libraries.  If you don't have these libraries,
+	answer "n" to the next question.
+
+======================================================================
+"EOF"
+endif
+
+#
+# Don't ask about PNG support here, because PNG support is now
+# part of cairo.
+#
+# PNG
+#
+# if ($?verbose_option) then
+#   cat <<"EOF"
+# ======================================================================
+# 
+# 	There's some experimental code in the GKS library in NCAR
+# 	Graphics that allows you to create PNG files in the
+# 	same way that you can output to an NCGM, PS, or PDF file. 
+# 	If you want to try this code, then you'll need to download
+# 	and install the png and zlib source code and link against
+# 	their libraries whenever you link an NCAR Graphics program.
+# 
+# ======================================================================
+# "EOF"
+# endif
+# 
+# echo ""
+# echo "Build png/zlib support (optional) into GKS library? ($buildpng)"
+# echo "(Requires the external png/zlib libraries available from"
+# echo "http://www.libpng.org/pub/png/libpng.html and http://www.zlib.net/) "
+# echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+# set answer="$<"
+# if ("$answer" == "q") goto cleanup
+# if (("$answer" != "") && ("$answer" != "$buildpng")) then
+# 	set buildpng = $answer
+# 	set newbuildpng
+#     set altered
+# endif
+
+#
+# Cairo.
+#
+if ($?verbose_option) then
+  cat <<"EOF"
+======================================================================
+
+	If you want access to the cairo workstations, which will
+	give you PNG and smaller PDF files, then you'll need to
+	download several packages along with cairo. This is
+	experimental for now, so unless you know what you're doing,
+	answer "n" to this question.
+
+======================================================================
+"EOF"
+endif
+
+echo ""
+echo "Build cairo support (optional) into GKS library? ($buildcairo)"
+echo "(Requires the cairo and other external libraries available from"
+echo "http://cairographics.org/) "
+echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+if (("$answer" != "") && ("$answer" != "$buildcairo")) then
+	set buildcairo = $answer
+	set newbuildcairo
+    set altered
+endif
+
+#
+# HDF4 is now optional for NCL. Nevertheless because it is also an option 
+# for the raster library, ask about it here prior to the NCL-only section. 
+#
+if ($?verbose_option) then
+  cat <<"EOF"
+======================================================================
+
+	NCL can optionally provide read/write access to HDF4 and and 
+        read access to HDF-EOS2 files. If you answered yes to the 
+        "build NCL?" question, and you want HDF4 and/or HDF-EOS2 file
+        support then you must build the HDF libraries according to 
+        the NCL/NCAR Graphics source code installation instructions at:
+
+	http://www.ncl.ucar.edu/Download/build_from_src.shtml#HDF-4
+
+	If you try to build HDF without reading these instructions,
+	you will run into problems with trying to link against the
+	HDF libraries and include files.
+
+	If you are not building NCL, and are only interested in building
+	NCAR Graphics, then you only need to build HDF if you need
+	HDF support built into the NCAR Graphics raster library.
+
+======================================================================
+"EOF"
+endif
+
+if ("$buildncl" == "y" || "$buildncl" == "Y") then
+  echo ""
+  echo "Build HDF4 support (optional) into NCL? ($buildhdf4)"
+  echo "Informational note: HDF4 is no longer required to build NCL,"
+  echo "but it is a prerequisite if you need HDF-EOS2 support."
+  echo "(Requires external HDF-4 libraries available from "
+  echo "http://www.hdfgroup.org/release4/obtain.html)"
+  echo "Please see the instructions at"
+  echo "http://www.ncl.ucar.edu/Download/build_from_src.shtml#HDF-4"
+  echo "to make sure your HDF software is built according to NCL requirements."
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildhdf4")) then
+      set buildhdf4 = $answer
+      set newbuildhdf4
+      set altered
+  endif
+  echo ""
+  echo "Also build HDF4 support (optional) into raster library? ($buildrasterhdf)"
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildrasterhdf")) then
+      set buildrasterhdf = $answer
+      set newbuildrasterhdf
+      set altered
+  endif
+else
+  echo ""
+  echo "Build HDF4 support (optional) into raster library? ($buildrasterhdf)"
+  echo "(Requires the external HDF4 libraries available from http://www.hdfgroup.org/release4/obtain.html) "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildhdf4")) then
+    set buildrasterhdf = $answer
+    set newbuildrasterhdf
+    set altered
+  endif
+endif
+set hdfwithszip = "n"
+if (("$buildhdf4" == "y") || ("$buildhdf4" == "Y") || \
+    ("$buildrasterhdf" == "y") || ("$buildrasterhdf" == "Y")) then
+    echo ""
+    echo "Did you build HDF4 with szip support? ($hdfwithszip)"
+    echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+    set answer="$<"
+    if ("$answer" == "q") goto cleanup
+    if (("$answer" != "") && ("$answer" != "$hdfwithszip")) then
+        set hdfwithszip = "$answer"
+        set hdflib = "-lmfhdf -ldf -ljpeg -lz -lsz"
+    endif
+endif
+
+#
+# Only ask about NetCDF- UDUNITS, HDF-EOS2, HDF-EOS5, HDF5, Triangle, Vis5d+, and
+# other external software support if we are actually planning to
+# build NCL.
+#
+if ("$buildncl" == "y" || "$buildncl" == "Y") then
+#
+# Triangle
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	The Triangle code is what allows you to generate triangular
+	meshes so that you can contour non-uniform grids.
+	In order to have this functionality, you must download the
+	Triangle code from http://www.cs.cmu.edu/~quake/triangle.html
+	and agree to Jonathan Shewchuk's license restrictions that
+	are mentioned on that page. Once you download the code
+	('triangle.c' and 'triangle.h'), put these two files in the 
+	ni/src/lib/hlu subdirectory, answer "y" to this question,
+	and you should be set.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build Triangle support (optional) into NCL ($buildtriangle)"
+  echo "Requires 'triangle.c' and 'triangle.h' code from"
+  echo "http://www.cs.cmu.edu/~quake/triangle.html"
+  echo "You must agree to the license restrictions in the above URL,"
+  echo "download these two files, and put them in ni/src/lib/hlu"
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildtriangle")) then
+	set buildtriangle = $answer
+	set newbuildtriangle
+        set altered
+  endif
+
+
+#
+# NetCdf-4
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	Linking with the netCDF-4 enabled library currently provides
+	you with compression support, and the ability to write netCDF-4
+	classic files. Not all aspects of netCDF-4 files are fully
+	supported yet, like multiple-unlimited dimensions and
+	new types.
+
+	If you built NetCDF V4.1, then you additionally can get
+	Udunits and OPeNDAP support.
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+	If you built your NetCDF-4 library with the "--enable-netcdf-4"
+	option, then you should answer "y" to this question.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "If you are using NetCDF V4.x, did you enable NetCDF-4 support ($buildnetcdf4)?"
+  echo "(Requires compiling NetCDF-4 library available from"
+  echo "http://www.unidata.ucar.edu/software/netcdf/"
+  echo "and building with '--enable-netcdf-4') "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildnetcdf4")) then
+	set buildnetcdf4 = $answer
+	set newbuildnetcdf4
+        set altered
+  endif
+
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	OPeNDAP is a protocol for requesting and transporting data
+	across the web.  The current OPeNDAP Data Access Protocol
+	(DAP) simplifies all aspects of scientific data networking,
+	allowing simple access to remote data. Local data can be made
+	accessible to remote locations regardless of local storage
+	format.  In order to have this functionality, you must have
+	built NetCDF V4.1 or later with OPeNDAP support enabled (the
+	default).
+
+	If you built the NetCDF-4.1 software library with OPeNDAP
+	support explicitly turned off, or if you built NetCDF 4.0.x
+        or earlier, you should answer "n" to this question.
+
+======================================================================
+"EOF"
+  endif
+
+  set netcdfwithdap = "y"
+  echo ""
+  echo "Did you build NetCDF with OPeNDAP support ($netcdfwithdap)?"
+  echo "(OPeNDAP support is only available for NetCDF 4.1 or later)"
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$netcdfwithdap")) then
+      set netcdfwithdap = "$answer"
+      set netcdflib = "-lnetcdf"
+  endif
+
+
+#
+# GDAL
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	If you want to be able to read shapefiles, then you'll need to
+	download GDAL and supporting packages (PROJ4).
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build GDAL support (optional) into NCL? ($buildgdal)"
+  echo "(Requires GDAL and PROJ4 from http://www.gdal.org/ and "
+  echo "http://trac.osgeo.org/proj/) "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildgdal")) then
+      set buildgdal = $answer
+      set newbuildgdal
+      set altered
+  endif
+
+#
+# GRIDSPEC
+#
+  if(0) then
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	If you want to use the experimental interface to gridspec, you 
+	will need to link to the CF library. This library is now built 
+        as part of NetCDF V4.1 and later if '--with-libcf' is set.  
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build experimental gridspec support (optional) into NCL? ($buildgridspec)"
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildgridspec")) then
+      set buildgridspec = $answer
+      set newbuildgridspec
+      set altered
+  endif
+  endif
+
+#
+# Udunits
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	The udunits-2 library supports many different time formats, and
+	some of its functionality is available as built-in functions
+	in NCL. In order to have this functionality, you must have the
+	V2.x (not V1.x) libudunits2.a library installed on your system.
+
+	This library is now built as part of NetCDF V4.1 and later
+	if --with-udunits is set.
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build Udunits-2 support (optional) into NCL ($buildudunits)"
+  echo "(Requires the external V2.x Udunits [not V1.x] library available from"
+  echo "http://www.unidata.ucar.edu/software/udunits/udunits-2/udunits2.html) "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildudunits")) then
+	set buildudunits = $answer
+	set newbuildudunits
+        set altered
+  endif
+
+#
+# Vis5d+
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	The Vis5d+ library supports OpenGL-based volumetric
+	visualization for scientific datasets in 3+ dimensions.
+	Enabling this option will allow for writing Vis5d+ files.  It
+	DOES NOT enable NCL or NCAR GRAPHICS to visualize such files.
+	In order to have this functionality, you must have the
+	NCAR-supplied libraries installed on your system.
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build Vis5d+ support (optional) into NCL ($buildv5d)"
+  echo "(Requires the external Vis5d+ software available from"
+  echo "http://vis5d.sourceforge.net/) "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildv5d")) then
+	set buildv5d = $answer
+	set newbuildv5d
+        set altered
+  endif
+
+#
+# HDF-EOS2
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	The hdfeos library supports the HDF-EOS2 data format, and NCL
+	has some capability to read these files in. In order to have
+	this functionality, you must have the HDF-EOS2 libraries
+	installed on your system. You must also have answered yes to
+        including support for HDF4 in NCL.
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build HDF-EOS2 support (optional) into NCL ($buildhdfeos)"
+  echo "(Requires the external HDF-EOS2 libraries available from"
+  echo "http://newsroom.gsfc.nasa.gov/sdptoolkit/toolkit.html. You"
+  echo "must also have included support for HDF4.) "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildhdfeos")) then
+  	set buildhdfeos = $answer
+  	set newbuildhdfeos
+        set altered
+  endif
+
+
+#
+# HDF5
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	The hdf5 library supports the HDF5 data format, and NCL
+	has some capability to read these files in. In order to have
+	this functionality, you must have the HDF5 library
+	installed on your system. 
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build HDF5 support (optional) into NCL ($buildhdf5)"
+  echo "(Requires the external HDF5 library available from"
+  echo "http://www.hdfgroup.org/ftp/HDF5/current/src/ "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildhdf5")) then
+  	set buildhdf5 = $answer
+  	set newbuildhdf5
+        set altered
+  endif
+
+#
+# HDF-EOS5
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	The hdfeos5 library supports the HDF-EOS5 data format, and NCL
+	has some capability to read these files in. In order to have
+	this functionality, you must have the HDF-EOS5 library
+	installed on your system. 
+
+	THIS LIBRARY IS NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build HDF-EOS5 support (optional) into NCL ($buildhdfeos5)"
+  echo "(Requires the external HDF-EOS5 library available from"
+  echo "ftp://edhs1.gsfc.nasa.gov/pub)"
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildhdfeos5")) then
+  	set buildhdfeos5 = $answer
+  	set newbuildhdfeos5
+        set altered
+  endif
+
+#
+# GRIB2
+#
+  if ($?verbose_option) then
+    cat <<"EOF"
+======================================================================
+
+	In order to have support for reading GRIB2 files with NCL, you
+	must have both the NCEP GRIB2 decoder library and the jasper
+	JPEG2000 library installed on your system.  THESE LIBRARIES ARE
+	NOT NEEDED FOR BUILDING NCAR GRAPHICS.
+
+======================================================================
+"EOF"
+  endif
+
+  echo ""
+  echo "Build GRIB2 support (optional) into NCL ($buildgrib2)"
+  echo "(Requires the GRIB2 decoder (g2clib) library and jasper from"
+  echo "http://www.nco.ncep.noaa.gov/pmb/codes/GRIB2/ and"
+  echo "http://www.ece.uvic.ca/~mdadams/jasper/) "
+  echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+  set answer="$<"
+  if ("$answer" == "q") goto cleanup
+  if (("$answer" != "") && ("$answer" != "$buildgrib2")) then
+  	set buildgrib2 = $answer
+  	set newbuildgrib2
+        set altered
+  endif
+
+else
+  set buildhdfeos  = "n"
+  set buildhdfeos5 = "n"
+  set buildhdf4 = "n"
+  set buildhdf5 = "n"
+  set buildnetcdf4 = "n"
+  set buildtriangle = "n"
+  set buildudunits = "n"
+  set buildgrib2 = "n"
+  set buildv5d = "n"
+  set builddods = "n"
+  set buildgridspec = "n"
+  set netcdfwithdap = "n"
+  set netcdflib = ""
+  set newbuildhdfeos
+  set newbuildhdfeos5
+  set newbuildhdf5
+  set newbuildnetcdf4
+  set newbuildtriangle
+  set newbuildudunits
+  set newbuildgrib2
+  set newbuildv5d
+  set newbuilddods
+  set newbuildgridspec
+  set altered
+endif
+
+#
+# The python stuff is commented out for now. One should use
+# the "setup.py" method for building python software, and not
+# the ymake system.
+#
+# PyNGL
+#
+# if (-e pyngl) then
+#   if ($?verbose_option) then
+#     cat <<"EOF"
+# 
+#     PyNGL is a Python module that allows you to access NCL's graphical
+#     library.  Enabling this option will	cause PyNGL to be built, but
+#     not installed.  In order to have this functionality, you must
+#     have Python and Numeric installed on your system.
+# 
+# "EOF"
+#   endif
+# 
+#   echo ""
+#   echo "Build PyNGL ($buildpyngl)"
+#   echo "(Requires Python from python.org and Numeric from www.pfdubois.com/numpy/"
+#   echo -n "Enter Return (default), y(yes), n(no), or q(quit) > "
+#   set answer="$<"
+#   if ("$answer" == "q") goto cleanup
+#   if (("$answer" != "") && ("$answer" != "$buildpyngl")) then
+# 	set buildpyngl = $answer
+# 	set newbuildpyngl
+#         set altered
+#   endif
+#   if ("$buildpyngl" == "y") then
+# 
+# #
+# # Get Python version
+# # 
+#     set pythonversion = "$pythonversion"
+# proc_pythonversion:
+#     echo ""
+#     echo "Enter Python version : $pythonversion"
+#     echo -n "Enter Return (default), new version, or q(quit) > "
+#     set answer="$<"
+# 
+#     if ("$answer" == "q") goto cleanup
+#     if ("$answer" != "") then
+#       set pythonversion = "$answer"
+#       set npythonvers
+#       set altered
+#     endif
+# #
+# # Get Python path. This must be the path leading up to the lib, bin, 
+# # and include directories associated with Python.
+# # 
+#     set pythondir = "$pythondir"
+# proc_pythondir:
+#     echo ""
+#     echo "Enter Python path : $pythondir"
+#     echo "(enter path leading up to Python's lib, bin, and include directories.)"
+#     echo -n "Enter Return (default), new directory, or q(quit) > "
+#     set answer="$<"
+# 
+#     if ("$answer" == "q") goto cleanup
+#     if ("$answer" != "") then
+#       set pythondir = "$answer"
+#       set npythondir
+#       set altered
+#     endif
+#     if ("$pythondir" != "") then
+#       if (! -d $pythondir) then
+#         echo "  *** Warning: <$pythondir> does not exist"
+#         echo ""
+#         goto proc_pythondir
+#       endif
+#     endif
+#     set pythonincdir = "$pythondir/include/python$pythonversion"
+#     set pythonlibdir  = $pythondir/lib
+#     set pythonbindir  = $pythondir/bin
+#     set pythonpkgs   = "$pythonlibdir/python$pythonversion/site-packages"
+#     if (! -d $pythonbindir || ! -d $pythonpkgs || ! -d $pythonincdir) then
+#       echo "  *** Warning: <$pythonpkgs> and/or <$pythonincdir> does not exist"
+#       echo ""
+#       goto proc_pythondir
+#     endif
+#     set pythonlib = "-L$pythonlibdir"
+#     set pythoninc = "-I$pythonincdir"
+# # 
+# # Decide whether to use Numeric or NumPy.
+# # 
+#     set usenumpy = 0
+#     echo ""
+#     echo "Use Numeric (0) or NumPy (1)? : $usenumpy "
+#     echo -n "Enter Return (default), (0) Numeric, (1) NumPy, or q(quit) > "
+#     set answer="$<"
+# 
+#     if ("$answer" == "q") goto cleanup
+#     if ("$answer" != "") then
+#       set usenumpy = "$answer"
+#       set altered
+#     endif
+#   endif 
+# endif
+
+#
+#  Library Search Path
+#
+
+if ($?verbose_option) then
+  cat <<"EOF"
+
+	Please enter the list of local libraries you wish to have
+	on your library search path.  If building X applications,
+	include the pathname of your X11 libraries.  If building
+        support for any other packages, like HDF-EOS5, cairo, etc, 
+        then enter each	library pathname with a space between.
+
+"EOF"
+endif
+
+set loclibdir = `echo "$loclib" | sed -e 's/-L//g'`
+
+proc_loclibdir:
+echo ""
+echo "Enter local library search path(s) : $loclibdir"
+echo -n "Enter Return (default), new directories, or q(quit) > "
+set answer="$<"
+
+if ("$answer" == "q") goto cleanup
+if ("$answer" != "") then
+  set loclibdir = "$answer"
+  set nloclib
+  set altered
+endif
+if ("$loclibdir" != "") then
+  set libs = ($loclibdir:x)
+  set newloclib=""
+  while ($#libs > 0)
+    if (! -d $libs[1]) then
+      echo "  *** Warning: <$libs[1]> does not exist"
+      echo ""
+      goto proc_loclibdir
+    else 
+      set newloclib = ($newloclib "-L$libs[1]")
+    endif
+    shift libs
+  end
+  set loclib = "$newloclib"
+endif
+
+#
+# X11 include files.
+#
+
+if ($?verbose_option) then
+  cat <<"EOF"
+
+	Please enter the list of local include paths you wish to have
+	on your include search path.  If building X applications,
+	include the pathname to your X11 include files. If building
+	support for any other packages, like HDF-EOS5, cairo, etc,
+	then enter each include pathname with a space between.
+
+        If including cairo support, be sure to include the path
+        to the freetype2 include files, for example,
+        "/usr/local/include/freetype2".
+"EOF"
+endif
+
+
+
+set locincdir = `echo "$locinc" | sed -e 's/-I//g'`
+
+proc_locincdir:
+echo ""
+echo "Enter local include search path(s) : $locincdir"
+echo -n "Enter Return (default), new directories, or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+if ("$answer" != "") then
+  set locincdir = "$answer"
+  set nlocinc
+  set altered
+endif
+if ("$locincdir" != "") then
+  set incs = ($locincdir:x)
+  set newlocinc=""
+  while ($#incs > 0)
+    if (! -d $incs[1]) then
+      echo "  *** Warning: <$incs[1]> does not exist"
+      echo ""
+      goto proc_locincdir
+    else 
+      set newlocinc = ($newlocinc "-I$incs[1]")
+    endif
+    shift incs
+  end
+  set locinc = "$newlocinc"
+endif
+
+#
+# Summarize configuration
+#
+cat <<EOF
+
+	Every user of NCL and NCAR Graphics will need to set
+	the following environment variable:
+
+	setenv NCARG_ROOT $parentdir
+
+EOF
+	
+endif
+
+echo ""
+echo "Go back and make more changes or review? (n) "
+echo -n "Enter Return(default), y(yes), n(no), or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+if ("$answer" == "y") goto QuestionAndAnswer
+
+#
+# Save the configuration
+#
+
+proc_save:
+echo ""
+echo "Save current configuration ? (y) "
+echo -n "Enter Return(default), y(yes), or q(quit) > "
+set answer="$<"
+if ("$answer" == "q") goto cleanup
+
+if ("$answer" != "y" && "$answer" != "") then
+	echo "Invalid response"
+	goto proc_save
+endif
+
+if (! $?altered) goto shortcut
+
+cd config
+
+echo "/*" > Site.local
+echo " *	This file was created by the Configure script." >> Site.local
+echo " */" >> Site.local
+echo "" >> Site.local
+echo "#ifdef FirstSite" >> Site.local
+echo "" >> Site.local
+echo "#endif /* FirstSite */" >> Site.local
+echo "" >> Site.local
+echo "" >> Site.local
+echo "#ifdef SecondSite" >> Site.local
+echo "" >> Site.local
+
+echo "#define YmakeRoot $parentdir" >> Site.local
+
+if ($?newtmp) then
+	echo "#define TmpRoot $tmpdir" >> Site.local
+endif
+
+echo "" >> Site.local
+
+if ("$netcdfwithdap" == "n") then
+    echo "#define NetCDFlib $netcdflib" >> Site.local
+    echo "" >> Site.local
+endif
+
+if ("$hdfwithszip" == "y") then
+    echo "#define HDFlib $hdflib" >> Site.local
+    echo "" >> Site.local
+endif
+
+
+if ($?nloclib) then
+	echo "#define LibSearch $loclib" >> Site.local
+endif
+if ($?nlocinc) then
+	echo "#define IncSearch $locinc" >> Site.local
+endif
+
+echo "" >> Site.local
+
+if ($?npythonvers) then
+	echo "#define PythonVersion $pythonversion" >> Site.local
+endif
+if ($?npythonvers || $?npythondir) then
+	echo "#define PythonDir $pythondir" >> Site.local
+	echo "#define PythonBinDir $pythonbindir" >> Site.local
+	echo "#define PythonPkgsDir $pythonpkgs" >> Site.local
+	echo "#define PythonLibSearch $pythonlib" >> Site.local
+	echo "#define PythonIncSearch $pythoninc" >> Site.local
+endif
+
+echo "" >> Site.local
+
+if ($?newbuildncl) then
+	if ("$buildncl" == "y") then
+		echo "#define BuildNCL 1" >> Site.local
+	else
+		echo "#define BuildNCL 0" >> Site.local
+	endif
+endif
+
+echo "" >> Site.local
+
+if ($?newbuildrasterhdf) then
+	if ("$buildrasterhdf" == "y") then
+		echo "#define BuildRasterHDF 1" >> Site.local
+	else
+		echo "#define BuildRasterHDF 0" >> Site.local
+		if ($buildhdf4 != "y") then
+		    echo "#define HDFlib" >> Site.local
+	        endif
+	endif
+endif
+
+if ($?newbuildhdf4) then
+	if ("$buildhdf4" == "y") then
+		echo "#define BuildHDF4 1" >> Site.local
+	else
+		echo "#define BuildHDF4 0" >> Site.local
+		if ($buildrasterhdf != "y") then
+		    echo "#define HDFlib" >> Site.local
+	        endif
+	endif
+endif
+
+
+#
+# This is the old PNG stuff. Commented out for now.
+#
+# if ($?newbuildpng) then
+# 	if ("$buildpng" == "y") then
+# 		echo "#define BuildPNG 1" >> Site.local
+# 	else
+# 		echo "#define BuildPNG 0" >> Site.local
+# 		echo "#define PNGlib" >> Site.local
+# 	endif
+# endif
+
+if ($?newbuildcairo  && "$buildcairo" == "y") then
+	echo "#define BuildCAIRO 1" >> Site.local
+endif
+
+if ($?newbuildnetcdf4) then
+	if ("$buildnetcdf4" == "y") then
+		echo "#define BuildNetCDF4 1" >> Site.local
+	else
+		echo "#define BuildNetCDF4 0" >> Site.local
+		echo "#define NetCDF4lib" >> Site.local
+	endif
+endif
+
+if ($?newbuildgdal && "$buildgdal" == "y") then
+	echo "#define BuildGDAL 1" >> Site.local
+endif
+
+if ($?newbuildgridspec && "$buildgridspec" == "y") then
+	echo "#define BuildGRIDSPEC 1" >> Site.local
+endif
+
+if ($?newbuildtriangle) then
+	if ("$buildtriangle" == "y") then
+		echo "#define BuildTRIANGLE 1" >> Site.local
+	else
+		echo "#define BuildTRIANGLE 0" >> Site.local
+	endif
+endif
+
+if ($?newbuildudunits) then
+	if ("$buildudunits" == "y") then
+		echo "#define BuildUdunits 1" >> Site.local
+	else
+		echo "#define BuildUdunits 0" >> Site.local
+		echo "#define UdUnitslib" >> Site.local
+	endif
+endif
+
+if ($?newbuildhdfeos) then
+	if ("$buildhdfeos" == "y") then
+		echo "#define BuildHDFEOS 1" >> Site.local
+	else
+		echo "#define BuildHDFEOS 0" >> Site.local
+		echo "#define HDFEOSlib" >> Site.local
+	endif
+endif
+
+if ($?newbuildhdfeos5) then
+	if ("$buildhdfeos5" == "y") then
+		echo "#define BuildHDFEOS5 1" >> Site.local
+	else
+		echo "#define BuildHDFEOS5 0" >> Site.local
+		echo "#define HDFEOS5lib" >> Site.local
+	endif
+endif
+
+if ($?newbuildhdf5) then
+	if ("$buildhdf5" == "y") then
+		echo "#define BuildHDF5 1" >> Site.local
+	else
+		echo "#define BuildHDF5 0" >> Site.local
+		echo "#define HDF5lib" >> Site.local
+	endif
+endif
+
+if ($?newbuildgrib2) then
+	if ("$buildgrib2" == "y") then
+		echo "#define BuildGRIB2 1" >> Site.local
+	else
+		echo "#define BuildGRIB2 0" >> Site.local
+		echo "#define GRIB2lib" >> Site.local
+	endif
+endif
+
+if ($?newbuildv5d) then
+	if ("$buildv5d" == "y") then
+		echo "#define BuildV5D 1" >> Site.local
+	else
+		echo "#define BuildV5D 0" >> Site.local
+		echo "#define V5Dlib" >> Site.local
+	endif
+endif
+
+if ($?newbuilddods) then
+	if ("$builddods" == "y") then
+		echo "#define BuildDODS 1" >> Site.local
+	else
+		echo "#define BuildDODS 0" >> Site.local
+	endif
+endif
+
+if ($?newbuildpyngl) then
+	if ("$buildpyngl" == "y") then
+		echo "#define BuildPyNGL 1" >> Site.local
+	else
+		echo "#define BuildPyNGL 0" >> Site.local
+		echo "#define PYNGLlib" >> Site.local
+	endif
+	if ("$usenumpy" == 1) then
+		echo "#define UseNumpy 1" >> Site.local
+	endif
+endif
+
+echo "" >> Site.local
+if ($?nomakedepend) echo "#define NoMakeDepend" >> Site.local
+echo "" >> Site.local
+echo "#endif /* SecondSite */" >> Site.local
+
+cd ..
+
+shortcut:
+if ($?ncar_option) then
+	set conf_type = "ncar local"
+else
+	set conf_type = "current"
+endif
+echo ""
+echo "Building Top-level Makefile with $conf_type configuration options"
+echo ""
+$ymkmfcmd
+if ($status) then
+	echo "Unable to build Makefile - fix above errors and re-run."
+	goto cleanup
+endif
+
+#
+# Installation step
+#
+
+proc_install:
+cat <<"EOF"
+
+	You have completed the configuration process. Once you exit this
+	program you may initiate the installation procedure by typing:
+
+		make Everything >& make-output &
+
+	You can watch the output with:
+
+		tail -f make-output
+
+"EOF"
+
+if ($?verbose_option) then
+cat <<"EOF"
+	If this is not your first installation attempt, and you simply 
+	made some changes in the configuration, restart the process using:
+
+		make All >>& make-output &
+	
+	This command does not erase object code that has already
+	been compiled.
+
+	Both of these commands run the installation procedure
+	in the background, and you can track its progress
+	by periodically examining the file "make-output" while 
+	the installation proceeds.
+
+"EOF"
+endif
+
+exit 0
+
+extra_cleanup:
+rm -f Makefile
+rm -f config/Site.local
+
+cleanup:
+echo ""
+echo "Terminating configuration procedure"
+exit 0

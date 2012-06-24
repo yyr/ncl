@@ -1,0 +1,8 @@
+#
+#      "$Id:"
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = \
+        ecsagrid ecssgrid edsgrid efitgrid enatgrid eshgrid

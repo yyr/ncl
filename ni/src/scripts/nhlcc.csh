@@ -1,0 +1,111 @@
+#!/bin/csh -f
+#
+#	$Id: nhlcc.csh,v 1.6 2010-04-02 17:52:38 haley Exp $
+#
+
+#*********************************************#
+#                                             #
+# Make sure NCARG_ROOT is set for this script #
+#                                             #
+#*********************************************#
+setenv NCARG_ROOT  `ncargpath root`
+
+if ($status != 0) then
+	exit 1
+endif
+
+set xlibs = "SED_XLIB"
+set cairolib = "SED_CAIROLIB"
+set system   = "SED_SYSTEM_INCLUDE"
+set cc       = "SED_CC"
+set defines  = "SED_STDDEF SED_PROJDEF"
+set loadflags  = "SED_LDCFLAGS"
+set libdir   = `ncargpath SED_LIBDIR`
+set incdir   = `ncargpath SED_INCDIR`
+set syslibdir = "SED_LIBSEARCH"
+set sysincdir = "SED_INCSEARCH"
+set ro       = "$libdir/SED_NCARGDIR/SED_ROBJDIR"
+set f77libs  = "SED_CTOFLIBS"
+set newargv = "$cc $defines $loadflags"
+set libpath = "-L$libdir $syslibdir"
+set incpath = "-I$incdir $sysincdir"
+
+#
+# set up default libraries
+#
+set libncarg    = "-lncarg"
+set libgks      = "-lSED_LIBNCARG_GKS"
+set libcgks     = "-lSED_LIBNCARG_CGKS"
+set libmath     = ""
+set libncarg_c  = "-lncarg_c"
+set libhlu      = "-lSED_LIBHLU"
+set libchlu     = "-lSED_LIBCHLU"
+set ncarbd      = "$ro/libncarbd.o"
+set ngmathbd    = "$ro/libngmathbd.o"
+set extra_libs
+
+set robjs
+unset CAIRO_LD
+unset NGMATH_LD
+unset NGMATH_BLOCKD_LD
+
+foreach arg ($argv)
+  switch ($arg)
+
+  case "-XmXt":
+  case "-xmxt":
+    set extra_libs = "$extra_libs SED_XMOTIFLIB SED_XTOOLLIB"
+    breaksw
+
+  case "-cairo":
+    set CAIRO_LD
+    breaksw
+
+  case "-ngmath":
+    set libmath     = "-lngmath"
+    breaksw
+
+  case "-ncarbd":
+    set robjs = "$robjs $ncarbd"
+    set NGMATH_BLOCKD_LD
+    breaksw
+
+  case "-ngmathbd":
+    set robjs = "$robjs $ngmathbd"
+# Make sure the ngmath blockdata routine doesn't get loaded twice.
+    unset NGMATH_BLOCKD_LD
+    breaksw
+
+  case "-netcdf":
+  case "-cdf":
+    set extra_libs = "$extra_libs SED_NCDFLIBS"
+    breaksw
+
+  case "-hdf":
+    set extra_libs = "$extra_libs SED_HDFLIB"
+    breaksw
+
+  default:
+    set newargv = "$newargv $arg"
+  endsw
+end
+
+
+#
+# If -ncarbd was set, *and* the ngmath library was loaded,
+# then automatically take care of loading libngmathbd.o.
+#
+if ($?NGMATH_LD && $?NGMATH_BLOCKD_LD) then
+  set robjs = "$robjs $ngmathbd"
+endif
+
+if ($?CAIRO_LD) then
+  set ncarg_libs = "$libchlu $libncarg $libcgks $libncarg_c $libmath"
+  set newargv = "$newargv $libpath $incpath $extra_libs $robjs $ncarg_libs $xlibs $cairolib $f77libs"
+else
+  set ncarg_libs = "$libhlu $libncarg $libgks $libncarg_c $libmath"
+  set newargv = "$newargv $libpath $incpath $extra_libs $robjs $ncarg_libs $xlibs $f77libs"
+endif
+
+echo $newargv
+eval $newargv

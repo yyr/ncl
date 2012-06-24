@@ -1,0 +1,15 @@
+#
+#	$Id: yMakefile,v 1.6 1995-06-14 13:56:47 haley Exp $
+#
+MYNAME	= elblba
+
+SRCS = elblba.f
+OBJS = elblba.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(elblba,elblba.o)

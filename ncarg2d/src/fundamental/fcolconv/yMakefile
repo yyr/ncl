@@ -1,0 +1,17 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:01:13 haley Exp $
+#
+MYNAME	= fcolconv
+
+SRCS = fcce01.f fcce02.f
+OBJS = fcce01.o fcce02.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fcce01,fcce01.o)
+FExampleTarget(fcce02,fcce02.o)
+

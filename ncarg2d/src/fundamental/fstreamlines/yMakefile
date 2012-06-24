@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.4 1995-06-14 14:02:10 haley Exp $
+#
+MYNAME	= fstreamlines
+SRCS = fstream.f
+OBJS = fstream.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(fstream,fstream.o)

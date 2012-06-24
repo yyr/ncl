@@ -1,0 +1,50 @@
+/*
+ *	Description:	This file contains the configuration for a
+ *                      build on a 64-bit Itanium Linux system using
+ *                      the Intel ifort and GNU gcc compilers.
+ *
+ *                      You may need to modify it to change or include
+ *                      options. Copy this file over the LINUX file
+ *                      before you begin your build.
+ *
+ *                      Note: if the build has trouble finding the
+ *                      "ifcore" library, then you may need to modify
+ *                      the "CtoFLibraries" line below and include a "-L"
+ *                      path to help it. For example:
+ *
+ * #define CtoFLibraries -lm -L/usr/intel/fc/10.1.012/lib -lifcore -lifport
+ *
+ *
+ */
+
+#define HdfDefines  -DIA64
+#define StdDefines  -DSYSV -D_POSIX_SOURCE -D_XOPEN_SOURCE -DByteSwapped 
+#define ByteSwapped
+#define Cstatic
+#define Cdynamic
+#define CppCommand '/usr/bin/cpp -traditional'
+#define CCompiler   gcc
+#define FCompiler   ifort
+#define CtoFLibraries   -lm -lifcore -lifport
+#define CcOptions    -ansi -fPIC
+#define XToolLibrary    -lXt -lSM -lICE
+#define BuildShared NO
+#define XLibrary -lX11 -lXext
+#define ExtraExportFlags -rdynamic
+
+#define ArchRecLibSearch    -L/usr/X11R6/lib
+#define ArchRecIncSearch    -I/usr/X11R6/include
+
+FC = $(F77)
+
+/*************** Redefine Macros from Rules ********************************/
+
+/*
+ * Macro:   MakeDir
+ *
+ * Description: This rule creates a directory - if a parent dir doesn't exist
+ *      it attempts to create it.
+ */
+#ifndef MakeDir
+#define MakeDir(dir)    @if (test ! -d dir); then ($(MKDIRHIER) dir); fi
+#endif

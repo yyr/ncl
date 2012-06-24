@@ -1,0 +1,7 @@
+#
+# another cvs  test
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = src man app

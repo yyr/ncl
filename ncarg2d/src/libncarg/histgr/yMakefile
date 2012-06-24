@@ -1,0 +1,22 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:44:15 boote Exp $
+#
+
+MYNAME	= histgr
+
+GENERIC_SRCS = \
+	 histgr.f hstbkd.f hstexp.f hstlst.f hstmed.f hstopc.f hstopi.f\
+	 hstopl.f hstopr.f hststr.f nwtstr.f
+
+GENERIC_OBJS = \
+	 histgr.o hstbkd.o hstexp.o hstlst.o hstmed.o hstopc.o hstopi.o\
+	 hstopl.o hstopr.o hststr.o nwtstr.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS	= $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc.a,$(OBJECTS))

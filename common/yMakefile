@@ -1,0 +1,7 @@
+#
+#	$Id: yMakefile,v 1.2 1993-10-19 17:11:27 boote Exp $
+#
+
+SUBDIRS = src man
+
+#define	IHaveSubdirs

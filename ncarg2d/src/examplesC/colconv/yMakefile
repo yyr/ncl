@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.9 1997-04-11 18:49:55 haley Exp $
+#
+
+SRCS = c_coex02.c
+OBJS = c_coex02.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+CExampleTarget(c_coex02,c_coex02.o)

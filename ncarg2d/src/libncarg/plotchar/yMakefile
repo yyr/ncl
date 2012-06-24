@@ -1,0 +1,54 @@
+#
+#	$Id: yMakefile,v 1.16 2005-05-13 19:55:17 kennison Exp $
+#
+
+MYNAME	= plotchar
+
+GENERIC_SRCS = \
+	plchhq.f plchmq.f plchlq.f pcgetc.f pcgeti.f pcgetr.f pcsetc.f \
+	pcseti.f pcsetr.f pccchk.f pccffc.f pcdchk.f pcexcd.f pcgptr.f \
+	pcgtdi.f pcgtpi.f pcmqlq.f pcsort.f pcblda.f \
+	pcbdff.f pccfff.f pcffgd.f pcffgp.f pcffhl.f \
+	pcffme.f pcgneg.f pcmpxy.f plchhz.f \
+	pcdlsc.f pcgpai.f pchiqu.f pcloqu.f pcmequ.f pcpnwi.f pcrset.f
+
+GENERIC_OBJS = \
+	plchhq.o plchmq.o plchlq.o pcgetc.o pcgeti.o pcgetr.o pcsetc.o \
+	pcseti.o pcsetr.o pccchk.o pccffc.o pcdchk.o pcexcd.o pcgptr.o \
+	pcgtdi.o pcgtpi.o pcmqlq.o pcsort.o pcblda.o \
+	pcbdff.o pccfff.o pcffgd.o pcffgp.o pcffhl.o \
+	pcffme.o pcgneg.o pcmpxy.o plchhz.o \
+	pcdlsc.o pcgpai.o pchiqu.o pcloqu.o pcmequ.o pcpnwi.o pcrset.o
+
+OTHER_SRCS = pcfcls.f pcfopn.f pcfred.f bofred.c pcbnrd.c
+
+OTHER_OBJS = pcfcls.o pcfopn.o pcfred.o bofred.o pcbnrd.o
+
+SOURCES = $(GENERIC_SRCS) $(OTHER_SRCS)
+
+OBJECTS = $(GENERIC_OBJS) $(OTHER_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+CleanFilesTarget(pcfopn.f)
+
+PartialLibraryTarget(libNGllu.a,$(OBJECTS))
+
+pcfopn.f: pcfopn.f.sed Makefile
+	@sed \
+	-e 's+SED_DBDIR+$(DBDIR)+' \
+	<pcfopn.f.sed >pcfopn.f
+
+/* Probably obsolete - but we'll leave it here anyway */
+#if defined(apollo)
+# plchmq.f suffers from highest level of optimization. So use -opt 2.
+plchmq.o:  plchmq.f
+	$(F77) $(FFLAGS) -W0,-opt,2 -c plchmq.f
+#endif
+
+pcffgp.o : pcffme.h pcffdx.h
+pcffgd.o : pcffme.h pcffdx.h pcffsp.h
+pcffhl.o : pcffdx.h pcffsp.h
+pcbdff.o : pcffme.doc pcffme.h pcffdx.doc pcffdx.h pcffsp.doc pcffsp.h
+pccfff.o : pcffme.h pcffdx.h
+pcffme.o : pcffme.h pcffdx.h

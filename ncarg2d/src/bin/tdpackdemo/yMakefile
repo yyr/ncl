@@ -1,0 +1,20 @@
+#
+#       $Id: yMakefile,v 1.9 2010-02-09 17:13:08 haley Exp $
+#
+
+MYNAME  = tdpackdemo
+
+SRC    = TdpackDemo.f
+OBJ    = TdpackDemo.o
+
+PROG_LIBS =	$(NCARGLIBS) $(CAIROLIB) $(PNGLIB)
+DEP_LIBS =	$(DEPNCARGLIBS)
+SYS_LIBS	= $(XLIB)
+
+#if defined(Darwin)
+#EXTRA_FCOPTIONS  = -N11
+#endif
+
+FortranProgram($(MYNAME),$(OBJ),$(DEP_LIBS))
+InstallTarget($(SRC),$(INSTALL_LIB),$(EXAMPLESPATH))
+

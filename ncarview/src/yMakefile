@@ -1,0 +1,7 @@
+#
+#	Makefile for NCAR Graphics source directories
+#
+
+#define IHaveSubdirs
+
+SUBDIRS = lib bin

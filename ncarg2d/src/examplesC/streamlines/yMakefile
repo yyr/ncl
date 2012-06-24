@@ -1,0 +1,14 @@
+#
+#	$Id: yMakefile,v 1.9 1997-04-11 18:50:18 haley Exp $
+#
+
+SRCS = c_ffex03.c
+OBJS = c_ffex03.o
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= $(CTOFLIBS) -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+CExampleTarget(c_ffex03,c_ffex03.o)

@@ -1,0 +1,39 @@
+/*
+ *  Description:    This file contains all the directives needed to
+ *                  tell ymake how to build NCARG/NCL on a system
+ *                  running Solaris X86.
+ *
+ *                  The default version of this file assumes you are
+ *                  using GNU compilers, gcc and g77. This is a bit
+ *                  out-of-date, as we haven't built on this system
+ *                  in a long time.
+ *
+ *                  You may need to modify it to change or include
+ *                  options, especially for the "CtoFLibraries" line.
+ */
+#define ByteSwapped
+#define HdfDefines	-DSUN
+#define	Cstatic	-Wl,-Bstatic
+#define	Cdynamic -Wl,-Bdynamic
+#define ExtraSysLibraries	-Wl,-Bdynamic -lnsl -lintl -lsocket -ldl -lw -Wl,-Bstatic
+#define	CcOptions	-ansi
+#define CppCommand      /usr/ccs/lib/cpp
+#define FCppCommand     /usr/ccs/lib/cpp
+#define DoesRanlib      NO
+#define LintCommand     alint
+#define StdDefines      -DSYSV -D_POSIX_SOURCE -D_XOPEN_SOURCE -DByteSwapped  -Di386
+ 
+#define XLibrary -lX11 -lXext
+#define XmotifLibrary -lXm
+ 
+#define UseCatDirs        YES
+ 
+#define CCompiler       gcc
+#define FCompiler       g77
+#define XToolLibrary      -lXt -Wl,-Bdynamic -lSM -lICE -Wl,-Bstatic
+ 
+#define ArchRecLibSearch        -L/usr/openwin/lib -L/usr/dt/lib
+#define ArchRecIncSearch        -I/usr/openwin/include -I/usr/dt/include 
+#define CtoFLibraries    -lg2c -lm
+ 
+

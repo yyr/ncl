@@ -1,0 +1,18 @@
+#
+#	$Id: yMakefile,v 1.6 1995-06-14 13:57:18 haley Exp $
+#
+
+MYNAME	= evelvc
+
+SRCS = vvex01.f vvex02.f vvex03.f vvexcc.f 
+OBJS = vvex01.o vvex02.o vvex03.o vvexcc.o 
+
+PROG_LIBS		= $(NCARGLIBS)
+SYS_LIBS		= -lm
+EXTRA_LIBS		= $(XLIB)
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(EXAMPLESPATH))
+
+FExampleTarget(vvex01,vvex01.o vvexcc.o)
+FExampleTarget(vvex02,vvex02.o vvexcc.o)
+FExampleTarget(vvex03,vvex03.o vvexcc.o)

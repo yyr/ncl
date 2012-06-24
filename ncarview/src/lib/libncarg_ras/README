@@ -1,0 +1,33 @@
+For Intel mac, to get rid of wchar_t error message, you need
+-D__UNIXOS2__:
+
+gcc -D__UNIXOS2__ -ansi  -O  -I../../../.././include -I/usr/X11R6/include -I/sw/include   -DBuildRasterHDF -DDARWIN -DBuildRasterHPPCL -DBuildRasterNrif -DBuildRasterSun    -DBuildRasterXWD  -DBuildRasterAVS -DBuildRasterSGI              -DBuildRasterAbekas  -DBuildRasterBinary -DBuildRasterYUV               -DNGTMPDIR='"tmp"' -Di386 -DApple -DSYSV -D_POSIX_SOURCE -D_XOPEN_SOURCE -DByteSwapped -DNeedFuncProto    -c -o xwd.o xwd.c
+
+
+Sun
+---
+The 24-bit RGB RLE portion of the driver needs work.
+
+Parallax
+--------
+Compiling parallax.c with the Sun "acc" compiler results in problems
+with ioctl()'s and /usr/include/sys/ioccom.h, which is not
+ANSI-compatible.
+
+HDF
+---
+The new driver is built upon HDF3.2r3.  24-bit imagery needs to be
+checked out thoroughly.
+
+SGI
+---
+The SGI rasterfile driver supports compressed and uncompressed input,
+and uncompressed output. The driver needs to be modified so that it
+can deal with INDEXED color on output.
+
+A60
+---
+There is currently a bug in the output of Abekas RGB images but support
+for input and output of Abekas RGB images is provided. YUV images are
+not yet supported. The driver needs to be modified so that it can
+deal with INDEXED color on output.

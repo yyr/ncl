@@ -1,0 +1,22 @@
+#
+#	$Id: yMakefile,v 1.4 1996-10-25 21:46:14 boote Exp $
+#
+MYNAME	= threed
+
+GENERIC_SRCS = \
+	 set3.f trn32t.f frst3.f vect3.f line3.f point3.f curve3.f psym3.f\
+	 perim3.f line3w.f drawt.f tick43.f tick3.f fence3.f threbd.f\
+	 pwrz.f
+
+GENERIC_OBJS = \
+	 set3.o trn32t.o frst3.o vect3.o line3.o point3.o curve3.o psym3.o\
+	 perim3.o line3w.o drawt.o tick43.o tick3.o fence3.o threbd.o\
+	 pwrz.o
+
+SOURCES = $(GENERIC_SRCS)
+OBJECTS = $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmisc2.a,$(OBJECTS))

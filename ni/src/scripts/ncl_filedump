@@ -1,0 +1,606 @@
+#!/bin/csh -f
+#
+#   $Id: ncl_filedump,v 1.18 2010-04-05 23:27:38 dbrown Exp $
+
+#       Copyright (C) 2005
+#       University Corporation for Atmospheric Research
+#       All Rights Reserved
+
+#       File:       ncl_filedump
+#       Author:     Rick Grubin
+#
+#       National Center for Atmospheric Research
+#       POB 3000, Boulder, Colorado
+
+# This script does a "file dump" on any file supported by NCL
+# via the "addfile()" function.
+#
+#       ncl_filedump [-c] [-v var1[,...]] [-h] file
+#           [-c]                coordinate variable and header information
+#           [-v var1[,...]]     data for variable(s) <var1>,...
+#           [-sed sed1[,...]]   GRIB files only; set single element dimensions [default: none]
+#                                  choices are initial_time, forecast_time, level, ensemble,
+#                                  probability, all, none"
+#           [-itime]            GRIB files only; set initial time as a single element dimension
+#                                  (same as -sed initial_time)
+#           [-ftime]            GRIB files only; set forecast time as a single element dimension
+#                                  (same as -sed forecast_time)
+#           [-tps]              GRIB files only; remove suffix representing a time period (e.g. 2h)
+#                                 from statistically processed variables, leaving only type of
+#                                 processing as a suffix (e.g. _acc, _avg)
+#           [-h]                usage message
+
+onintr cleanup
+
+set progname = `basename $0`
+if ($#argv < 1) then
+    goto usage
+endif
+
+set nvars = 0
+set coords = 0
+
+# Single Element Dimensions variables
+set sed_n = 0
+set seDims_t = ""
+set singleElemDims = ""
+set sed_nt = 0
+set sed_args = ""
+set seds = ( '\(/'\\\"None\\\"'/\)' )
+
+# Time Period Suffix variables
+set tps = True
+
+# Tell NCL to not echo its copyright notice
+# This is not an advertised option
+set noCN = ""
+
+#
+# Sort through options.
+#
+
+while ($#argv > 0)
+    switch ($1)
+        case "-v":
+            shift
+
+            # determine number of variables specified (count commas)
+            # set ncommas = `echo $* | tr -cd '\,' | wc -c`
+            # set ncommas = `echo $* | awk '{print(gsub(/,/, " "))}'`
+            set ncommas = `echo $* | awk -F, '{print NF - 1}'`
+            if ($ncommas == 0) then
+                # only one variable, or none?
+                set isopt = `echo $1 | grep -c '-'`
+                set isfile = `echo $1 | grep -c '\.'`
+                if ($isopt != 0  ||  $isfile != 0) then
+                    echo "${progname}: warning: no variable(s) specified." ; echo
+                    breaksw
+                endif
+            endif
+
+            set nvars = `expr $ncommas + 1`
+            # handle "space after commas" case
+            set psv = `echo $* | sed 's/, /,/g'`
+            set pvars = $psv[1]
+            shift
+
+            # build array of variables as strings, quote so as to pass thru the shell
+            set vline = `echo $pvars | sed 's/,/ /g'`
+            set vars = ( '\(/' )
+            set n = 1
+            while ($n < $nvars)
+                set v = $vline[$n]
+                set vars = ( $vars\\\"$v\\\"\',\' )
+                @ n = ($n + 1)
+            end
+
+            # catch the last variable
+            set vars = ( $vars\\\"$vline[$n]\\\"'/\)' )
+            breaksw
+
+        case "-c":
+            set coords = 1
+            shift
+            breaksw
+
+        case "-itime"
+            @ sed_n = ($sed_n + 1)
+            set seDims_t = `echo $seDims_t "initial_time"`
+            shift
+            breaksw
+
+        case "-ftime"
+            @ sed_n = ($sed_n + 1)
+            set seDims_t = `echo $seDims_t "forecast_time"`
+            shift
+            breaksw
+
+        case "-sed":
+        case "-singleelemdims":
+        case "-singleElemDims":
+            shift
+            set sed_args = "$1"
+
+            # Determine number of args (count commas)
+            set sed_nt = `echo $* | awk -F, '{print NF}'`
+            if ($sed_nt == 0) then
+                echo "${progname}: no single element dimension(s) specified." ; echo
+                breaksw
+            endif
+
+            set sac = `echo $* | sed 's/, /,/g'`
+            set sa = $sac[1]
+            shift
+
+            set sedline = `echo $sa | sed 's/,/ /g'`
+            set seds = ( '\(/' )
+            set n = 1
+            while ($n < $sed_nt)
+                set i  = `expr $n + 1`
+                set s = $sedline[$n]
+                set seds = ( $seds\\\"$s\\\"\',\' )
+                @ n = ($n + 1)
+            end
+            set s = $sedline[$n]
+            set seds = ( $seds\\\"$s\\\" )
+	    
+            breaksw
+        case "-tps":
+        case "-timeperiodsuffix":
+        case "-timePeriodSuffix":
+        case "-TimePeriodSuffix":
+            shift
+            set tps = False
+            breaksw
+
+        case "-h":
+            goto usage
+            exit 0
+            breaksw
+
+        case "-Q":
+        case "-nocopyrightnotice":
+        case "-noCopyrightNotice":
+            shift
+            set noCN = "-Q"
+            breaksw
+
+        case "-*":
+            echo "${progname}: warning: '$1' is not a valid option; ignoring it." ; echo
+            shift
+            breaksw
+
+        default:
+            set file = $1
+            shift
+    endsw
+end
+
+#
+# Check that a filename was specified.
+#
+if (! $?file) then
+    echo "${progname}: error: a filename was not specified."
+    goto usage
+    exit 1
+endif
+
+#
+# Make sure the file has an appropriate suffix so that NCL knows
+# what kind of file it is.
+#
+set valid_suffixes = ("nc" "cdf" "netcdf" "nc3" "nc4" "gr" "gr1" "grb" "grb1" "grib" "grib1" "gr2" "grb2" "grib2" "hdf" "h4" "hdfeos" "he2" "he4" "h5" "hdfeos5" "he5" "ccm" "shp" "mif" "gmt" "rt1" "rt2" "rt3" "rt4" "rt5" "rt6" "rt7" "rt8" "rt9" "rta" "rtb" "rtc" "rte" "rth" "rti" "rtm" "rtp" "rtr" "rts" "rtt" "rtu" "rtz")
+set no_suffix
+set psfx = "$file:e"
+set suffix = `echo $psfx | tr '[A-Z]' '[a-z]'`
+set prefix = "$file:r"
+if ("$suffix" != "") then
+    @ i = 1
+    while ($i <= $#valid_suffixes  &&  $?no_suffix)
+        if ("$suffix" == "$valid_suffixes[$i]") then
+            unset no_suffix
+        endif
+        @ i++
+    end
+endif
+
+if ($?no_suffix) then
+    echo ""
+    echo "  ${progname}: error: '$file' does not have a recognizable suffix."
+    echo "  valid suffixes are: $valid_suffixes"
+    echo ""
+    exit 1
+endif
+
+#
+# It may be the case that the user added a suffix to the file
+# so that NCL knows how to open it with addfile().  Check for the
+# existence of the file both with and without the suffix.
+# 
+if (! -e $file && ! -e $prefix) then
+    echo
+    echo "  ${progname}: error: neither '$file' nor '$prefix' exists."
+    echo
+    exit 1
+endif
+
+#
+# Single Element Dimensions
+# set_nt has the count from the -sed option sed_n has count of -itime and -ftime
+
+if ($sed_nt > 0 && $sed_n > 0) then
+    @ i = 1
+    while ($i <= $sed_n)
+        set seds = ( $seds\',\'\\\"$seDims_t[$i]\\\" )
+        @ i = ($i + 1)
+    end
+else if ($sed_n > 0) then
+    @ i = 1
+    set seds = ( '\(/'\\\"$seDims_t[$i]\\\" )
+    @ i = ($i + 1)
+    while ($i <= $sed_n)
+        set seds = ( $seds\',\'\\\"$seDims_t[$i]\\\" )
+        @ i = ($i + 1)
+    end
+else if ($sed_nt == 0) then
+    set seds = ( '\(/'\\\"none\\\" )
+endif
+set singleElemDims = ( $seds'/\)' )
+
+switch ($suffix)
+    case gr:
+    case gr1:
+    case grb:
+    case grib:
+    case grb1:
+    case grib1:
+    case gr2:
+    case grb2:
+    case grib2:
+        set ftype = "GRIB"
+        breaksw
+
+    case hdf:
+    case h4:
+        set ftype = "HDF"
+        breaksw
+
+    case hdfeos:
+    case he2:
+    case he4:
+        set ftype = "HDFEOS"
+        breaksw
+
+    case he5:
+        set ftype = "HDFEOS5"
+        breaksw
+
+    case hdfeos5:
+        set ftype = "HDFEOS5"
+        breaksw
+
+    case hdf5:
+    case h5:
+        set ftype = "HDF5"
+        breaksw
+
+    case ccm:
+        set ftype = "CCM"
+        breaksw
+
+    case nc:
+    case cdf:
+    case netcdf:
+    case nc3:
+    case nc4:
+        set ftype = "netCDF"
+        breaksw
+
+    case shp:
+    case mif:
+    case gmt:
+    case rt1:   # The possible TIGER suffixes...
+    case rt2:
+    case rt3:
+    case rt4:
+    case rt5:
+    case rt6:
+    case rt7:
+    case rt8:
+    case rt9:
+    case rta:
+    case rtb:
+    case rtc:
+    case rte:
+    case rth:
+    case rti:
+    case rtm:
+    case rtp:
+    case rtr:
+    case rts:
+    case rtt:
+    case rtu:
+    case rtz:
+        set ftype = "OGR"
+        breaksw
+
+endsw
+
+
+#
+# Create a temporary file to hold NCL script.
+#
+set tmpdir = `ncargpath tmp`
+set tmp_nclfile = "$tmpdir/tmp$$.ncl"
+/bin/rm $tmp_nclfile >& /dev/null
+
+cat << 'EOF_NCL' >! $tmp_nclfile
+    function set_fmt(v:snumeric)
+    begin
+        if (isfloat(v) .or. isdouble(v)) then
+            return("6g12.4")
+        end if
+
+        left_digits = toint(log10(max(abs(v)))) + 1
+	size = sizeof(v(0,0))
+	if (isunsigned(v)) then
+	    ; no sign required
+	    spaces = left_digits + 2
+	else
+	    spaces = left_digits + 3
+        end if
+        count = toint(80.0 / spaces) 
+
+	format = "" + count + "i" + spaces
+ 	return (format)
+	    
+;        if (isbyte(v)) then              ; 8 [+/- 127]
+;            return("15i5")
+;        end if
+;        if (isubyte(v)) then              ; 8 [+/- 127]
+;            return("15i5")
+;        end if
+;
+;        if (isshort(v)) then             ; 16 [+/-32767]
+;            return("11i7")
+;        end if
+;        if (isushort(v)) then             ; 16 [+/-32767]
+;            return("11i7")
+;        end if
+;
+;        if (isinteger(v).or.isuint(v)) then           ; 32 [+/- 2147483647]
+;            mxv = max(abs(v))
+;            if (mxv .le. 9999) then
+;                return("13i6")
+;            end if
+;
+;            if (mxv .le. 999999) then
+;                return("10i8")
+;            end if
+;
+;            if (mxv .le. 9999999) then
+;                return("9i9")
+;            end if
+;
+;            return("7i12")               ; yyyymmddhh +/- 214748364
+;        end if
+;
+;        if (islong(v)) then              ; 64
+;            mxv = new(1, "long")
+;            mxv = max(abs(v))
+;            if (mxv .le. 9999) then
+;                return("13i6")
+;            end if
+;
+;            if (mxv .le. 999999) then
+;                return("10i8")
+;            end if
+;
+;            if (mxv .le. 9999999) then
+;                return("9i9")
+;            end if
+;
+;            if (mxv .gt. 9999999 .and. mxv .le. 214748364) then
+;                return("7i12")
+;            end if
+;
+;            return("5i16")
+;        end if
+
+    end
+
+    procedure set_opt(o:logical, t:string)
+    begin
+        o@title = t + ":"
+        o@tspace = 5
+    end
+
+    function make_var2d(v:snumeric, r:integer, d:integer)
+    begin
+        if (r .eq. 1) then
+            mv2d = onedtond(v, (/1, d(0)/))
+        else
+            mv2d = onedtond(ndtooned(v), (/1, product(d)/))
+        end if
+
+        return(mv2d)
+    end
+
+    ; added to handle types that write_matrix can't handle
+    procedure multi_column_write(v2d,fmt,name) 
+    local count, spaces, v2d1d, v_strings, dsize, i, j
+    begin
+        count = toint(str_get_field(fmt,1,"i"))
+	spaces = str_get_field(fmt,2,"i")
+	v2d1d = ndtooned(v2d)
+	v_strings = sprinti("%" + spaces + "V",v2d1d)
+	dsize = dimsizes(v2d1d)
+	delete(v2d1d)
+        print("     " + name + ":")
+        print("")
+	i = 0
+	do while (i .lt. dsize)
+	    out_str = ""
+            do j = 0, count -1
+	        out_str = out_str + v_strings(i)
+		i = i + 1
+		if (i .eq. dsize) then
+		    break
+		end if
+            end do
+      	    print("" + out_str)
+	end do
+        print("")
+        return
+    end
+
+    ; main
+    begin
+        if (ftype .eq. "GRIB") then
+            sed = singleElemDims
+            setfileoption("grib", "SingleElementDimensions", sed)
+
+            tps = timePeriodSuffix
+            setfileoption("grib", "TimePeriodSuffix", tps)
+        end if
+
+
+        f = addfile(filename, "r")
+        print(f)
+
+        if ((coords .eq. 1)) then
+            dSizes = dimsizes(getfiledimsizes(f))
+            dNames = getvardims(f)
+            vNames = getfilevarnames(f)
+            vSizes = dimsizes(vNames)
+
+            print("Coordinates:")
+            print(" ")
+
+            do n = 0, dSizes - 1
+                do m = 0, vSizes - 1
+                    if (dNames(n) .eq. vNames(m)) then
+                        dims = getfilevardimsizes(f, vNames(m))
+                        rank = dimsizes(dims)
+			type = getfilevartypes(f,vNames(m))
+                        if (type .eq. "string") then
+                            print(f->$vNames(m)$)
+                            print(" ")
+                        else
+                            v2d = make_var2d(f->$vNames(m)$, rank, dims)
+                            fmt = set_fmt(v2d)
+                            opt = True
+                            set_opt(opt, dNames(n))
+		            if (isunsigned(v2d) .or. isint64(v2d)) then
+			        ; types not supported by write_matrix
+                                multi_column_write(v2d,fmt,vNames(m))
+			    else
+                                write_matrix(v2d, fmt, opt)
+			    end if
+                            delete(v2d)
+                        end if
+                        delete(dims)
+                    end if
+                end do
+                                          end do
+        end if
+    
+        print(" ")
+
+        if (nvars .gt. 0)
+            print("Variables:")
+            print(" ")
+
+            do n = 0, nvars - 1
+                print("Variable No. " + n)
+                if (isfilevar(f, vars(n))) then
+		    type = getfilevartypes(f,vars(n))
+                    if (type .eq. "string") then
+		        print("     " + vars(n) + ":")
+			print(" ")
+                        print((/f->$vars(n)$/))
+                        print(" ")
+                    else if (type .eq. "character") then
+			vstrings = tostring(f->$vars(n)$)
+			print("     " + vars(n) + ":")
+			print("")
+			print((/vstrings/))
+			print(" ")
+			delete(vstrings)
+		    else
+                        dims = getfilevardimsizes(f, vars(n))
+                        rank = dimsizes(dims)
+
+                        v2d = make_var2d(f->$vars(n)$, rank, dims)
+                        fmt = set_fmt(v2d)
+                        opt = True
+                        set_opt(opt, vars(n))
+
+                        if (isubyte(v2d) .or. isushort(v2d) ) then
+                            ; not supported by write_matrix; convert to supported types
+                            if (isubyte(v2d)) then
+                                tmp = toshort(v2d)
+                            else
+                                tmp = toint(v2d)
+                            end if
+                            write_matrix(tmp,fmt, opt)
+                            delete(tmp)
+                        else if (isunsigned(v2d) .or. isint64(v2d)) then
+                            ; types not supported by write_matrix; no conversion possible
+                            multi_column_write(v2d,fmt,vars(n))
+                        else
+                            write_matrix(v2d, fmt, opt)
+                        end if
+                        end if
+                        delete(v2d)
+                        delete(dims)
+                    end if
+		    end if
+                else
+                    print("${progname}: error: '" + vars(n) + "' is not a variable in '" + filename + "'.")
+                end if
+            end do
+        end if
+
+        delete(f)
+
+    end
+'EOF_NCL'
+
+
+#
+# Construct the command line.
+#
+if ($?vars) then
+    eval ncl $noCN -n filename=\\\"$file\\\" nvars=$nvars coords=$coords vars=$vars ftype=\\\"$ftype\\\" singleElemDims=$singleElemDims 'timePeriodSuffix=$tps' $tmp_nclfile
+else
+    eval ncl $noCN -n filename=\\\"$file\\\" nvars=$nvars coords=$coords ftype=\\\"$ftype\\\" singleElemDims=$singleElemDims 'timePeriodSuffix=$tps' $tmp_nclfile
+endif
+
+#
+# Clean up.
+#
+
+/bin/rm $tmp_nclfile
+
+exit 0
+
+cleanup:
+    /bin/rm -f $tmp_nclfile
+    exit 1
+
+usage:
+echo "${progname} [-c] [-v var1[,...]] [-sed sed1[,...]] [-itime] [-ftime] [-tps] [-h] file"
+echo "  [-c]                coordinate variable and header information"
+echo "  [-v var1[,...]]     data for variable(s) <var1>,..."
+echo "  [-sed sed1[,...]]   GRIB files only; set single element dimensions [default: none]"
+echo "                          choices are initial_time, forecast_time, level, ensemble,"
+echo "                          probability, all, none"
+echo "  [-itime]            GRIB files only; set initial time as a single element dimension"
+echo "                          (same as -sed initial_time)"
+echo "  [-ftime]            GRIB files only; set forecast time as a single element dimension"
+echo "                          (same as -sed forecast_time)"
+echo "  [-tps]              GRIB files only; remove suffix representing a time period (e.g. 2h)"
+echo "                        from statistically processed variables, leaving only type of"
+echo "                        processing as a suffix (e.g. _acc, _avg)"
+echo "  [-h]                this usage message"

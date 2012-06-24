@@ -1,0 +1,27 @@
+#
+#	$Id: yMakefile,v 1.6 1999-07-27 21:03:12 haley Exp $
+#
+
+MYNAME	= concom
+
+GENERIC_SRCS = \
+	conlod.f condrw.f congen.f concom.f concld.f conreo.f conssd.f \
+	consld.f conlin.f conlcm.f condsd.f conecd.f
+
+GENERIC_OBJS = \
+	conlod.o condrw.o congen.o concom.o concld.o conreo.o conssd.o \
+	consld.o conlin.o conlcm.o condsd.o conecd.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS	= $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGcn.a,$(OBJECTS))
+
+#if defined(sun4)
+conecd.o: conecd.f
+	$(F77) -g -c conecd.f
+#endif

@@ -1,0 +1,18 @@
+#
+#	$Id: yMakefile,v 1.5 1996-10-25 21:42:38 boote Exp $
+#
+
+MYNAME	= colconv
+
+GENERIC_SRCS = hlsrgb.f hsvrgb.f rgbhls.f rgbhsv.f rgbyiq.f sigplc.f yiqrgb.f
+
+GENERIC_OBJS = hlsrgb.o hsvrgb.o rgbhls.o rgbhsv.o rgbyiq.o sigplc.o yiqrgb.o
+
+SOURCES = $(GENERIC_SRCS)
+
+OBJECTS	= $(GENERIC_OBJS)
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGllu.a,$(OBJECTS))

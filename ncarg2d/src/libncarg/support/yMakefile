@@ -1,0 +1,46 @@
+#
+#	$Id: yMakefile,v 1.12 2004-08-12 22:20:27 haley Exp $
+#
+MYNAME	= support
+
+GENERIC_SRCS = \
+	encd.f entsr.f retsr.f nerro.f errof.f seter.f eprin.f fdum.f  \
+	icloem.f seblda.f semess.f q8qst4.f mskrv1.f mskrv2.f msbsf1.f \
+	msbsf2.f mssrf1.f mssrf2.f msceez.f mstrms.f msshch.f msntvl.f \
+	bcbkd.f  bccurv.f bcdp2l.f bcfcrv.f bcftol.f bcgeti.f bcgetr.f \
+	bcseti.f bcsetr.f bcsubd.f idblda.f idgetr.f idlctn.f idpltr.f \
+	idsetr.f idxchg.f idbvip.f idgrid.f idlsqf.f idptip.f idsfft.f \
+	idxchn.f idgeti.f idgtcp.f idpdrv.f idseti.f idtang.f uliber.f \
+	icfell.f
+
+
+GENERIC_OBJS = \
+	encd.o entsr.o retsr.o nerro.o errof.o seter.o eprin.o fdum.o  \
+	icloem.o seblda.o semess.o q8qst4.o mskrv1.o mskrv2.o msbsf1.o \
+	msbsf2.o mssrf1.o mssrf2.o msceez.o mstrms.o msshch.o msntvl.o \
+	bcbkd.o  bccurv.o bcdp2l.o bcfcrv.o bcftol.o bcgeti.o bcgetr.o \
+	bcseti.o bcsetr.o bcsubd.o idblda.o idgetr.o idlctn.o idpltr.o \
+	idsetr.o idxchg.o idbvip.o idgrid.o idlsqf.o idptip.o idsfft.o \
+	idxchn.o idgeti.o idgtcp.o idpdrv.o idseti.o idtang.o uliber.o \
+	icfell.o
+
+SOURCES = $(GENERIC_SRCS)
+OBJECTS = $(GENERIC_OBJS)
+ 
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGllu.a,$(OBJECTS))
+
+#if defined(Darwin)
+idgrid.o: idgrid.f
+	$(F77) $(FCOPTIONS) -g -c idgrid.f
+#endif
+
+
+bcbkd.o : bccom.h
+bccurv.o : bccom.h
+bcgeti.o : bccom.h
+bcgetr.o : bccom.h
+bcseti.o : bccom.h
+bcsetr.o : bccom.h

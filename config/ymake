@@ -1,0 +1,687 @@
+#!/bin/csh -f
+#
+#	$Id: ymake,v 1.49 2008-12-28 13:27:18 haley Exp $
+#
+######################################################################
+#
+# Program:	ymake
+#
+# Purpose:	"ymake" processes a "yMakefile" or "ymakefile"
+#		that may have imbedded "cpp" commands. In producing
+#		the output file, "Makefile" or "makefile", "ymake"
+#		first reads in a "configuration file", based on
+#		what the host system is, and then runs the
+#		yMakefile/ymakefile through "cpp", thus producing
+#		"Makefile" or "makefile". The result is a standard,
+#		portable Makefile.
+#
+#		This mechanism is used for generating a machine-dependent 
+#		hierarchy of Makefiles at installation time.
+#
+#		Warning: this script WILL overwrite the existing
+#		Makefile IF a yMakefile exists!
+#
+# Author:	Don Middleton-Link
+#
+# Revision History:
+#		Created June 1988
+#		Revised October 1988 - extensions added for IBM/AIX
+#		Moved to Bourne shell version for UNICOS 5.0 beta
+#		Revised November 1989
+#		Significant re-write/additions to allow an installed
+#			version May 93 (boote)
+#		Added option for FreeBSD operating system 2003 (grubin)
+#
+# Warning:	This script WILL overwrite the existing
+#		Makefile IF a yMakefile exists!
+#
+######################################################################
+
+set     defines
+set     ymakeargs
+@ useinstalled = 1
+
+while ($#argv)
+
+        switch ("$argv[1]")
+
+        case    -config:
+                shift
+                if ($#argv) then
+                        set config_dir = "$argv[1]"
+                        if (! -d $config_dir) then
+                                echo "$0 : Unable to open NCARG_CONFIG dir : $config_dir" > /dev/tty
+                                exit 1
+                        endif
+                                
+                        set defines = (-I$argv[1] $defines)
+                        @ useinstalled = 0
+                else
+                        exit 1
+                endif
+                breaksw
+
+        case    -noproject:
+
+                @ NoProject = 1
+                set defines = ($defines -D_NO_PROJECT_FILE)
+                set ymakeargs = ($ymakeargs -noproject)
+
+                breaksw
+
+        case    -Curdir:
+                shift
+                if ($#argv) then
+                        set cur_dir = "$argv[1]"
+
+                        set defines=($defines -DCURDIR=$cur_dir)
+                else
+                        exit 1
+                endif
+                breaksw
+
+        case    -Topdir:
+                shift
+                if ($#argv) then
+                        set top_dir = "$argv[1]"
+                        if (! -d $top_dir) then
+                                echo "$0 : Unable to open Topdir : $top_dir" > /dev/tty
+                                exit 1
+                        endif
+
+                        set defines=($defines -DTOPDIR=$top_dir)
+                                
+                else
+                        exit 1
+                endif
+                breaksw
+
+        default:
+                set defines = ($defines $argv[1])
+                set ymakeargs = ($ymakeargs $argv[1])
+                breaksw
+        endsw
+
+        shift
+end
+
+@ num_args = 0
+foreach arg ($ymakeargs)
+        @ num_args++
+        switch ("$num_args")
+
+        case 1:
+                set defines = ($defines -D_YmakeArg1=$arg)
+                breaksw
+        case 2:
+                set defines = ($defines -D_YmakeArg2=$arg)
+                breaksw
+        case 3:
+                set defines = ($defines -D_YmakeArg3=$arg)
+                breaksw
+        case 4:
+                set defines = ($defines -D_YmakeArg4=$arg)
+                breaksw
+        case 5:
+                set defines = ($defines -D_YmakeArg5=$arg)
+                breaksw
+        default:
+                echo "$0 :Too Many args - ignoring $arg" > /dev/tty
+                breaksw
+        endsw
+end
+
+if ( ! $?top_dir) then
+        set top_dir = .
+endif
+
+if ( -r $top_dir/ymake.conf) then
+        set defines=($defines -D_LOCAL_CONF=\"$top_dir/ymake.conf\")
+endif
+
+if (! $?NoProject) then
+        if ( -r $top_dir/ymake.project) then
+                set defines=($defines -D_PROJECT_FILE=\"$top_dir/ymake.project\")
+        endif
+endif
+
+if ($useinstalled != 0) then
+        set config_dir = `ncargpath config`
+        if ($status != 0) then
+                echo "$0 : Unable to find NCARG_CONFIG dir" > /dev/tty
+                exit 1
+        endif
+        if (! -d $config_dir) then
+                echo "$0 : Unable to open NCARG_CONFIG dir : $config_dir" > /dev/tty
+                exit 1
+        endif
+        set defines = (-I$config_dir -DUseInstalled $defines)
+
+        set root_dir = `ncargpath root`
+        if ($status != 0) then
+                echo "$0 : Unable to find NCARG_ROOT dir" > /dev/tty
+                exit 1
+        endif
+        set defines=($defines -D_InstRoot\=$root_dir -D_InstConfig\=$config_dir)
+
+        set tmp_dir = `ncargpath tmp`
+        if ($status != 0) then
+                echo "$0 : Unable to find TMP dir" > /dev/tty
+                exit 1
+        endif
+        set defines = ($defines -D_InstTmp\=$tmp_dir)
+
+        set lib_dir = `ncargpath lib`
+        if ($status != 0) then
+                echo "$0 : Unable to find NCARG_LIB dir" > /dev/tty
+                exit 1
+        endif
+        set defines = ($defines -D_InstLib\=$lib_dir)
+
+        set bin_dir = `ncargpath bin`
+        if ($status != 0) then
+                echo "$0 : Unable to find NCARG_BIN dir" > /dev/tty
+                exit 1
+        endif
+        set defines = ($defines -D_InstBin\=$bin_dir)
+
+        set inc_dir = `ncargpath include`
+        if ($status != 0) then
+                echo "$0 : Unable to find NCARG_INCLUDE dir" > /dev/tty
+                exit 1
+        endif
+        set defines = ($defines -D_InstInc\=$inc_dir)
+
+        set man_dir = `ncargpath man`
+        if ($status != 0) then
+                echo "$0 : Unable to find NCARG_MAN dir" > /dev/tty
+                exit 1
+        endif
+        set defines = ($defines -D_InstMan\=$man_dir)
+endif
+
+if ($?YMAKE_DEV_FILE) then
+        if (-r $YMAKE_DEV_FILE) then
+                set defines=($defines -DYMAKEDEVFILE=\"$YMAKE_DEV_FILE\")
+        else
+                echo "unable to open YMAKE_DEV_FILE $YMAKE_DEV_FILE" > /dev/tty
+        endif
+endif
+
+if (-e $config_dir/Site.local) then
+        set defines=($defines -DSiteFile=\"Site.local\" -DSiteFileName=Site.local)
+else
+        set defines=($defines -DSiteFile=\"Site\" -DSiteFileName=Site)
+endif
+
+set ymakefile
+set outfile
+
+set tmp1="ymake.tmp$$"
+/bin/rm -f $tmp1
+
+if (-e "ymakefile") then
+        set ymakefile="ymakefile"
+        set outfile = "makefile"
+else if (-e "yMakefile") then
+        set ymakefile="yMakefile"
+        set outfile = "Makefile"
+else
+        echo "$0 : no y(mM)akefile found" > /dev/tty
+        exit 1
+endif
+
+set defines=($defines -DYMAKESRCFILE=$ymakefile)
+
+if (-e $outfile) then
+        if (-e $outfile.bak) then
+                /bin/rm -f $outfile.bak
+        endif
+        mv $outfile $outfile.bak
+endif
+
+onintr error_cleanup
+
+set foo = `uname -s`
+
+#
+#       Figure out what kind of system we are on. We need to know the OS
+#       and the machine architecture. 
+#
+if ($status != 0) then
+        echo "$0 : Unknown operating system" > /dev/tty
+        exit 1
+endif
+set mach = `uname -m`
+if ($status != 0) then
+        echo "$0 : Unknown machine type" > /dev/tty
+        exit 1
+endif
+
+switch ("$foo")
+case SunOS:
+case AIX:
+case IRIX:
+case IRIX64:
+case ULTRIX:
+case HP-UX:
+case OSF1:
+case Linux:
+case FreeBSD:
+case Darwin:
+        set opsys = $foo
+        breaksw
+case CYGWIN*:
+        set opsys = CYGWIN
+        breaksw
+default:
+        set foo = `uname -m`
+        if ($status != 0) exit 1
+        switch ("$foo")
+        case    CRAY*
+        case    cray*
+                set opsys = UNICOS
+                breaksw
+        default:
+                echo "$0 : system unknown" > /dev/tty
+                exit 1
+        endsw
+        breaksw
+endsw
+
+switch ("$opsys")
+case    SunOS:
+        set foo = `uname -r`
+        if ($status != 0) exit 1
+
+        switch ("$foo")
+        case    5*:
+                set os = $opsys
+                set extraos = Solaris
+                breaksw
+        default:
+                set os = $opsys
+                breaksw
+        endsw
+
+        switch ("$mach")
+        case    sun4*:
+                set arch = sun4
+
+                if ($?extraos == 0) then
+                        set sysincs = Sun4
+                        breaksw
+                endif
+
+                if ("$extraos" == Solaris) then
+                        set sysincs = Sun4Solaris
+                        breaksw
+                endif
+                breaksw
+        case    i86pc*:
+                set arch = PC
+                if ("$extraos" == Solaris) then
+                  set sysincs = SolarisPC
+                  breaksw
+                endif
+                breaksw
+        case    sun3*:
+                set arch = sun3
+                set sysincs = Sun3
+                breaksw
+        default:
+                echo "$0 : Unknown machine type" > /dev/tty
+                exit 1
+        endsw
+
+        set vendor = SUN
+
+        breaksw
+
+case    AIX:
+        set os = $opsys
+
+        switch ("$mach")
+        case    00*00:
+                set model = `echo $mach | cut -c9-10`
+                set arch = RS6k$model
+                breaksw
+        default:
+                echo "$0 : Unknown machine type" > /dev/tty
+                exit 1
+        endsw
+
+        set sysincs = AIX_RS6000
+        set vendor = IBM
+
+        breaksw
+
+case    Linux:
+        set os = $opsys
+
+        switch ("$mach")
+        case    i*86:
+        case    x*86:
+	case    amd64:
+        case    i*64:
+        case    x*64:
+        case    p*64:
+        case    alpha:
+            set model   = $mach
+            set arch    = $mach
+            set sysincs = LINUX
+            set vendor  = IBM
+            breaksw
+        case    ppc:
+            set model   = $mach
+            set arch    = $mach
+            set sysincs = YDLINUX
+            set vendor  = APPLE
+            breaksw
+        default:
+            echo "$0 : Unknown machine type" > /dev/tty
+            exit 1
+        endsw
+
+        breaksw
+
+case    FreeBSD:
+        set os = $opsys
+
+        switch ("$mach")
+        case    i*86:
+        case    i*64:
+        case    alpha:
+            set model   = $mach
+            set arch    = $mach
+            set sysincs = FreeBSD
+            set vendor  = IBM
+            breaksw
+        default:
+            echo "$0 : Unknown machine type" > /dev/tty
+            exit 1
+        endsw
+
+        breaksw
+
+case    Darwin:
+        set os = $opsys
+
+        switch ("$mach[1]")
+        case    Power:
+            set model   = $mach
+            set arch    = $mach
+            set sysincs = Darwin
+            set vendor  = Apple
+            breaksw
+        case    i386:
+            set model   = $mach
+            set arch    = $mach
+            set sysincs = Darwin_Intel
+            set vendor  = Apple
+            breaksw
+        default:
+            echo "$0 : Unknown machine type" > /dev/tty
+            exit 1
+        endsw
+
+        breaksw
+
+case	CYGWIN:
+        set os = $opsys
+        set model = $mach
+        set arch = $mach
+        set sysincs = CYGWIN
+        set vendor = Cygnus
+        breaksw
+
+case    IRIX:
+case    IRIX64:
+        set os = $opsys
+
+        switch ("$mach")
+        case    IP*:
+                set arch = $mach
+                breaksw
+        default:
+                echo "$0 : Unknown machine type" > /dev/tty
+                exit 1
+        endsw
+
+        set sysincs = SGI_IRIX
+        set vendor = SGI
+
+        breaksw
+
+case    ULTRIX:
+case    OSF1:
+        set os = $opsys
+        set arch = $mach
+
+        if ("$os" == ULTRIX) then
+                set sysincs = DECRISC
+        else
+                set sysincs = AlphaOSF1
+        endif
+
+        set vendor = DEC
+
+        breaksw
+
+case    HP-UX:
+        set os = HPUX
+
+        switch ("$mach")
+        case    9000/7*:
+                set model = `echo $mach | cut -c7-8`
+                set arch = HP9k7$model
+                breaksw
+        case    9000/8*:
+                set model = `echo $mach | cut -c7-8`
+                set arch = HP9k8$model
+                breaksw
+        default:
+                echo "$0 : Unknown machine type" > /dev/tty
+                exit 1
+        endsw
+
+        set sysincs = HPUX_snake
+        set vendor = HP
+
+        breaksw
+
+case    UNICOS:
+        set os = $opsys
+
+        switch ("$mach[1]")
+        case   CRAY:
+                switch ("$mach[2]")
+                case    Y*:
+                        set arch = YMP
+                breaksw
+        case    C90:
+        case    J90:
+        case    TS:
+                        set arch = $mach[1]
+                breaksw
+                default:
+                        echo "$0 : Unknown machine type" > /dev/tty
+                        exit 1
+                endsw
+        breaksw
+
+        case   "CRAY-2":
+                set arch = cray2
+        breaksw
+
+        case   "cray-3":
+                set arch = cray3
+        breaksw
+
+        default:
+                echo "$0 : Unknown machine type" > /dev/tty
+                exit 1
+        endsw
+
+        set sysincs = Cray
+        set vendor = CRAY
+
+        breaksw
+
+default:
+        echo "$0 : Unknown System Type - No Config file" > /dev/tty
+        exit 1
+        breaksw
+endsw
+
+if ($?sysincs == 0) then
+        echo "$0 : Unknown System Type - No Config file" > /dev/tty
+        exit 1
+endif
+
+#
+#       add sysincs defs to list
+#
+if (-e $config_dir/$sysincs) then
+        set defines=($defines -DSystemIncludes=\"$sysincs\")
+        set defines=($defines -DSystemIncludesName=\"$sysincs\")
+else
+        echo "$0 : Unable to open Config file: $sysincs" > /dev/tty
+        exit 1
+endif
+
+switch ("$opsys")
+case    AIX:
+        set major = `uname -v`
+        set minor = `uname -r`
+        set subminor = ""
+        breaksw
+case    OSF1:
+        set major = `uname -r | cut -d. -f1 | cut -c2- `
+        set minor = `uname -r | cut -d. -f2`
+        set subminor = `uname -r | cut -d. -f3`
+        breaksw
+case    SunOS:
+case    IRIX64:
+case    IRIX:
+case    ULTRIX:
+case    HP-UX:
+case    UNICOS:
+default:
+        set major = `uname -r | cut -d. -f1`
+        set minor = `uname -r | cut -d. -f2`
+        set subminor = `uname -r | cut -d. -f3`
+        if ($minor == "5SE") set minor = 5
+        breaksw
+endsw
+
+if ("$subminor" == "") then
+        unset subminor
+endif
+
+#
+#       add os and arch to our defines list
+#       also add major minor and sub-minor
+#
+
+
+if ($?extraos) then
+        set defines=($defines -D"$extraos" -D_OpSys2Def=-D"$extraos")
+else
+        set defines=($defines -D_OpSys2Def="")
+endif
+set defines=($defines -D"$os" -D_OpSysDef=-D"$os")
+set defines=($defines -D"$arch" -D"$vendor")
+set defines=($defines -D_ArchDef=-D"$arch" -D_VendorDef=-D"$vendor")
+set defines=($defines -D_Major=$major -D_Minor=$minor)
+if ($?subminor) then
+        set defines=($defines -D_SubMinor=$subminor)
+endif
+
+
+# Leave the cpp commands unmolested but insert a C null comment
+# in front of Makefile comment lines.  cpp will later remove these
+# restoring the original form (plus a few blank lines).
+# Also check for a tab followed by a # - that should be a saber target
+# so insert a C null comment for them as well.
+
+sed <$ymakefile >! $tmp1 \
+        -e '/^#[        ]*if/b' \
+        -e '/^#[        ]*ifdef/b' \
+        -e '/^#[        ]*ifndef/b' \
+        -e '/^#[        ]*else/b' \
+        -e '/^#[        ]*elif/b' \
+        -e '/^#[        ]*endif/b' \
+        -e '/^#[        ]*define/b' \
+        -e '/^#[        ]*undef/b' \
+        -e '/^#[        ]*line/b' \
+        -e '/^#[        ]*include/b' \
+        -e '/^#/s$$/**/_COMMENT_&$' \
+        -e '/^  #/s$$/**/_COMMENT_&$'
+
+cat <<'EOF' >! $outfile
+#########################################################################
+#                                                                       #
+#       This Makefile was created by the "ymake" utility.               #
+#       If you wish to make changes in the "Makefile" or "makefile",    #
+#       do so by making changes to "yMakefile" or "ymakefile"           #
+#       and executing "make local-Makefile".                            #
+#                                                                       #
+#########################################################################
+
+'EOF'
+
+if (-e /usr/ccs/lib/cpp) then
+    set cpp = /usr/ccs/lib/cpp
+else if (-e /opt/ctl/bin/cpp) then
+    set cpp = /opt/ctl/bin/cpp
+else if (-e /usr/bin/cpp) then
+    set cpp = /usr/bin/cpp
+else
+  set cpp = /lib/cpp
+endif
+
+# set cpp options
+
+switch ("$opsys")
+case    UNICOS:
+        set cppopt = -N
+        breaksw
+case    Linux:
+case	FreeBSD:
+case    CYGWIN:
+        set cppopt = -traditional-cpp
+        breaksw
+default:
+        set cppopt
+        breaksw
+endsw
+
+switch ("$opsys")
+case    CYGWIN:
+case    Darwin:
+echo '#include "Template"' | \
+$cpp $cppopt -I. -D_COMMENT_\#="" -DNGCOMM=\# $defines -DYMAKEFILE=\"$tmp1\" | \
+"$config_dir"/ymake-filter >>$outfile
+breaksw
+default:
+echo '#include "Template"' | \
+$cpp $cppopt -I. -D_COMMENT_="" -DNGCOMM=\# $defines -DYMAKEFILE=\"$tmp1\" | \
+"$config_dir"/ymake-filter >>$outfile
+breaksw
+endsw
+
+if ($status) goto error_cleanup
+
+/bin/rm -f $outfile.bak $tmp1
+onintr
+exit 0
+
+error_cleanup:
+echo "" > /dev/tty
+echo "Error in <ymake>: Interrupted in" `pwd` "- restoring $outfile" > /dev/tty
+/bin/rm -f $outfile $tmp1
+cp $outfile.bak $outfile
+/bin/rm -f $outfile.bak
+exit 1
+onintr

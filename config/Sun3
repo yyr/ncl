@@ -1,0 +1,10 @@
+/*
+ *	Description:	This is no longer a supported architecture, so I
+ *			didn't test these things.
+ */
+#define BuildSunViewctrans
+#define	HdfDefines	-DSUN
+#define	CcOptions	-fswitch
+#define	Cstatic		-Bstatic
+#define	Cdynamic	-Bdynamic
+#define FCppCommand	/lib/cpp

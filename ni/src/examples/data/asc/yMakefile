@@ -1,0 +1,18 @@
+#
+#   $Id: yMakefile,v 1.10 2007-09-28 20:30:54 haley Exp $
+#
+#   Makefile for ASC data files
+#
+
+MYNAME = asc
+
+DATA  = cn03f.asc cn04n.asc cn11f.asc cn12n.asc ex05B1_uv_jan_mm92.hs.asc \
+	mp03n.asc oceanland30e.asc seismic.asc u.cocos uvdata0.asc xy.asc \
+	xy08.asc xy12c.asc sounding_ATS.asc sounding_testdata.asc \
+	psadilookup.dat climdivcorr.txt
+
+InstallTarget($(DATA),$(INSTALL_LIB),$(DATAROOT)/asc)
+#ifdef BuildPyNGL
+InstallTarget($(DATA),$(INSTALL_LIB),$(PYNGLNCARGPATH)/$(DATADIR)/asc)
+#endif
+

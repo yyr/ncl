@@ -1,0 +1,61 @@
+#
+#	$Id: yMakefile,v 1.9 1993-11-12 02:44:53 boote Exp $
+#
+
+MYNAME	= impltest
+
+PROG_LIBS	=	$(NCARGLIBS)
+DEPLIBS		=	$(DEPNCARGLIBS)
+
+#if defined(Ardent) || defined(AIX370)
+#ifdef	UseInstalled
+OTHER_ROBJS =	$(ROBJROOT)/libncarbd.o
+#else
+OTHER_ROBJS = $(NCARGOPTLIBSRC)/ncarbd/ncarbd.o
+#endif	/* UseInstalled */
+#endif
+
+#ifdef	UseInstalled
+ROBJS = $(ROBJROOT)/ggkwdr_stub.o
+#else
+ROBJS = $(NCARGGKSLIBSRC)/awi/ggkwdr_stub.o
+#endif	/* UseInstalled */
+
+REL_OBJS =	$(ROBJS) $(OTHER_ROBJS)
+
+GENERIC_SRCS = \
+	 lcm.f mskout.f implbd.f tgbyte.f tgks0a.f tiand.f\
+	 tior.f tlocal.f tsbyte.f tshift.f
+
+GENERIC_OBJS = \
+	 lcm.o mskout.o implbd.o tgbyte.o tgks0a.o tiand.o\
+	 tior.o tlocal.o tsbyte.o tshift.o
+
+#ifdef CRAY
+
+TLOCAL_OBJS = \
+	tlocalcray.o tiand.o tior.o lcm.o tgbyte.o tshift.o tsbyte.o\
+	mskout.o
+
+#elif	defined(Ardent)
+
+TLOCAL_OBJS = \
+	tlocalardent.o tiand.o tior.o lcm.o tgbyte.o tshift.o tsbyte.o\
+	mskout.o
+
+#elif defined(AIX370)
+
+TLOCAL_OBJS = \
+	tlocalibm.o tiand.o tior.o lcm.o tgbyte.o tshift.o tsbyte.o\
+	mskout.o
+
+#else
+
+TLOCAL_OBJS = \
+	tlocal32.o tiand.o tior.o lcm.o tgbyte.o tshift.o tsbyte.o\
+	mskout.o
+
+#endif	/* CRAY */
+
+FortranProgram(tlocal,$(TLOCAL_OBJS) $(REL_OBJS),$(DEPLIBS))
+FortranProgram(tgks0a,tgks0a.o $(REL_OBJS),$(DEPLIBS))

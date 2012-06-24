@@ -1,0 +1,30 @@
+#
+#       $Id: yMakefile,v 1.14 2005-04-14 19:59:13 kennison Exp $
+#
+MYNAME	= ezmapa
+
+SOURCES = \
+	mapaci.f mapbla.f mapblm.f mapgrm.f mapiqa.f mapiqm.f mapita.f \
+	mapitm.f maplmm.f mdpaci.f mdpbla.f mdpblm.f mdpchm.f mdpgrm.f \
+	mdpiqa.f mdpiqm.f mdpita.f mdpitm.f mdplmm.f mdrdnm.f
+
+OBJECTS = \
+	mapaci.o mapbla.o mapblm.o mapgrm.o mapiqa.o mapiqm.o mapita.o \
+	mapitm.o maplmm.o mdpaci.o mdpbla.o mdpblm.o mdpchm.o mdpgrm.o \
+	mdpiqa.o mdpiqm.o mdpita.o mdpitm.o mdplmm.o mdrdnm.o
+
+PartialLibraryTarget(libncarg.a,$(OBJECTS))
+
+PartialSourceLibraryTarget($(MYNAME),srcncarg.a,$(SOURCES))
+
+PartialLibraryTarget(libNGmp.a,$(OBJECTS))
+
+CleanFilesTarget($(SOURCES) IftranRun)
+
+$(SOURCES) : IftranRun
+
+IftranRun : CodeIftran
+	@$(IFTRAN) < CodeIftran > CodeFortran
+	@$(FSPLIT) -both CodeFortran
+	-@$(RM) CodeFortran
+	touch IftranRun

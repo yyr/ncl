@@ -1,0 +1,98 @@
+#
+#       $Id: yMakefile,v 1.18 2008-12-19 22:11:42 kennison Exp $
+#
+
+DBFILES = EzmapAreaInfo.CO EzmapAreaInfo.PO EzmapAreaInfo.PS EzmapAreaInfo.US \
+	  EzmapOutlines.CO EzmapOutlines.PO EzmapOutlines.PS EzmapOutlines.US \
+	  ezmapdata ezmap_area_ids \
+	  Earth..1.areas Earth..1.lines Earth..1.names \
+	  Earth..2.areas Earth..2.lines Earth..2.names \
+	  Earth..3.areas Earth..3.lines Earth..3.names \
+	  Earth..4.areas Earth..4.lines Earth..4.names
+
+PROG_LIBS	=	$(NCARGCLIB)
+DEPLIBS		=	$(DEPNCARGCLIB)
+
+InstallTarget($(DBFILES),$(INSTALL_DB),$(DBPATH))
+#ifdef BuildPyNGL
+InstallTarget($(DBFILES),$(INSTALL_DB),$(PYNGLNCARGPATH)/$(DBDIR))
+#endif
+
+CleanFilesTarget(ConvertMapData EzmapOutlines.CO EzmapOutlines.PO \
+		 EzmapOutlines.PS EzmapOutlines.US ezmapdata \
+		 WriteLineFile Earth..1.lines Earth..2.lines Earth..3.lines \
+                 Earth..4.lines \
+		 WriteNameFile Earth..1.names Earth..2.names Earth..3.names \
+                 Earth..4.names)
+
+FNotInstalledTarget(mapconvrt,mapconvrt.o)
+
+FortranProgram(ConvertMapData,ConvertMapData.o,$(DEPLIBS))
+
+FortranProgram(WriteLineFile,WriteLineFile.o,$(DEPLIBS))
+FortranProgram(WriteNameFile,WriteNameFile.o,$(DEPLIBS))
+
+ezmapdata: ezmapdat mapconvrt
+	-@$(RM) ezmapdata
+	@echo "Building the EZMAP database"
+	@./mapconvrt
+
+EzmapOutlines.CO: ezmapdat ConvertMapData
+	-@$(RM) EzmapOutlines.CO
+	@echo "Building the EZMAP database"
+	@./ConvertMapData
+
+EzmapOutlines.PO: ezmapdat ConvertMapData
+	-@$(RM) EzmapOutlines.PO
+	@echo "Building the EZMAP database"
+	@./ConvertMapData
+
+EzmapOutlines.PS: ezmapdat ConvertMapData
+	-@$(RM) EzmapOutlines.PS
+	@echo "Building the EZMAP database"
+	@./ConvertMapData
+
+EzmapOutlines.US: ezmapdat ConvertMapData
+	-@$(RM) EzmapOutlines.US
+	@echo "Building the EZMAP database"
+	@./ConvertMapData
+
+Earth..1.lines: Earth..1 WriteLineFile
+	-@$(RM) Earth..1.lines
+	@echo "Building the new Earth..1 line file"
+	@echo Earth..1 | ./WriteLineFile
+
+Earth..1.names: Earth..1 WriteNameFile
+	-@$(RM) Earth..1.names
+	@echo "Building the new Earth..1 name file"
+	@echo Earth..1 | ./WriteNameFile
+
+Earth..2.lines: Earth..2 WriteLineFile
+	-@$(RM) Earth..2.lines
+	@echo "Building the new Earth..2 line file"
+	@echo Earth..2 | ./WriteLineFile
+
+Earth..2.names: Earth..2 WriteNameFile
+	-@$(RM) Earth..2.names
+	@echo "Building the new Earth..2 name file"
+	@echo Earth..2 | ./WriteNameFile
+
+Earth..3.lines: Earth..3 WriteLineFile
+	-@$(RM) Earth..3.lines
+	@echo "Building the new Earth..3 line file"
+	@echo Earth..3 | ./WriteLineFile
+
+Earth..3.names: Earth..3 WriteNameFile
+	-@$(RM) Earth..3.names
+	@echo "Building the new Earth..3 name file"
+	@echo Earth..3 | ./WriteNameFile
+
+Earth..4.lines: Earth..4 WriteLineFile
+	-@$(RM) Earth..4.lines
+	@echo "Building the new Earth..4 line file"
+	@echo Earth..4 | ./WriteLineFile
+
+Earth..4.names: Earth..4 WriteNameFile
+	-@$(RM) Earth..4.names
+	@echo "Building the new Earth..4 name file"
+	@echo Earth..4 | ./WriteNameFile

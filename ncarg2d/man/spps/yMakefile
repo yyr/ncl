@@ -1,0 +1,19 @@
+#
+#	$Id: yMakefile,v 1.6 1994-04-08 22:24:26 haley Exp $
+#
+
+MAN =	cfux cfuy clsgks cmfx cmfy cmux cmuy cpfx cpfy cpux cpuy cufx cufy \
+	curve fl2int frame frstpt getset getsi getusv kfmx kfmy kfpx kfpy kmpx \
+	kmpy kpmx kpmy kumx kumy kupx kupy line mxmy opngks plotif plotit \
+	point points pwrit set seti setusv sflush spps spps_converters \
+	spps_params vector wtstr
+
+# Install preformatted troff documents on systems without troff
+#if UseCatDirs
+FORMAT_EXT	= .p
+#else
+FORMAT_EXT	= .m
+#endif
+
+InstallManPages($(MAN),$(FORMAT_EXT),$(MAN3PATH),$(MAN3_SECTION))
+FormatManPages($(MAN),.m,.p)

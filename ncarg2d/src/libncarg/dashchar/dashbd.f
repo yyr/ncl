@@ -1,0 +1,95 @@
+C
+C	$Id: dashbd.f,v 1.6 2008-07-27 00:16:58 haley Exp $
+C                                                                      
+C                Copyright (C)  2000
+C        University Corporation for Atmospheric Research
+C                All Rights Reserved
+C
+C The use of this Software is governed by a License Agreement.
+C
+      SUBROUTINE DASHBD
+C
+C Calling this do-nothing subroutine forces "ld" to load the following
+C block data routine (but only if they are in the same ".f" file).
+C
+        RETURN
+C
+      END
+CNOSPLIT
+      BLOCKDATA DASHBDX
+C
+C DASHBDX IS USED TO INITIALIZE VARIABLES IN NAMED COMMON.
+C
+      COMMON /DASHD1/  ISL,  L,  ISIZE,  IP(100),  NWDSM1,  IPFLAG(100)
+     1                 ,MNCSTR, IGP
+C
+      COMMON /DDFLAG/ IFCFLG
+C
+      COMMON /DCFLAG/ IFSTFL
+C
+      COMMON /CFFLAG/ IVCTFG
+C
+      COMMON /DSAVE3/ IXSTOR,IYSTOR
+C
+      COMMON/INTPR/IPAU,FPART,TENSN,NP,SMALL,L1,ADDLR,ADDTB,MLLINE,
+     1    ICLOSE
+C
+      COMMON /BLGASO/ IBLK,IGAP,ISOL
+      CHARACTER*1     IBLK,IGAP,ISOL
+C
+      SAVE
+C
+C IFSTFL CONTROLS THAT FRSTD IS CALLED BEFORE VECTD IS CALLED (IN CFVLD)
+C WHENEVER DASHDB OR DASHDC HAVE BEEN CALLED.
+C
+      DATA IFSTFL /1/
+C
+C IVCTFG INDICATES IF VECTD IS BEING CALLED OR LASTD (IN CFVLD)
+C
+      DATA IVCTFG /1/
+C
+C ISL IS A FLAG FOR AN ALL SOLID PATTERN (+1) OR AN ALL GAP PATTERN (-1)
+C
+      DATA ISL /1/
+C
+C IGP IS AN INTERNAL PARAMETER. IT IS DESCRIBED IN THE DOCUMENTATION
+C TO THE DASHED LINE PACKAGE.
+C
+      DATA IGP /9/
+C
+C MNCSTR IS THE MAXIMUM NUMBER OF CHARACTERS ALLOWED IN A HOLLERITH
+C STRING PASSED TO DASHDC.
+C
+      DATA MNCSTR /15/
+C
+C
+C
+C  INTERNAL PARAMETERS
+C
+      DATA IPAU/3/
+      DATA FPART/1./
+      DATA TENSN/2.5/
+      DATA NP/100/
+      DATA SMALL/128./
+      DATA L1/70/
+      DATA ADDLR/2./
+      DATA ADDTB/2./
+      DATA MLLINE/384/
+      DATA ICLOSE/6/
+C
+C IFCFLG IS THE FIRST CALL FLAG FOR SUBROUTINE DASHDB OR DASHDC.
+C  1 = FIRST CALL TO DASHDB OR DASHDC.
+C  2 = DASHDB OR DASHDC HAS BEEN CALLED BEFORE.
+C
+      DATA IFCFLG /1/
+C
+C IXSTOR AND IYSTOR CONTAIN THE CURRENT PEN POSITION. THEY ARE
+C INITIALIZED TO AN IMPOSSIBLE VALUE.
+C
+      DATA IXSTOR,IYSTOR /-9999,-9999/
+C
+C Define characters representing a blank, a gap, and a solid.
+C
+      DATA IBLK,IGAP,ISOL / ' ' , '''' , '$' /
+C
+      END

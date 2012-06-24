@@ -1,0 +1,9 @@
+/*
+ *	Description:	This file contains the directives necessary to define
+ *			the DEC Alpha architecture running OSF1.
+ */
+#define ByteSwapped
+#define	StdDefines	-DByteSwapped -DSYSV -std1
+#define CtoFLibraries   -lots -lfor -lm
+#define HdfDefines      -DDEC_ALPHA
+

@@ -1,0 +1,38 @@
+#
+#   $Id: yMakefile,v 1.8 1999-03-25 03:47:57 haley Exp $
+#
+#   Makefile for HLU Legend examples
+#
+
+MYNAME      = legend
+
+PROG_LIBS   =   $(HLULIBS) $(NCARGLIBS)
+EXTRA_LIBS  =   $(XMOTIFCLIENTLIBS)
+SYS_LIBS    =   $(CTOFLIBS) -lm
+
+CSRCS    = lg01c.c lg02c.c lg03c.c
+FSRCS    = lg01f.f lg02f.f lg03f.f
+NSRCS    = lg01n.ncl lg02n.ncl lg03n.ncl
+COBJS    = lg01c.o lg02c.o lg03c.o
+FOBJS    = lg01f.o lg02f.o lg03f.o
+SRCS     = $(CSRCS) $(FSRCS)
+OBJS     = $(COBJS) $(FOBJS)
+RESFILES = lg01.res lg02.res lg03.res
+
+InstallTarget($(SRCS),$(INSTALL_LIB),$(HLUEXROOT)/$(MYNAME))
+#if !defined(CRAY)
+InstallTarget($(NSRCS),$(INSTALL_LIB),$(NCLEXROOT)/$(MYNAME))
+#endif
+InstallTarget($(RESFILES),$(INSTALL_LIB),$(RESFILEROOT)/$(MYNAME))
+
+CExampleTarget(lg01c,lg01c.o)
+CExampleTarget(lg02c,lg02c.o)
+CExampleTarget(lg03c,lg03c.o)
+
+FExampleTarget(lg01f,lg01f.o)
+FExampleTarget(lg02f,lg02f.o)
+FExampleTarget(lg03f,lg03f.o)
+
+CleanFilesTarget($(OBJS))
+DependTarget($(CSRCS))
+

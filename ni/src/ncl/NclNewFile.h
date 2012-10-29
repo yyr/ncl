@@ -6,7 +6,7 @@
 *                                                                       *
 ************************************************************************/
 /*
- *      $Id: NclNewFile.h 13245 2012-03-10 23:43:13Z haley $
+ *      $Id: NclNewFile.h 13197 2012-02-15 22:52:15Z huangwei $
  */
 #ifndef NclNewFile_h
 #define NclNewFile_h

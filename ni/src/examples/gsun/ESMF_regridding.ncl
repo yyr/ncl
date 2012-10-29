@@ -9,11 +9,51 @@
 ; See notes below.
 ;
 ; A debt of gratitude is owed to the ESMF development team, and 
-; especially Robert Oehmke, for help in\ using the ESMF software.
+; especially Robert Oehmke, for help in using the ESMF software.
 ;
 ; This script was added to the NCL trunk on 13 Oct 2011.
 ;
-;    Modifications:
+;    Important modifications:
+;       25 Oct 2012:
+;           The LargeFile option is now True by default.
+;
+;       17 Oct 2012:
+;           Attributes attached to regridded variable were
+;           cleaned up. A new "remap" attribute will be attached
+;           to the regridded variable.
+;
+;       16 Oct 2012:
+;           ESMF_regrid and ESMF_regrid_with_weights will now
+;              return float if a float is input. Double is 
+;              returned otherwise. If you still want a double 
+;              returned, set ReturnDouble to True.
+;              This was changed AFTER 6.1.0-beta.
+;
+;       31 Jul 2012:
+;           Added a check_grid_type function to check for valid
+;              grid types ("rectilinear","5deg","G64", etc) and
+;              return necessary information.
+;       29 Jul 2012:
+;            Fixed the code for copying coordinates to use the
+;            values on the weights file instead of the description
+;            file. ESMF_copy_varcoords is the new procedure.
+;            This change pretty much renders all of the 
+;            retrieve_SCRIP_xxx, retrieve_ESMF_xxx, 
+;            retrieve_dstGrid_xxx, and retrieve_srcGrid_xxx
+;            obsolete.
+;
+;            ESMF_regrid_with_weights now copies attributes and
+;            coordinates by default.
+;            (CopyVarCoords and CopyVarAtts now default True.)
+;
+;            Added new CopyVarMeta attribute, which is True by default.
+;            Setting this to False overrides CopyVarCoords and CopyVarAtts. 
+;
+;       20 Jun 2012:
+;            Fix the section that calculates the corner grid cells
+;            so that the appropriate algorithm is used depending
+;            on whether the lat values go to -90/90.
+;            
 ;       6 May 2012:
 ;            Clean up error statements.
 ;            Renamed RemoveDstGridFile, RemoveSrcGridFile, and
@@ -201,7 +241,7 @@ begin
     wallClockElapseTime(stime, title, 0)
   else
     diff_time = get_cpu_time() - stime
-    print("=====> CPU Elapsed Time: " + title + ": " + diff_time + " <=====")
+    print("=====> CPU Elapsed Time: " + title + ": " + diff_time + " seconds <=====")
   end if
 end
 
@@ -321,6 +361,7 @@ end
 ; different values. If so, they will be set to the given value,
 ; and a warning printed.
 ;======================================================================
+undef("check_both_atts")
 procedure check_both_atts(opt,att1,att2,attval)
 begin
   if (isatt(opt,att1).and.isatt(opt,att2).and.\
@@ -429,13 +470,136 @@ begin
 end     ; of mirrorP2P(...)
 
 ;======================================================================
-; This procedure is meant as a replacement for find_SCRIP_corners.
-; It takes the same arguments, but uses a different algorithm that
-; was suggested by Bob Oehmke.
+; This functions checks the given string for a valid grid type:
+;    - "rectilinear"
+;    - "curvilinear"
+;    - "unstructred"
+;    - "1x1", "0.25x0.25", etc. 
+;    - "1deg", "0.25deg", etc.
+;    - "G64", "G128", tec.
+;
+; If a valid type is found, then it will be returned as a string:
+;  - "rectilinear" - returns "rectilinear"
+;  - "curvilinear" - returns "curvilinear"
+;  - "unstructured" - returns "unstructured"
+;
+; These grid types will return additional attributes:
+;  - "1x1", "0.25x0.25", etc - returns "deg" and nlat,nlon as attributes
+;  - "1deg", "0.25deg", etc  - returns "deg" and nlat,nlon as attributes
+;  - "G64", "G128", etc      - returns "gaussian" and the nlon number
+;
+; If a valid type is not found, then "none" is returned. 
 ;======================================================================
-undef("calc_SCRIP_corners")
-procedure calc_SCRIP_corners(lat2d[*][*],lon2d[*][*], \
-                             grid_corner_lat, grid_corner_lon, opt)
+undef("check_grid_type")
+function check_grid_type(grid_type[1]:string)
+local str, dlat, dlon, nlon, ret
+begin
+  ret     = grid_type     ; this may change
+  bad_ret = "none"
+  if(any(grid_type.eq.(/"rectilinear","curvilinear","unstructured"/))) then
+    return(ret)
+  end if
+
+;---Check for "1x1", "2x3", "0.25x0.25" format
+  if(isStrSubset(grid_type,"x")) then
+    str = str_split(grid_type,"x")
+    if(dimsizes(str).ne.2) then
+      print("check_grid_type: invalid format for NxM type of grid.")
+      return(bad_ret)
+    end if
+    dlat = tofloat(str(0))
+    dlon = tofloat(str(1))
+    if(ismissing(dlat).or.ismissing(dlon)) then
+      print("check_grid_type: invalid format for NxM type of grid.")
+      return(bad_ret)
+    end if
+    ret      = "degree"
+    ret@dlat = dlat
+    ret@dlon = dlon
+    return(ret)
+  end if
+
+;---Check for "1deg", "0.25 deg" format
+  if(isStrSubset(grid_type,"deg")) then
+    str = str_split(grid_type,"deg")
+    if(dimsizes(str).ne.1) then
+      print("check_grid_type: invalid format for Ndeg type of grid.")
+      return(bad_ret)
+    end if
+    dlat = tofloat(str(0))
+    if(ismissing(dlat)) then
+      print("check_grid_type: invalid format for Ndeg type of grid.")
+      return(bad_ret)
+    end if
+    ret      = "degree"
+    ret@dlat = dlat
+    ret@dlon = dlat    ; same value for both
+    return(ret)
+  end if
+
+;---Check for "G64", "G 128" format
+  if(isStrSubset(grid_type,"G")) then
+    str = str_split(grid_type,"G")
+    if(dimsizes(str).ne.1) then
+      print("check_grid_type: invalid format for gaussian grid.")
+      return(bad_ret)
+    end if
+    nlon = tointeger(str(0))
+    if(ismissing(nlon)) then
+      print("check_grid_type: invalid format for gaussian grid.")
+      return(bad_ret)
+    end if
+    if((nlon%2).ne.0) then
+      print("check_grid_type: invalid number for gaussian grid.")
+      return(bad_ret)
+    end if
+    ret = "gaussian"
+    ret@nlon = nlon
+    ret@nlat = nlon/2
+    return(ret)
+  end if
+  print("check_grid_type: invalid grid type")
+  return(bad_ret)
+end 
+
+;======================================================================
+; This procedure is just for writing data to a netcdf file. I
+; wrote it for debug purposes.
+;======================================================================
+undef("debug_write_file")
+procedure debug_write_file(opt,attname,var)
+local fout
+begin
+  if(isatt(opt,attname)) then
+    if(isfilepresent(opt@$attname$))
+      system("/bin/rm " + opt@$attname$)
+    end if
+    fout = addfile(opt@$attname$,"c")
+    print("----------------------------------------------------------------------")
+    print("...Writing data to '" +opt@$attname$+"' for")
+    print("...debug purposes.")
+    print("----------------------------------------------------------------------")
+    fout->var = var
+    delete(fout)   ; close data file
+  end if
+end
+
+;======================================================================
+; This procedure is meant as a replacement for 
+; "calc_SCRIP_corners_noboundaries" (previously called 
+; "find_SCRIP_corners"). It takes the same arguments, but uses a 
+; different algorithm that was suggested by Bob Oehmke.
+;
+; After 6.1.0-beta, I realized that this algorithm really should only
+; be used if any of the lat points are at the boundary. At this point,
+; I  decided to rename this function from "calc_SCRIP_corners" to 
+; "calc_SCRIP_corners_boundaries", and go back to using 
+; "calc_SCRIP_corners_noboundaries" as the regular algorithm.
+;======================================================================
+undef("calc_SCRIP_corners_boundaries")
+procedure calc_SCRIP_corners_boundaries(lat2d[*][*],lon2d[*][*], \
+                                        grid_corner_lat, grid_corner_lon,\
+                                        opt)
 local DEBUG, latlon_dims, grid_corner_lat2d,  grid_corner_lon2d, \
       nlat, nlon, nlatp1, nlonp1
 begin
@@ -443,12 +607,12 @@ begin
 
 ;---Check input dimension sizes.
     if (any(dimsizes(lat2d).ne.dimsizes(lon2d))) then
-        print("calc_SCRIP_corners: lat and lon must have the same dimensions.")
+        print("calc_SCRIP_corners_boundaries: lat and lon must have the same dimensions.")
         exit
     end if
 
     if (any(dimsizes(grid_corner_lat).ne.dimsizes(grid_corner_lon))) then
-        print("calc_SCRIP_corners: lat and lon must have the same dimensions.")
+        print("calc_SCRIP_corners_boundaries: lat and lon must have the same dimensions.")
         exit
     end if
 
@@ -463,12 +627,12 @@ begin
 
     if(cnr_rank.ne.2.or.cnr_latlon_dims(0).ne.(nlat*nlon).or. \
        cnr_latlon_dims(1).ne.4) then
-      print("calc_SCRIP_corners: grid_corner_lat/grid_corner_lon must be (nlat*nlon) x 4")
+      print("calc_SCRIP_corners_boundaries: grid_corner_lat/grid_corner_lon must be (nlat*nlon) x 4")
       exit
     end if
 
     if(DEBUG) then
-      print("calc_SCRIP_corners")
+      print("calc_SCRIP_corners_boundaries")
       print("     min/max original lat: " + min(lat2d) + "/" + max(lat2d))
       print("     min/max original lon: " + min(lon2d) + "/" + max(lon2d))
     end if
@@ -526,7 +690,7 @@ begin
     grid_corner_lon2d(nlat,0)    = lon2d(nlat-1,0)
 
     if(DEBUG) then
-      print("calc_SCRIP_corners")
+      print("calc_SCRIP_corners_boundaries")
       print("     min/max grid_corner_lat2d: " + \
                   min(grid_corner_lat2d) + "/" + max(grid_corner_lat2d))
       print("     min/max grid_corner_lon2d: " + \
@@ -549,18 +713,19 @@ begin
     end do
 
     if(DEBUG) then
-      print("calc_SCRIP_corners")
+      print("calc_SCRIP_corners_boundaries")
       print("     min/max grid_corner_lat: " + min(grid_corner_lat) + \
                                          "/" + max(grid_corner_lat))
       print("     min/max grid_corner_lon: " + min(grid_corner_lon) + \
                                          "/" + max(grid_corner_lon))
     end if
 
-end     ; of calc_SCRIP_corners(...)
+end     ; of calc_SCRIP_corners_boundaries(...)
 
 ;======================================================================
-;
 ; This procedure is used within the curvilinear_to_SCRIP function.
+; It used to be called "find_SCRIP_corners".
+;
 ; Given a structured grid, it looks for the four corners surrounding
 ; each node. It returns the center of the cells for the corners.
 ;
@@ -572,8 +737,8 @@ end     ; of calc_SCRIP_corners(...)
 ; Really, if the user has a special grid, he/she should input the
 ; corners via the GridCornerLat and GridCornerLon resources.
 ;======================================================================
-undef("find_SCRIP_corners")
-procedure find_SCRIP_corners(lat2d[*][*],lon2d[*][*], \
+undef("calc_SCRIP_corners_noboundaries")
+procedure calc_SCRIP_corners_noboundaries(lat2d[*][*],lon2d[*][*], \
                              grid_corner_lat,grid_corner_lon,opt)
 local latlon_dims, nlat, nlon, Extlon2d, Extlat2d, ExtGridCenter_lat, \
       ExtGridCenter_lon, tmp, ii, jj, DEBUG
@@ -581,7 +746,7 @@ begin
     DEBUG = isatt_logical_true(opt,"Debug")
 
     if ( any(dimsizes(lat2d).ne.dimsizes(lon2d) ) ) then
-        print("find_SCRIP_corners: lat and lon must have the same dimensions.")
+        print("calc_SCRIP_corners_noboundaries: lat and lon must have the same dimensions.")
         exit
     end if
 
@@ -593,7 +758,7 @@ begin
     nlatp2      = nlat+2
     nlonp2      = nlon+2
     if(DEBUG) then
-      print("find_SCRIP_corners")
+      print("calc_SCRIP_corners_noboundaries")
       print("     min/max original lat: " + min(lat2d) + "/" + max(lat2d))
       print("     min/max original lon: " + min(lon2d) + "/" + max(lon2d))
     end if
@@ -646,7 +811,7 @@ begin
 ; We need a better way to fix the boundary corners if they go over.
 ;
 ;;    if(DEBUG) then
-;;      print("find_SCRIP_corners")
+;;      print("calc_SCRIP_corners_noboundaries")
 ;;      print("      Before kludge to fix lat/lon corners...")
 ;;      print("      min/max Extlat2d: " + min(Extlat2d) + "/" + max(Extlat2d))
 ;;      print("      min/max Extlon2d: " + min(Extlon2d) + "/" + max(Extlon2d))
@@ -659,14 +824,14 @@ begin
 ;;    Extlon2d = where(Extlon2d.gt. 360, 360,Extlon2d)
 ;;
 ;;    if(DEBUG) then
-;;      print("find_SCRIP_corners")
+;;      print("calc_SCRIP_corners_noboundaries")
 ;;      print("     After kludge to fix lat/lon corners...")
 ;;      print("     min/max Extlat2d: " + min(Extlat2d) + "/" + max(Extlat2d))
 ;;      print("     min/max Extlon2d: " + min(Extlon2d) + "/" + max(Extlon2d))
 ;;    end if
 
     if(DEBUG) then
-      print("find_SCRIP_corners")
+      print("calc_SCRIP_corners_noboundaries")
       print("     min/max Extlat2d: " + min(Extlat2d) + "/" + max(Extlat2d))
       print("     min/max Extlon2d: " + min(Extlon2d) + "/" + max(Extlon2d))
     end if
@@ -682,7 +847,7 @@ begin
     delete(tmp)
 
     if(DEBUG) then
-      print("find_SCRIP_corners")
+      print("calc_SCRIP_corners_noboundaries")
       print("     min/max ExtGridCenter_lat: " + \
                   min(ExtGridCenter_lat) + "/" + max(ExtGridCenter_lat))
       print("     min/max ExtGridCenter_lon: " + \
@@ -702,7 +867,7 @@ begin
     grid_corner_lon(:,2) = ExtGridCenter_lon((jj+1)*(nlonp1)+(ii+1))
     grid_corner_lon(:,3) = ExtGridCenter_lon((jj+1)*(nlonp1)+ii)
 
-end     ; of find_SCRIP_corners(...)
+end     ; of calc_SCRIP_corners_noboundaries(...)
 
 ;======================================================================
 ; This procedure generates an ESMF file for an unstructured grid.
@@ -725,7 +890,7 @@ begin
     check_for_file(FName,Opt)
 
 ;---Do we need to create a large file?
-    if (isatt_logical_true(Opt,"LargeFile")) then
+    if (.not.isatt_logical_false(Opt,"LargeFile")) then
       setfileoption("nc","Format","LargeFile") 
     end if
 
@@ -919,7 +1084,7 @@ begin
     check_for_file(FName,Opt)
 
 ;---Do we need to create a large file?
-    if (isatt_logical_true(Opt,"LargeFile")) then
+    if (.not.isatt_logical_false(Opt,"LargeFile")) then
       setfileoption("nc","Format","LargeFile") 
     end if
 
@@ -1032,8 +1197,29 @@ begin
         end if
         grid_corner_lat = new( (/ grid_size, grid_corners /), typeof(lat2d) )
         grid_corner_lon = new( (/ grid_size, grid_corners /), typeof(lon2d) )
-;;      find_SCRIP_corners(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
-        calc_SCRIP_corners(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+        if(any(fabs(lat2d).eq.90)) then
+          if(DEBUG) then
+            print("curvilinear_to_SCRIP: one or more lat values are at the")
+            print("       poles, so calculating grid corners using")
+            print("       calc_SCRIP_corners_boundaries...")
+          end if
+          calc_SCRIP_corners_boundaries(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+        else
+          if(DEBUG) then
+            print("curvilinear_to_SCRIP: no lat values are at the poles, so")
+            print("       calculating grid corners using")
+            print("       calc_SCRIP_corners_noboundaries...")
+          end if
+          calc_SCRIP_corners_noboundaries(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+         if(any(fabs(grid_corner_lat).gt.90)) then
+           if(DEBUG) then
+             print("curvilinear_to_SCRIP: calc_SCRIP_corners_noboundaries")
+             print("       produced out-of-range latitude values.")
+             print("       Trying calc_SCRIP_corners_boundaries...")
+           end if
+           calc_SCRIP_corners_boundaries(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+          end if
+        end if
     end if
    
 ;---Store the cell corners
@@ -1361,58 +1547,18 @@ begin
   end if
 
 ;---Check for "1x1", "2x3", "0.25x0.25" format
-  if(isStrSubset(GridType,"x")) then
-    str = str_split(GridType,"x")
-    if(dimsizes(str).ne.2) then
-      print("latlon_to_SCRIP: invalid format for grid type")
-      exit
-    end if
-    dlat = tofloat(str(0))
-    dlon = tofloat(str(1))
-    if(ismissing(dlat).or.ismissing(dlon)) then
-      print("latlon_to_SCRIP: invalid format for grid type")
-      exit
-    end if
-    grid_type = "degree"
-    delete(str)
-  else if(isStrSubset(GridType,"deg")) then
-;---Check for "1deg", "0.25 deg" format
-    str = str_split(GridType,"deg")
-    if(dimsizes(str).ne.1) then
-      print("latlon_to_SCRIP: invalid format for grid type")
-      exit
-    end if
-    dlat = tofloat(str(0))
-    if(ismissing(dlat)) then
-      print("latlon_to_SCRIP: invalid format for grid type")
-      exit
-    end if
-    dlon = dlat
-    grid_type = "degree"
-    delete(str)
-  else if(isStrSubset(GridType,"G")) then
-;---Check for "G64", "G 128" format
-    str = str_split(GridType,"G")
-    if(dimsizes(str).ne.1) then
-      print("latlon_to_SCRIP: invalid format for grid type")
-      exit
-    end if
-    nlon = tointeger(str(0))
-    if(ismissing(nlon)) then
-      print("latlon_to_SCRIP: invalid value for gaussian grid")
-      exit
-    end if
-    if((nlon%2).ne.0) then
-      print("latlon_to_SCRIP: invalid value for gaussian grid")
-      exit
-    end if
-    nlat = nlon/2
-    grid_type = "gaussian"
-    delete(str)
-  else
+  grid_type = check_grid_type(GridType)
+  if(grid_type.eq."none") then
     print("latlon_to_SCRIP: invalid format for grid type")
     exit
   end if
+
+  if(grid_type.eq."degree") then
+    dlat = grid_type@dlat
+    dlon = grid_type@dlon
+  else if(grid_type.eq."gaussian") then
+    nlat = grid_type@nlat
+    nlon = grid_type@nlon
   end if
   end if
 
@@ -1606,6 +1752,9 @@ end     ; of is_SCRIP(...)
 ;======================================================================
 ; This function will retrieve the latitude coordinate of a grid
 ; from a SCRIP formatted file.
+;
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.
 ;======================================================================
 undef("retrieve_SCRIP_lat")
 function retrieve_SCRIP_lat(fileName[1]:string)
@@ -1627,6 +1776,9 @@ end     ; of retrieve_SCRIP_lat
 ;======================================================================
 ; This function will retrieve the longitude coordinate of a grid
 ; from a SCRIP file.
+;
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.
 ;======================================================================
 undef("retrieve_SCRIP_lon")
 function retrieve_SCRIP_lon(fileName[1]:string)
@@ -1648,6 +1800,9 @@ end     ; of retrieve_SCRIP_lon
 ;======================================================================
 ; This function will retrieve the latitude values from an ESMF 
 ; formatted file.
+;
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.
 ;======================================================================
 undef("retrieve_ESMF_lat")
 function retrieve_ESMF_lat(fileName[1]:string)
@@ -1668,6 +1823,9 @@ end     ; of retrieve_ESMF_lat
 ;======================================================================
 ; This function will retrieve the longitude values from an ESMF 
 ; formatted file.
+;
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.
 ;======================================================================
 undef("retrieve_ESMF_lon")
 function retrieve_ESMF_lon(fileName[1]:string)
@@ -1686,22 +1844,198 @@ begin
 end     ; of retrieve_ESMF_lon
 
 ;======================================================================
+; This procedure will retrieve the destination lat/lon values from a
+; weights file generated by ESMF_RegridWeightGen and attach them
+; to the given variable. Since rectilinear lat/lon grids are written
+; as 2D arrays, you can't tell if it's rectilinear or curvilinear,
+; unless you test for repetitive values.
+; 
+; To force this routine to not check for "rectilinear-ness", you
+; can set opt@DstGridType to "rectilinear".
+;
+; There's no standard way to attached unstructured lat/lon data to
+; a variable, so we do it by "lat1d" and "lon1d" undef.
+;======================================================================
+undef("ESMF_copy_varcoords")
+procedure ESMF_copy_varcoords(sd:numeric,sd_regrid:numeric,\
+                              wgt_file_name[1]:string,opt[1]:logical)
+local fwgt, src_dims, src_ranks, dst_dims, dst_rank, mlon, nlat, i, ii, \
+      dst_grid_dims, dst_grid_rank, lat, lon, nleftmost, nleftdims, DEBUG
+begin
+  DEBUG = isatt_logical_true(opt,"Debug")
+
+;---Error checking
+  if (.not.isfilepresent(wgt_file_name)) then
+    print("Warning: ESMF_copy_varcoords: cannot open '" + wgt_file_name + "'.") 
+    print("         No coordinate information will be added.")
+    return
+  end if
+
+;---Get size of source and destination grids from weight file
+  fwgt          = addfile(wgt_file_name, "r")
+  src_grid_dims = fwgt->src_grid_dims(::-1)    ; dimensions are Fortran based
+  dst_grid_dims = fwgt->dst_grid_dims(::-1)
+  src_grid_rank = dimsizes(src_grid_dims)
+  dst_grid_rank = dimsizes(dst_grid_dims)
+
+;---More error checking
+  if(dst_grid_rank.ne.1.and.dst_grid_rank.ne.2) then
+    print("Warning: ESMF_copy_varcoords: the rank of the lat/lon values")
+    print("         on the weights file must be 1 or 2.")
+    print("         No coordinate information will be added.")
+    return
+  end if
+
+  if(isatt(opt,"DstGridType")) then
+    if(check_grid_type(opt@DstGridType).eq."none") then
+      print("Warning: ESMF_copy_varcoords: don't recognize the grid type")
+      print("         specified: '" + opt@DstGridType + "'.")
+      print("         No coordinate information will be added.")
+      return
+    end if
+    if(opt@DstGridType.eq."unstructured".and.dst_grid_rank.ne.1) then
+      print("Warning: ESMF_copy_varcoords: you specified an unstructured")
+      print("         grid, but your lat/lon coordinates appear to be") 
+      print("         curvilinear or rectilinear.")
+      print("         No coordinate information will be added.")
+      return
+    end if
+    if(any(opt@DstGridType.eq.(/"curvilinear","rectilinear"/)).and.\
+       dst_grid_rank.ne.2) then
+      print("Warning: ESMF_copy_varcoords: you specified a rectilinear")
+      print("         or curvilinear grid, but your lat/lon coordinates")
+      print("         appear to be unstructured.")
+      print("         No coordinate information will be added.")
+      return
+    end if
+  end if
+
+;---Get size of original and regridded variables
+  src_dims = dimsizes(sd)
+  src_rank = dimsizes(src_dims)
+  dst_dims = dimsizes(sd_regrid)
+  dst_rank = dimsizes(dst_dims)
+
+;---Both grids must have the same leftmost dimemsions
+  if((src_rank-src_grid_rank).ne.(dst_rank-dst_grid_rank)) then
+    print("Warning: ESMF_copy_varcoords: the dimension sizes of your")
+    print("         source and destination grids don't match up.")
+    print("         No coordinate information will be added.")
+    return
+  end if
+;---Make sure leftmost dimensions are same size.
+  nleftdims = src_rank-src_grid_rank
+  do i=0,nleftdims-1
+    if(src_dims(i).ne.dst_dims(i)) then
+      print("Warning: ESMF_copy_varcoords: the dimension sizes of your")
+      print("         source and destination grids don't match up.")
+      print("         No coordinate information will be added.")
+      return
+    end if
+  end do
+
+;---Done with error checking. Copy the leftmost coordinates, if any.
+  if(nleftdims.gt.0) then
+    ii = ispan(0,nleftdims-1,1)
+    copy_VarCoords_n(sd,sd_regrid,ii)
+  end if
+;
+; Test for what kind of coordinate information to add.
+; 
+  if (dst_grid_rank.eq.1) then
+    sd_regrid@lat1d = fwgt->yc_b      ; I don't like this, but how else to 
+    sd_regrid@lon1d = fwgt->xc_b      ; attach?
+    return
+  end if
+
+;---dst_grid_rank must be 2
+  nlat = dst_grid_dims(0)
+  mlon = dst_grid_dims(1)
+
+  if(isatt(opt,"DstGridType").and.opt@DstGridType.eq."curvilinear") then
+    sd_regrid@lat2d = reshape(fwgt->yc_b,(/nlat,mlon/))
+    sd_regrid@lon2d = reshape(fwgt->xc_b,(/nlat,mlon/))
+    return
+  end if
+;
+; If DstGridType not specified, then we have to check if these are
+; rectilinear coordinates. This can be an expensive operation.
+; I'm not sure if this should be the default.
+;
+  is_rectilinear = isatt(opt,"DstGridType").and.\
+                   opt@DstGridType.eq."rectilinear"
+
+  lat = fwgt->yc_b(0::mlon)
+  lon = fwgt->xc_b(0:mlon-1)
+
+;---Test for "rectilinear-ness". Do two cases just to be safe.
+  if(.not.is_rectilinear) then
+    iln2 = mlon/2
+    ilt2 = nlat/2
+    iln3 = mlon/3
+    ilt3 = nlat/3
+    if (any(lat.ne.fwgt->yc_b(iln2::mlon)).or. \
+        any(lat.ne.fwgt->yc_b(iln3::mlon)).or. \
+        any(lon.ne.fwgt->xc_b(ilt2*mlon:(ilt2+1)*mlon-1)).or.\
+        any(lon.ne.fwgt->xc_b(ilt3*mlon:(ilt3+1)*mlon-1))) then
+       sd_regrid@lat2d = reshape(fwgt->yc_b,(/nlat,mlon/))
+       sd_regrid@lon2d = reshape(fwgt->xc_b,(/nlat,mlon/))
+       return
+    else
+       if(DEBUG) then
+         print("ESMF_copy_varcoords: detected a rectilinear grid.")
+         dq = str_get_dq()
+         print("      If you know your grid is rectilinear, then set")
+         print("      opt@DstGridType = " + dq + "rectilinear" + dq + " to")
+         print("      prevent this potentially slow test.")
+       end if
+       is_rectilinear = True
+     end if
+  end if
+
+;---Must be rectilinear!
+  lat@long_name = "latitude"
+  lat@units     = "degrees_north"
+  lat!0         = "lat"
+  lat&lat       =  lat
+
+  lon  = fwgt->xc_b(0:mlon-1)
+  lon@long_name = "longitude"
+  lon@units     = "degrees_east"
+  lon!0         = "lon"
+  lon&lon       =  lon
+    
+  dst_dims = dimsizes(sd_regrid)
+  dst_rank = dimsizes(dst_dims)
+  sd_regrid!(dst_rank-2) = "lat"
+  sd_regrid!(dst_rank-1) = "lon"
+  sd_regrid&lat         = lat
+  sd_regrid&lon         = lon
+  return
+end
+
+
+;======================================================================
 ; This procedure copies attributes from the original variable to
 ; the regridded variable, and attaches coordinate information, if
 ; available. It will not copy lat1d/lon1d or lat2d/lon2d attributes.
+;
+; The coordinate information is retrieved from the weights file.
 ;
 ; I think this procedure needs to have added to it the ability to
 ; have a "coordinates" attribute for the case of curvilinear grids.
 ;======================================================================
 undef("ESMF_copy_varmeta")
-procedure ESMF_copy_varmeta(sd,sd_regrid,opt)
+procedure ESMF_copy_varmeta(sd,sd_regrid,wgt_file_name[1]:string, \
+                            opt[1]:logical)
 local var_dims, var_rank, dstlat, dstlon, atts_to_skip, natts
 begin
   var_dims = dimsizes(sd_regrid)
   var_rank = dimsizes(var_dims)
 
-;---Copy variable attributes if requested (True by default)
-  if(.not.isatt_logical_false(opt,"CopyVarAtts")) then
+;---Copy variable attributes, unless requested otherwise (True by default)
+  if(.not.isatt_logical_false(opt,"CopyVarAtts").and.\
+     .not.isatt_logical_false(opt,"CopyVarMeta")) then
     atts_to_skip = (/"lat1d","lon1d","lat2d","lon2d","coordinates"/)
     if(isatt(opt,"CopyVarAttsExcept")) then
       natts            = dimsizes(atts_to_skip)
@@ -1712,32 +2046,16 @@ begin
     else
       copy_VarAtts_except(sd,sd_regrid,atts_to_skip)
     end if
-    if(.not.any("_FillValue".eq.atts_to_skip).and.isatt(sd,"_FillValue").and..not.isatt(sd_regrid,"_FillValue")) then
+    if(.not.any("_FillValue".eq.atts_to_skip).and.isatt(sd,"_FillValue").and. \
+       .not.isatt(sd_regrid,"_FillValue")) then
       sd_regrid@_FillValue = sd@_FillValue
     end if
   end if
 
-;---Create coordinates if requested (False by default)
-  if(isatt(opt,"CopyVarCoords")) then
-    if(.not.(opt@DstGridType.eq."unstructured")) then
-      dstlat = retrieve_SCRIP_lat(opt@DstFileName)
-      dstlon = retrieve_SCRIP_lon(opt@DstFileName)
-      if(opt@DstGridType.eq."curvilinear") then
-        sd_regrid@lat2d = dstlat
-        sd_regrid@lon2d = dstlon
-      else
-; DstGridType is either "latlon" or something like "1x1", "0.25deg", etc.
-        dstlat@units           = "degrees_north"
-        dstlon@units           = "degrees_east"
-        sd_regrid!(var_rank-2) = "lat"
-        sd_regrid!(var_rank-1) = "lon"
-        sd_regrid&lat            = dstlat(:,0)
-        sd_regrid&lon            = dstlon(0,:)
-      end if
-    else
-      sd_regrid@lat1d = (/retrieve_ESMF_lat(opt@DstFileName)/)
-      sd_regrid@lon1d = (/retrieve_ESMF_lon(opt@DstFileName)/)
-    end if
+;---Create variable coords, unless requested otherwise (True by default)
+  if(.not.isatt_logical_false(opt,"CopyVarCoords").and.\
+     .not.isatt_logical_false(opt,"CopyVarMeta")) then
+    ESMF_copy_varcoords(sd,sd_regrid,wgt_file_name,opt)
   end if
 end
 
@@ -1939,7 +2257,7 @@ begin
     end if
 
 ;---This flag is necessary for writing vars > 2 GB
-    if (isatt_logical_true(opt2,"LargeFile")) then
+    if (.not.isatt_logical_false(opt2,"LargeFile")) then
         ESMFCMD = ESMFCMD + " --64bit_offset"
     end if
 
@@ -2023,6 +2341,16 @@ begin
 ;---Check for options
   PrintTimings = isatt_logical_true(opt,"PrintTimings")
   DEBUG        = isatt_logical_true(opt,"Debug")
+;
+; If the input type is float, and the user hasn't explicitly set
+; ReturnDouble to True, then floats will be returned.
+;
+  if(typeof(srcData).ne."double".and.\
+     .not.isatt_logical_true(opt,"ReturnDouble")) then
+    ReturnFloat = True
+  else
+    ReturnFloat = False
+  end if
 
   if(PrintTimings) then
     start_time = get_start_time()
@@ -2056,12 +2384,31 @@ begin
   end if
 
 ;---Make sure the weight file is accessible
+  map_method = "unknown"
   if (.not.(isfilepresent(wgtFile))) then
     print("ESMF_regrid_with_weights: cannot open weight file '" + \
           wgtFile + "'.")
     return(fmsg)
   else
     fid = addfile(wgtFile,"r")
+    if(isatt(fid,"map_method")) then
+      map_method = fid@map_method
+    end if
+  end if
+
+;
+; Apply frac_b only for conservative interpolation. We may
+; change this later to let the user decide when to apply.
+; The ESMF folks said that it was only needed for the
+; "conserve" case, and they reconfirmed this Oct 2012.
+;
+  if(map_method.eq."Conservative remapping") then
+    ApplyFrac_B = True
+    frac_b = fid->frac_b
+    frac_b@_FillValue = default_fillvalue(typeof(frac_b))
+    frac_b = where(frac_b.eq.0,frac_b@_FillValue,frac_b)
+  else
+    ApplyFrac_B = False
   end if
 
 ;---Get the lat/lon of source and destination grids
@@ -2123,15 +2470,18 @@ begin
     print("                          longitude min/max:" + min(dstlon) + "/" + max(dstlon))
   end if
 
-;---Check that the rightmost dimensions are the same.
+;
+; The source dimensions on the description file will not 
+; necessarily be the same as the original source dimensions
+; of the grid you want to regrid from. You have to take
+; that into account in this whole procedure, and make sure
+; you use the correct dimensions depending on what you're
+; doing.
+;
   if(.not.is_src_grid_scalar.and.srcData_rank.gt.src_grid_rank) then
     srcData_lft_ndims = srcData_rank - src_grid_rank
     srcData_rgt_dims  = srcData_dims(srcData_lft_ndims:)
     srcData_lft_dims  = srcData_dims(0:srcData_lft_ndims-1)
-    if(.not.all(srcData_rgt_dims.eq.src_grid_dims)) then
-      print("ESMF_regrid_with_weights: error: input or source data does not have proper rightmost dimensions.")
-      return(fmsg)
-    end if
   else
     srcData_rgt_dims  = srcData_dims
     srcData_lft_ndims = 0
@@ -2148,10 +2498,11 @@ begin
   row = fid->row
   col = fid->col
   v   = fid->S
-    
-;---Check srcData dimensions
+
+;---Check that the column indexes will map into src_grid_dims
   if ( max(col).gt.product(srcData_rgt_dims) ) then
-    print("ESMF_regrid_with_weights: error: source data does not have proper dimensions.")
+    print("ESMF_regrid_with_weights: error: source data on the description")
+    print("     file does not have proper dimensions.")
     return(fmsg)
   end if
     
@@ -2168,7 +2519,6 @@ begin
   else
     x = reshape(srcData,product(srcData_dims))
   end if
-
 ;
 ; Note from Mohammad:
 ;   Currently there is a problem with ESMF files.
@@ -2199,35 +2549,89 @@ begin
 ; We will need to reshape the return (M) x N grid from
 ; sparse_matrix_mult if the output dimensions are not 1D.
 ;
+; We also need to divide by frac_b if using the "conserve"
+; method. We are trying to avoid making a separate copy
+; of the array, if float return is desired. So, we have
+; 8 special "if" tests to avoid this as much as possible:
+;
+; Return array has to be reshaped and converted to float
+;   Case 1: Apply frac_b
+;   Case 2: Don't apply frac_b
+; Return array has to be reshaped, but leave as double
+;   Case 3: Apply frac_b
+;   Case 4: Don't apply frac_b
+; Return array has to be converted to float (no reshaping)
+;   Case 5: Apply frac_b
+;   Case 6: Don't apply frac_b
+; Return array left as double (no reshaping)
+;   Case 7: Apply frac_b, convert to float
+;   Case 8: Convert to float
+;
+  if(ApplyFrac_B.and.DEBUG) then 
+    print("ESMF_regrid_with_weights: dividing results by frac_b...")
+    print("            (currently for conserve interpolation only)")
+  end if
+
   if(dst_grid_rank.gt.1) then
     dst_grid_dims_out = new(srcData_lft_ndims+dst_grid_rank,long)
     if(.not.is_src_grid_scalar.and.srcData_rank.gt.src_grid_rank) then
       dst_grid_dims_out(0:srcData_lft_ndims-1) = srcData_lft_dims
     end if
     dst_grid_dims_out(srcData_lft_ndims:) = dst_grid_dims
-    dstData = reshape(sparse_matrix_mult(row-1,col-1,v,x,dst_grid_dims_in),\
-                      dst_grid_dims_out)
+    if(ReturnFloat) then
+;---Case 1: Apply frac_b, reshape, convert to float
+      if(ApplyFrac_B) then
+        dstData = tofloat(reshape(sparse_matrix_mult(row-1,col-1,v,x,\
+                  dst_grid_dims_in),dst_grid_dims_out) / \
+                  reshape(frac_b,dst_grid_dims_out))
+      else
+;---Case 2: Reshape, convert to float
+        dstData = tofloat(reshape(sparse_matrix_mult(row-1,col-1,v,x,\
+                  dst_grid_dims_in),dst_grid_dims_out))
+      end if
+    else
+;---Case 3: Apply frac_b, reshape, leave as double
+      if(ApplyFrac_B) then
+        dstData = reshape(sparse_matrix_mult(row-1,col-1,v,x,\
+                  dst_grid_dims_in),dst_grid_dims_out) / \
+                  reshape(frac_b,dst_grid_dims_out)
+      else
+;---Case 4: Reshape, leave as double
+        dstData = reshape(sparse_matrix_mult(row-1,col-1,v,x,\
+                  dst_grid_dims_in),dst_grid_dims_out)
+      end if
+    end if
   else
-    dstData = sparse_matrix_mult(row-1,col-1,v,x,dst_grid_dims_in)
+    if(ReturnFloat) then
+;---Case 5: Apply frac_b, convert to float (no reshape)
+      if(ApplyFrac_B) then
+        dstData = tofloat(sparse_matrix_mult(row-1,col-1,v,x,\
+                  dst_grid_dims_in)/frac_b)
+      else
+;---Case 6: Convert to float (no reshape)
+        dstData = tofloat(sparse_matrix_mult(row-1,col-1,v,x,dst_grid_dims_in))
+      end if
+    else
+;---Case 7: Apply frac_b, leave as double (no reshape)
+      if(ApplyFrac_B) then
+        dstData = sparse_matrix_mult(row-1,col-1,v,x,dst_grid_dims_in)/frac_b
+      else
+;---Case 8: Leave as double (no reshape)
+        dstData = sparse_matrix_mult(row-1,col-1,v,x,dst_grid_dims_in)
+      end if
+    end if
+  end if
+
+;---Clean up to save memory
+  if(ApplyFrac_B) then
+    delete(frac_b)
   end if
 
 ;---Make sure dstData has a missing value
   if(isatt(srcData,"_FillValue")) then
-    dstData@_FillValue = srcData@_FillValue
+    dstData@_FillValue = totypeof(srcData@_FillValue,typeof(dstData))
   else
     dstData@_FillValue = default_fillvalue(typeof(dstData))
-  end if
-
-;---Apply frac_b only for conservative interpolation.
-  if(isatt(fid,"map_method").and.\
-     fid@map_method.eq."Conservative remapping") then
-    if(DEBUG)
-      print("ESMF_regrid_with_weights: dividing results by frac_b...")
-      print("                          (for conserve interpolation only)")
-    end if
-    frac_b            = reshape(fid->frac_b,dimsizes(dstData))
-    frac_b@_FillValue = default_fillvalue(typeof(frac_b))
-    dstData = dstData/where(frac_b.eq.0,frac_b@_FillValue,frac_b)
   end if
 
 ;---Check if we need to remap the values onto a larger 2D grid.
@@ -2254,20 +2658,51 @@ begin
     print("                          maxDstData: " + max(dstData))
   end if
 
+;---Copy variable attributes and coordinate arrays if requested.
+  delete(fid)    ; close weight file before it gets opened again
+  ESMF_copy_varmeta(srcData,dstData,wgtFile,opt)
+
+;----------------------------------------------------------------------
+; Clean up, add, and remove attributes.
 ;
-; Copy some attributes. In general, the user is responsible 
-; for setting their own attributes.
-;
-  if (isatt(srcData,"units")) then
-    dstData@units = srcData@units
+; Note that due to standards for the weights file, the map_method
+; attribute will say "Bilinear remapping" for both bilinear and patch
+; methods. If this routine is called by ESMF_regrid, then that routine
+; will set FixMapMethodForPatch to True so this routine knows to fix
+; the "remap" attribute. Otherwise if ESMF_regrid_with_weights is
+; called directly, there's no way to tell if patch or bilinear was
+; used.
+;----------------------------------------------------------------------
+  if (.not.isatt(dstData,"remap")) then
+    if(isatt_logical_true(opt,"FixMapMethodForPatch")) then
+      dstData@remap = "remapped via ESMF_regrid_with_weights: " + \
+                       str_sub_str(map_method,"Bilinear","Patch")
+    else
+      dstData@remap = "remapped via ESMF_regrid_with_weights: " + \
+                      map_method
+    end if
   end if
-  if (isatt(srcData,"long_name")) then
-    dstData@long_name = "remapped " + srcData@long_name
+
+  if(.not.isatt(dstData,"missing_value")) then
+    dstData@missing_value = dstData@_FillValue
+  else
+    if(typeof(dstData@missing_value).ne.typeof(dstData)) then
+      tmp_msg = totypeof(dstData@missing_value,typeof(dstData))
+      delete(dstData@missing_value)
+      dstData@missing_value = tmp_msg
+    end if
   end if
-  if (isatt(srcData,"short_name")) then
-    dstData@short_name = srcData@short_name
+
+  if(isatt(dstData,"_FillValue_original")) then
+    delete(dstData@_FillValue_original)
   end if
-	
+  if(isatt(dstData,"missing_value_original")) then
+    delete(dstData@missing_value_original)
+  end if
+
+;;;;;DEBUG CODE ONLY
+  debug_write_file(opt,"ESMFDebugFilename",dstData)
+
   if(PrintTimings) then
     print_elapsed_time(start_time,"ESMF_regrid_with_weights")
   end if
@@ -2381,7 +2816,7 @@ begin
 ;
 ;----------------------------------------------------------------------
 
-  grid_type = str_lower(get_att_value(opt2,grid_type_name,"unknown"))
+  grid_type = get_att_value(opt2,grid_type_name,"unknown")
 
 ;
 ; Check if SrcGridLat/SrcGridLon or DstGridLat/DstGridLon
@@ -2664,6 +3099,7 @@ begin
   else
     if(DEBUG) then
       print("ESMF_regrid: skipping generation of destination grid.")
+      print("             You may need to set DstGridType.")
     end if
   end if
 
@@ -2701,11 +3137,18 @@ begin
     end if
   end if
 
+;
+; If patch method used, "sneak" this knowledge into the weights gen
+; routine so that we can get the correct "map_method" for the
+; "remap" attribute.
+;
+  if(opt2.and.isatt(opt2,"InterpMethod").and. \
+     str_lower(opt2@InterpMethod).eq."patch") then
+   opt2@FixMapMethodForPatch = True
+  end if
+
 ;---Regrid the input variable
   srcData_regrid = ESMF_regrid_with_weights(srcData,wgt_file_name,opt2)
-
-;---Copy variable attributes and coordinate arrays if requested.
-  ESMF_copy_varmeta(srcData,srcData_regrid,opt2)
 
 ;---Clean up, if desired
   if (remove_src_file) then
@@ -2733,6 +3176,10 @@ begin
 end
 
 ;======================================================================
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.  I'm not sure it was
+; ever used...
+;======================================================================
 undef("retrieve_dstGrid_lat")
 function retrieve_dstGrid_lat(fileName[1]:string)
 local fid, dst_grid_dims
@@ -2748,6 +3195,10 @@ begin
     return(lat)
 end     ; of retrieve_dstGrid_lat
 
+;======================================================================
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.  I'm not sure it was
+; ever used...
 ;======================================================================
 undef("retrieve_dstGrid_lon")
 function retrieve_dstGrid_lon(fileName[1]:string)
@@ -2766,6 +3217,10 @@ begin
 end     ; of retrieve_dstGrid_lon
 
 ;======================================================================
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.  I'm not sure it was
+; ever used...
+;======================================================================
 undef("retrieve_srcGrid_lat")
 function retrieve_srcGrid_lat(fileName[1]:string)
 local fid, src_grid_dims
@@ -2781,6 +3236,10 @@ begin
     return(lat)
 end     ; of retrieve_srcGrid_lat
 
+;======================================================================
+; This routine is obsolete in V6.1.0 (not in V6.1.0-beta). It's
+; replaced by ESMF_copy_varcoords.  I'm not sure it was
+; ever used...
 ;======================================================================
 undef("retrieve_srcGrid_lon")
 function retrieve_srcGrid_lon(fileName[1]:string)

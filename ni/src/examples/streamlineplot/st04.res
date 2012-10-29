@@ -1,6 +1,11 @@
 
 ! MapPlot resources
 
+*wkBackgroundColor : black
+
+*TextFuncCode          : :             
+*txFuncCode            : :
+
 *mapplot*vpXF : 0.03
 *mapplot*vpYF : 0.75
 *mapplot*vpWidthF : 0.8
@@ -19,7 +24,7 @@
 *mpMaxLonF : -58.
 *mpCenterLonF : -100.0
 *mpCenterLatF : 40.0
-
+!*mpFillColors : (/16,10, 8,10,26,22,11,23,13,19,24,25,21,20,18/)
 
 ! ContourPlot resources
 
@@ -68,10 +73,10 @@
 *vcUseRefAnnoRes : true
 *vcRefAnnoArrowUseVecColor : false
 *vcRefAnnoBackgroundColor : 2
-*vcRefAnnoFontColor : 0
+*vcRefAnnoFontColor : black
 *vcRefAnnoFont : helvetica-bold
 *vcRefAnnoArrowFillColor : 28
-*vcRefAnnoArrowLineColor : 0
+*vcRefAnnoArrowLineColor : 1
 *vcRefAnnoPerimOn : false
 *vcRefAnnoString2 : Surface winds
 *vcRefAnnoString1 : $VMG$ meters/second
@@ -88,12 +93,12 @@
 *streamlineplotanno*txString : Streamlines (in black) represent 500 mb winds
 *streamlineplotanno*txFontHeightF : 0.013
 *streamlineplotanno*txBackgroundFillColor : 2
-*streamlineplotanno*txFontColor : 0
+*streamlineplotanno*txFontColor : black
 *streamlineplotanno*txFont : helvetica-bold
 *streamlineplotanno*amZone : 4
 *streamlineplotanno*amJust : topleft
 *streamlineplotanno*amOrthogonalPosF : 0.02
-*stLineColor : 0
 *stLineThicknessF : 2.0
+*stLineColor : black
 *stArrowLengthF : 0.01
 *stMinArrowSpacingF : 0.02

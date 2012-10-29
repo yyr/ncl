@@ -344,10 +344,10 @@ begin
   end if
 
 ;---Error checking for rank
-  if(rto.gt.rfrom) then
-    print("Error: copy_VarCoords_n: arrays must be same rank, or second array must be subset in size of first array.")
-    return
-  end if
+;;  if(rto.gt.rfrom) then
+;;    print("Error: copy_VarCoords_n: arrays must be same rank, or second array must be subset in size of first array.")
+;;    return
+;;  end if
 
   dName = getvardims(var_from)
 
@@ -358,8 +358,12 @@ begin
         ifrom = i
         if (.not.ismissing(dName(ifrom)).and.dimf(ifrom).eq.dimt(ito)) then  
           var_to!ito = var_from!ifrom
-          if(iscoord(var_from,var_from!ifrom))
-            var_to&$var_to!ito$ = var_from&$var_from!ifrom$
+          if(iscoord(var_from,var_from!ifrom)) then
+            if(dimf(ifrom).eq.dimt(ito)) then
+              var_to&$var_to!ito$ = var_from&$var_from!ifrom$
+            else
+              print("Error: copy_VarCoords_n: dimension being copied must be the same size")
+            end if
           end if
         end if
         ito = ito + 1
@@ -5746,7 +5750,9 @@ begin
 	   print("SqrtCosWeight accepts an array with 5 dimensions or less, array has "+numdims+" dimensions, exiting")
 	   exit
 	end if
-        x@long_name = x@long_name + " (sqrt cosine weighted)"
+	if (isatt(x,"long_name")) then
+           x@long_name = x@long_name + " (sqrt cosine weighted)"
+        end if
 return(x)
 end
 ;; -------------------------------------------------------
@@ -5806,7 +5812,9 @@ begin
 	   print("NewCosWeight accepts an array with 5 dimensions or less, array has "+numdims+" dimensions, exiting")
 	   exit
 	end if
-        x@long_name = x@long_name + " (cosine weighted)"
+        if (isatt(x,"long_name")) then
+           x@long_name = x@long_name + " (cosine weighted)"
+        end if
 return(x)
 end
 ;*************************************************************************
@@ -7983,7 +7991,7 @@ begin
      end do
 
      time@long_name = "time"
-     time@units     = "yyyymm"
+     time@units     = "YYYYMM"
 
      if (isatt(time,"_FillValue")) then
          delete(time@_FillValue)
@@ -8045,6 +8053,120 @@ begin
   time!0    = "time"
   time&time =  time
   return (time)
+end
+;*************************************************************************
+
+undef ("yyyymmddhh_time")
+function yyyymmddhh_time (yrStrt[1]:integer, yrLast[1]:integer, hrStep[1]:integer, TYPE:string)
+local n, nmos, nyrs, ntim, year, nmo, ndy, tdum, nhr, nhrs
+begin
+  nmos = 12
+  nyrs = yrLast-yrStrt+1
+  nhrd = 24/hrStep               ; # of hours per day
+  ntim = nyrs*nmos*nhrd*31       ; make long enough array
+  tdum = new ( ntim, TYPE, "No_FillValue" )
+
+  n = -1 ; initialize counter index
+  do year=yrStrt,yrLast
+    do nmo=1,nmos
+       YRM  = year*1000000 + nmo*10000
+       nday = days_in_month(year, nmo)
+       if (nmo.eq.2 .and. isatt(yrStrt,"noLeapYear") .and. yrStrt@noLeapYear) then
+           nday = 28
+       end if
+      do ndy=1,nday
+        do nhr=0,23,hrStep
+           n = n+1
+           tdum(n) = YRM + ndy*100 + nhr
+        end do
+      end do
+    end do
+  end do
+
+  time      = tdum(0:n) ; cut out only filled in times
+  time@long_name = "time"
+  time@units     = "YYYYMMDDHH"
+
+  if (isatt(yrStrt,"noLeapYear")) then
+      time@calendar  = "noLeap"
+  end if
+
+  time!0    = "time"
+  time&time =  time
+  return (time)
+end
+;************************************************************************* 
+; D. Shea 
+; Parse (Partition) YYYYMM, YYYYMMDD, YYYYMMDDHH into a (:,6) array
+
+undef("date_expand")
+function date_expand(date[*]:numeric, opt:integer)
+local ndate, DATE, utest, yyyy, mm, dd, hh, mn, sc
+begin
+  ndate = dimsizes(date)
+  DATE  = new( (/ndate,6/), "integer", "No_FillValue")
+
+  if (.not.isatt(date,"units")) then
+      print(" ")
+      print("date_expand: no units attribute: no expansion")
+      print(" ")
+      return(DATE)
+  end if
+
+  utest = str_lower(date@units)
+  if (.not.any(utest.eq.(/"yyyymm","yyyymmdd","yyyymmddhh"/))) then
+      print(" ")
+      print("date_expand: units not recognized: units="+date@units)
+      print("recognized units: yyyymm,yyyymmdd,yyyymmddhh or YYYYMM,YYYYMMDD,YYYYMMDDHH")
+      print(" ")
+      return(DATE)
+  end if
+
+  mn   = conform(date, 0, -1)
+  sc   = conform(date, 0, -1)
+
+  if (utest.eq."yyyymm") then
+      yyyy = date/100
+      mm   = date-(yyyy*100)
+      dd   = conform(date, 0, -1)
+      hh   = conform(date, 0, -1)
+  end if
+
+  if (utest.eq."yyyymmdd") then
+      yyyy = date/10000
+      mmdd = date-(yyyy*10000)
+      mm   = mmdd/100
+      dd   = mmdd-(mm*100)           
+      hh   = conform(date, 0, -1)
+  end if
+
+  if (utest.eq."yyyymmddhh") then
+      yyyy   = date/1000000
+      mmddhh = date-(yyyy*1000000)
+      mm     = mmddhh/10000
+      mmdd   = mmddhh/100
+      dd     = mmdd-(mm*100)           
+      hh     = date-(yyyy*1000000+mm*10000+dd*100)
+  end if
+
+  DATE(:,0) = yyyy
+  DATE(:,1) =   mm
+  DATE(:,2) =   dd
+  DATE(:,3) =   hh
+  DATE(:,4) =   mn
+  DATE(:,5) =   sc
+  DATE@long_name = "time elements"
+  DATE@units     = "yyyy,mm,dd,hh,m,sc"
+
+  dName     = getvardims(date)
+  if (.not.ismissing(dName)) then
+      DATE!0 = dName
+    if (iscoord(date,dName)) then
+        DATE&$dName$ = date&$dName$
+    end if
+  end if
+
+  return(DATE)
 end
 
 ;************************************************************************* 
@@ -10143,14 +10265,20 @@ begin
 end
 ; ******************************************************************
 ; D. Shea
-; attaches/appends table data: ie (row,column) arrays
-; add additional rows
+; attaches/appends table data: ie (row,column) arrays ; add additional rows
+; will add the coordinate variable of the right dimension
+; but will not do so for the left dimension. The left dimension
+; will be named but no coordinates will be associated with the name.
+
 undef("table_attach_rows")
 function table_attach_rows (t1[*][*], t2[*][*], iopt:integer)
 
 local dim_t1, dim_t2, ncol1, ncol2, nrow1, nrow2    \
     , dimNames_t1, dimNames_t2, dimNames, n
 begin
+
+  printVarSummary(t1)
+  printVarSummary(t2)
                                    ; get array shape/sizes
   dim_t1  = dimsizes(t1)
   dim_t2  = dimsizes(t2)
@@ -10175,20 +10303,21 @@ begin
   nrow1       = dim_t1(0)
   nrow2       = dim_t2(0)
 
-  tNew = new ( (/nrow1+nrow2, ncol1/), typeof(t1), getFillValue(t1))
-  delete(tNew@_FillValue)
                                    ; chk _FillValue stuff
   if (isatt(t1,"_FillValue") ) then
-      tNew@_FillValue = t1@_FillValue
-  end if
-  if (isatt(t2,"_FillValue") ) then
-      tNew@_FillValue = t2@_FillValue
+      tNew = new ( (/nrow1+nrow2, ncol1/), typeof(t1), t1@_FillValue)
+  else if (isatt(t2,"_FillValue") ) then
+           tNew = new ( (/nrow1+nrow2, ncol1/), typeof(t2), t2@_FillValue)
+       else 
+           tNew = new ( (/nrow1+nrow2, ncol1/), typeof(t2), "No_FillValue")
+       end if
   end if
                                  ; insert values
   tNew(0:nrow1-1,:)   = (/ t1 /)
   tNew(nrow1:   ,:)   = (/ t2 /)
+  write_matrix(tNew, "10f7.2" , False)
                                  ; meta data
-  tNew!0 = "row"                 ; default dim names
+  tNew!0 = "row"                 ; *default* dim names
   tNew!1 = "col" 
 
   copy_VarAtts (t1, tNew)        ; copy attributes
@@ -10196,36 +10325,25 @@ begin
 
   dimNames_t1 = getvardims(t1)   ; dimension names
   dimNames_t2 = getvardims(t2) 
-  dimNames    = dimNames_t1      ; default
 
   do n=0,1                       ; override "row", "col"
      if (.not.ismissing(dimNames_t1(n))) then
          tNew!n = dimNames_t1(n) ; default ... use t1 dim names
-     else
-         if (.not.ismissing(dimNames_t2(n))) then
-             tNew!n = dimNames_t2(n)    ; use t2 dim names if t1 not present
-         end if
+     else if (.not.ismissing(dimNames_t2(n))) then
+              tNew!n = dimNames_t2(n)    ; use t2 dim names if t1 not present
+          end if
      end if
   end do
-                                 ; coordinate stuff [if present]
-  do n=0,1
-     if (n.eq.0) then 
-         if (iscoord(t1,dimNames_t1(n)) ) then 
-             tNew&$dimNames(n)$(0:n1-1) = t1&$dimNames_t1(n)$ ; t1 leftmost dimension
-         end if
-         if (iscoord(t2,dimNames_t2(n)) ) then 
-             tNew&$dimNames(n)$(n1:   ) = t2&$dimNames_t2(n)$ ; t2 leftmost dimension
-         end if
-     else
-         if (iscoord(t1,dimNames_t1(n)) ) then 
-             tNew&$dimNames(n)$ = t1&$dimNames(n)$   ; right dimensions
-         else
-             if (iscoord(t1,dimNames_t2(n)) ) then
-                 tNew&$dimNames(n)$ = t2&$dimNames(n)$
-             end if
-         end if
-     end if
-  end do
+                                 ; coord for the right dim (n=1) only
+                                 ; left dim (n=0) will be named but no coord
+                                 ; too many hassles when testing      
+  n = 1    
+  if (iscoord(t1,dimNames_t1(n)) ) then 
+      tNew&$dimNames_t1(n)$ = t1&$dimNames_t1(n)$   ; right dimensions
+  else if (iscoord(t2,dimNames_t2(n)) ) then
+           tNew&$dimNames_t2(n)$ = t2&$dimNames_t2(n)$
+       end if
+  end if
 
   return (tNew)
 end
@@ -11753,7 +11871,7 @@ begin
  
   return(zGrid)
 end
-;----------------------------------------------------------------------------
+;****************************************************************************
 ; Calculate a 'bunch' of dispersion statistics 
 ; This can be slow for big 'x'
 ; 
@@ -11767,9 +11885,14 @@ begin
    nFill   = 0
    nStat   = 30
    allFill = False 
+
+   if (typeof(x).eq."double") then
+       sFillV = 1d20
+   else
+       sFillV = 1e20
+   end if
   
    if (isatt(x,"_FillValue")) then  
-       sFillV = x@_FillValue
        nFill  = num(ismissing(x))
        if (nFill.gt.0) then
            x1d    = ndtooned(x) 
@@ -11786,11 +11909,6 @@ begin
        end if
    else
        work  = ndtooned(x) 
-       if (typeof(x).eq."double") then
-           sFillV = 1d20
-       else
-           sFillV = 1e20
-       end if
    end if
 
    if (typeof(x).eq."double") then
@@ -11803,8 +11921,12 @@ begin
    if (.not.allFill) then
        nwork    = 0l                    ; force nwork as 'long' int
        nwork    = dimsizes(work)        ; so (say) 3*nwork will work
-       statx(0) = avg(x)                ; mean
-       statx(1) = stddev(x)             ; std. deviation
+      ;statx(0) = avg(x)                ; mean
+      ;statx(1) = stddev(x)             ; std. deviation
+       moment   = dim_stat4( work ) 
+       statx(0) = moment(0)             ; mean
+       statx(1) = moment(1)             ; std. deviation
+       
        if (nwork.ge.10) then 
            qsort( work )                    ; sort into ascending order
            statx(2) = min ( work )
@@ -11838,6 +11960,24 @@ begin
    statx(19)= nwork
    statx(20)= nFill
    statx(21)= 100*(one - (one*(nx-nFill))/nx)
+
+   if (nwork.gt.1000) then
+        ;JBuzan BEGIN
+       statx(22) = work( nwork/1000-1 )     ; lower 99.9% 
+       statx(23) = work( nwork/100-1 )      ; lower 99.%  
+       statx(24) = work( nwork/20-1 )       ; lower 95%   
+    
+       statx(25) = work((nwork*19)/20-1)    ; upper 95%
+       statx(26) = work((nwork*99)/100-1)   ; upper 99.%
+       statx(27) = work((nwork*999)/1000-1) ; upper 99.9%
+        ;JBuzan END
+   end if
+
+        ;Arne Melsom
+   statx(28)  = moment(2)                   ; skewness
+   statx(29)  = moment(3)                   ; kurtosis
+        ;Arne Melsom
+
 
    statx@long_name = "Robust Dispersion Statistics"
    if (isatt(x,"long_name")) then
@@ -11884,6 +12024,14 @@ begin
        print(" [19]      #    Used="+statx(19) ) 
        print(" [20]      # Missing="+statx(20) ) 
        print(" [21]      % Missing="+statx(21) ) 
+       print(" [22]     Lower 0.1%="+statx(22) ) 
+       print(" [23]     Lower 1.0%="+statx(23) ) 
+       print(" [24]     Lower 5.0%="+statx(24) ) 
+       print(" [25]     Upper 5.0%="+statx(25) ) 
+       print(" [26]     Upper 1.0%="+statx(26) ) 
+       print(" [27]     Upper 0.1%="+statx(27) ) 
+       print(" [28]       Skewness="+statx(28) ) 
+       print(" [29]       Kurtosis="+statx(29) ) 
        print(" ")
    end if
 
@@ -12061,8 +12209,7 @@ function calculate_monthly_values (x:numeric, arith:string, nDim[1]:integer, opt
 ;
 local dimx, rankx, utc_date, year, month, day, hour, ntim \
     , yrStrt, yrLast, nyrs, NTIM, dAvg, xReturn, xMonth \
-    , NT, nmo, ii 
-
+    , NT, nmo, ii, NMOS, MON1, MON2 
 begin
     dimx   = dimsizes( x )
     rankx  = dimsizes( dimx )
@@ -12090,9 +12237,16 @@ begin
     yrLast = year(ntim-1)
     nyrs   = yrLast-yrStrt+1
 
-   ;NTIM   = 12*nyrs              ; total number of months
-                                  ; "Sebi" generalization
-    NTIM   = 12*(nyrs-2)+(12-(month(0)-1))+month(ntim-1)
+    NMOS   = 12
+   ;NTIM   = NMOS*nyrs                                     ; total number of months
+    if (yrStrt.eq.yrLast) then
+        NTIM = month(ntim-1) - month(0) + 1
+    else    
+        MON1 = NMOS-month(0)+1                               ; "Sebi" generalization
+        MON2 = month(ntim-1)
+        NTIM = NMOS*(nyrs-2)+MON1+MON2
+      ;;NTIM = NMOS*(nyrs-2)+(12-(month(0)-1))+month(ntim-1) ; "Sebi" generalization
+    end if
     dAvg   = dimx
     if (rankx.le.4) then
         dAvg(0)= NTIM
@@ -12102,17 +12256,26 @@ begin
 
     xReturn= new ( dAvg , typeof(x), getFillValue(x))
     xMonth = new ( NTIM , typeof(x&time), "No_FillValue")
+    printVarSummary(xMonth)
 
     NT   = -1
     do yr=yrStrt,yrLast
-      do nmo=0,11
 
+       nmoStrt = 0                           ; index to start
+       nmoLast = NMOS-1                      ; index to end
+       if (yr.eq.yrStrt) then
+           nmoStrt = month(0)-1              ; possible partial year
+       end if
+       if (yr.eq.yrLast) then
+           nmoLast = month(ntim-1)-1         ; possible partial year
+       end if
+
+      do nmo=nmoStrt,nmoLast
          NT    = NT+1
          if (isvar("ii")) then    ; keep this here!!
              delete(ii)
          end if
          ii    = ind(yr.eq.year .and. (nmo+1).eq.month)
-
 
          if (.not.ismissing(ii(0))) then
 
@@ -12230,7 +12393,6 @@ begin
     end if
     if (rankx.eq.4) then
         copy_VarCoords(x(0,:,:,:), xReturn(0,:,:,:))
-
     end if
     if (rankx.eq.5) then
         copy_VarCoords(x(:,0,:,:,:), xReturn(:,0,:,:,:))
@@ -12624,6 +12786,86 @@ begin
 
   return(dp_sigma)
 end
+;---------------------------------------------------------------------------
+undef("dpres_plevel_Wrap")
+function dpres_plevel_Wrap(plev[*]:numeric, psfc:numeric, ptop[1]:numeric, opt:integer)
+; -------------------------------------------------
+; use the  dpres_plevel function to get layer thicknesses
+; -------------------------------------------------
+
+begin
+  dp_plevel           = dpres_plevel(plev, psfc, ptop, 0) 
+
+; add meta data
+
+  dp_plevel@long_name = "pressure thickness"
+  if (isatt(psfc, "units")) then
+      dp_plevel@units = psfc@units
+  end if
+
+  plevName   = getvardims(plev)
+  psfcName   = getvardims(psfc)      ; dimension names
+  rank_psfc  = dimsizes( dimsizes(psfc) )
+
+  if (rank_psfc.eq.1) then
+      if (.not.ismissing(plevName)) then
+          dp_plevel!0          = plevName
+          if (iscoord(plev,plevName)) then
+              dp_plevel&$plevName$ = plev&$plevName$
+          end if
+      else
+          dp_plevel!0   = "plev"
+          dp_plevel&plev=  plev
+      end if
+  end if
+
+  if (rank_psfc.eq.2) then                           ; (lat,lon) => (0,1)
+      do nd=0,1
+         if (.not.ismissing(psfcName(nd))) then
+             dp_plevel!(nd+1)   = psfcName(nd)       ; psfc!nd
+             if (iscoord(psfc,psfcName(nd))) then
+                 dp_plevel&$psfcName(nd)$ = psfc&$psfcName(nd)$
+             end if
+         end if
+      end do
+
+      if (.not.ismissing(plevName)) then
+          dp_plevel!0          = plevName
+          if (iscoord(plev,plevName)) then
+              dp_plevel&$plevName$ = plev&$plevName$
+          end if
+      else
+          dp_plevel!0   = "plev"
+          dp_plevel&plev=  plev
+      end if
+  end if
+
+  if (rank_psfc.eq.3) then                          ; (time,lat,lon) => (0,1,2)
+      if (.not.ismissing(psfcName(0))) then
+           dp_plevel!0   = psfcName(0)              ; psfc!0 
+           if (iscoord(psfc,psfcName(0))) then
+               dp_plevel&$psfcName(0)$ = psfc&$psfcName(0)$
+           end if
+
+           do nd=1,2
+              if (.not.ismissing(psfcName(0))) then
+                  dp_plevel!(nd+1)   = psfcName(nd)       ; psfc!nd
+                  dp_plevel&$psfcName(nd)$ = psfc&$psfcName(nd)$
+              end if
+           end do
+
+           if (.not.ismissing(plevName) .and. iscoord(plev,plevName)) then
+               dp_plevel!1          = plevName
+               dp_plevel&$plevName$ = plev&$plevName$
+           else
+               dp_plevel!1   = "plev"
+               dp_plevel&plev=  plev
+           end if
+      end if
+  end if
+
+  return(dp_plevel)
+end
 ;---------------------------------------------------
 ; Rob Nicholas [U. Washington] & D. Shea
 undef("pattern_cor2")
@@ -12856,4 +13098,184 @@ begin
   copy_VarAtts(x,y)
 
   return(y)
+end
+;------
+; Thirteen pt (decadal)
+undef("smth13_n")
+function smth13_n (x:numeric, ndim)    ; smth13
+local wgts, smX
+begin
+        wgts     = (/ 1,6,19,42,71,96,106,96,71,42,19,6,1 /)*1.0
+        wgts     = wgts/sum(wgts)
+        smX      = wgt_runave_n_Wrap(x, wgts, 1, ndim)   ; reflective end pts
+        return(smX)
+end
+
+;------
+; Names and abbreviations for months
+undef("month_name")
+function month_name (opt[1]:integer)
+;  monName = month_name(-1)    ; return with extra January 
+begin
+ if (opt.eq.0) then
+     return((/"Jan","Feb","Mar","Apr","May","Jun"\
+             ,"Jul","Aug","Sep","Oct","Nov","Dec"/))         ; len=12
+     else if (opt.eq.-1) then
+        return((/"Jan","Feb","Mar","Apr","May","Jun"      \
+                ,"Jul","Aug","Sep","Oct","Nov","Dec","Jan"/)); len=13
+     else if (opt.eq.1) then
+        return((/"January","February","March","April" \
+                ,"May","June","July","August"         \
+                ,"September","October","November","December"/)) ; len=12
+     end if     ; opt= 1
+     end if     ; opt=-1
+  end if        ; opt= 0  
+end
+
+;------
+; Names and abbreviations for seasons
+undef("season_name")
+function season_name (opt[1]:integer)
+;  seaName = season_name(1)    ; 5-month season
+begin
+ if (opt.eq.0) then
+       return((/"DJF","JFM","FMA","MAM","AMJ","MJJ" \
+               ,"JJA","JAS","ASO","SON","OND","NDJ"/))       ; length 12
+    else if (opt.eq.-1) then
+       return((/"DJF","JFM","FMA","MAM","AMJ","MJJ" \
+               ,"JJA","JAS","ASO","SON","OND","NDJ","DJF"/)) ; length 13
+    else if (opt.eq.1) then
+       return((/"NDJFM","DJFMA","JFMAM","FMAMJ","MAMJJ","AMJJA" \
+               ,"MJJAS","JJASO","JASON","ASOND","SONDJ","ONDJF" /)) ; len 12
+    else if (opt.eq.2) then
+       return((/"DJF","MAM","JJA","SON"/))                   ; len 4
+    else if (opt.eq.3) then
+       return((/"Winter","Spring","Autumn","Summer"/))       ; len 4
+    else if (opt.eq.4) then
+       return((/"Summer","Autumn","Winter","Spring"/))       ; len4
+    end if     ; opt= 4
+    end if     ; opt= 3
+    end if     ; opt= 2
+    end if     ; opt= 1
+    end if     ; opt=-1
+  end if       ; opt= 0  
+end
+;---------------------------------------------------
+undef("mon_fullyear")
+function mon_fullyear(x:numeric, opt)
+;
+; Expand a variable containing monthly data to full (12 month) years
+; The added months will be set to _FillValue.
+;
+; Example: Take a variable that may span (say)
+; 190308 to 201105 and expand it to span 190301 to 201112.
+; The extra values will be filled with _FillValue.
+;
+; This assumes that the input variable will have a
+; time coordinate variable with units acceptable to cd_calendar
+;
+; generically: Only the 'time' dimension must be present.
+;              It does not have to be named 'time'
+;              All other meta data are preserved.
+; x(time), x(time,J), x(time,N,M), x(time,K,N,M)
+;
+; If the input is already full years, the variable is returned unaltered.
+;
+; f = addfile(...)  
+; x = mon_fullyear( f->X, 0)
+
+begin
+  dimx  = dimsizes(x)          ; dimsizes x
+  rankx = dimsizes(dimx)       ; rank of x
+
+  if (rankx.gt.4) then
+      print("mon_fullyear_n: currently this function only works up to rank 4")
+      exit
+  end if
+
+  dnamx = getvardims( x )      ; dimension names
+
+  ntimx = dimx(0)              ; # input time steps
+  ymdhms= cd_calendar(x&$dnamx(0)$, 0)
+ 
+  yyyy  = toint( ymdhms(:,0) )
+  mm    = toint( ymdhms(:,1) )
+
+  nmos  = 12
+  if ((ntimx%nmos).eq.0 .and. mm(0).eq.1 .and. mm(ntimx-1).eq.nmos) then
+     ;x@year_mon = YYYY*100 + MM 
+      return(x)                ; must be full years
+  end if 
+                               ; must be partial year
+  dd    = toint( ymdhms(:,2) )
+  hh    = toint( ymdhms(:,3) )
+  mn    = toint( ymdhms(:,4) )
+  sc    =        ymdhms(:,5)  
+
+  tunits= x&$dnamx(0)$@units
+
+  yrStrt= yyyy(0)
+  yrLast= yyyy(ntimx-1)
+
+  mmStrt= mm(0)
+  mmLast= mm(ntimx-1)
+
+  NYRS  = yrLast-yrStrt+1
+  NTIM  = NYRS*nmos            ; full year-month
+  
+  YYYY  = new( NTIM, "integer" , "No_FillValue")
+  MM    = new( NTIM, "integer" , "No_FillValue")
+  DD    = new( NTIM, "integer" , "No_FillValue")
+  HH    = new( NTIM, "integer" , "No_FillValue")
+  MN    = new( NTIM, "integer" , "No_FillValue")
+  SC    = new( NTIM, typeof(sc), "No_FillValue")
+
+  nStrt = 0
+  nLast = nmos-1
+  do year=yrStrt,yrLast
+     YYYY(nStrt:nLast) = year
+     MM(nStrt:nLast)   = ispan(1,nmos,1) 
+     DD(nStrt:nLast)   = 1 
+     HH(nStrt:nLast)   = 0 
+     MN(nStrt:nLast)   = 0
+     SC(nStrt:nLast)   = 0
+
+     nStrt = nStrt+nmos
+     nLast = nLast+nmos
+  end do
+  
+  TIME  =  (/ cd_inv_calendar(YYYY,MM,DD,HH,MN,SC,tunits, 0) /)
+  TIME@units = tunits
+  TIME!0     = dnamx(0)
+  TIME&$dnamx(0)$ =  TIME        ; make coordinate variable
+
+  DIMX    = dimx
+  DIMX(0) = NTIM
+  X     = new (DIMX, typeof(x), getFillValue(x))
+
+  nStrt = ind(YYYY.eq.yrStrt .and. MM.eq.mmStrt)
+  nLast = ind(YYYY.eq.yrLast .and. MM.eq.mmLast)
+  
+  if (rankx.eq.1) then
+      X(nStrt:nLast) = (/ x /)
+     else if (rankx.eq.2) then
+         X(nStrt:nLast,:) = (/ x /)
+         copy_VarCoords(x(0,:), X(0,:))
+     else if (rankx.eq.3) then
+         X(nStrt:nLast,:,:)   = (/ x /)
+         copy_VarCoords(x(0,:,:), X(0,:,:))
+     else if (rankx.eq.4) then
+         X(nStrt:nLast,:,:,:) = (/ x /)
+         copy_VarCoords(x(0,:,:,:), X(0,:,:,:))
+     end if
+     end if
+     end if
+  end if
+
+  copy_VarAtts(x, X)
+  X!0          = dnamx(0)
+  X&$dnamx(0)$ = TIME
+
+  return(X)
+  
 end

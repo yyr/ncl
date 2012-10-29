@@ -16,8 +16,8 @@
 extern int cuErrorOccurred;
 extern int cuErrOpts;
 
-extern int isleapyear(int);
-extern int day_of_year (int, int, int);
+extern int day_of_year(int, int, int, const char*);
+extern int seconds_in_year(int, const char *);
 
 extern void set_all_missing(void *dt, ng_size_t total_size, 
                             NclScalar missing, int opt);
@@ -40,7 +40,7 @@ NhlErrorTypes cd_calendar_W( void )
 /* 
  * Variables for calculating fraction of year,  if the option is 4.
  */
-  int nsid, doy, total_seconds_in_year, seconds_in_doy, seconds_in_hour;
+  int doy, nsid, total_seconds_in_year, seconds_in_doy, seconds_in_hour;
   int seconds_in_minute; 
   double current_seconds_in_year, fraction_of_year;
 
@@ -51,7 +51,7 @@ NhlErrorTypes cd_calendar_W( void )
   NclAtt  attr_obj;
   NclStackEntry   stack_entry;
   string *scal;
-  char   *ccal = NULL;
+  const char   *ccal = NULL;
   cdCalenType ctype;
 /*
  * Output variables.
@@ -386,9 +386,15 @@ NhlErrorTypes cd_calendar_W( void )
  *  YYYY.fraction_of_year
  */
       case 4:
-        nsid             = 86400;      /* num seconds in a day */
-        total_seconds_in_year  = isleapyear(year) ? 366*nsid : 365*nsid;
-        doy                    = day_of_year(year,month,day);
+	nsid = 86400;      /* num seconds in a day */
+        if(ccal == NULL) {
+          total_seconds_in_year = seconds_in_year(year,"standard");
+          doy = day_of_year(year,month,day,"standard");
+        }
+        else {
+          total_seconds_in_year = seconds_in_year(year,ccal);
+          doy = day_of_year(year,month,day,ccal);
+        }
         if(doy > 1) {
           seconds_in_doy = (doy-1) * nsid;
         }

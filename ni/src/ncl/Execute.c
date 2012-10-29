@@ -227,7 +227,6 @@ void CallLIST_READ_OP(void) {
 	NclSymbol *temporary;
 	NclStackEntry *list_ptr;
 	NclStackEntry *temporary_list_ptr;
-	NclStackEntry result;
 	NclStackEntry data;
 	NclList list;
 	NclList newlist;
@@ -682,41 +681,111 @@ void CallLIST_READ_FILEVAR_OP(void) {
 				thefile = (NclFile)_NclGetObj(*(obj*)file_md->multidval.val);
 				if (thefile && var != NrmNULLQUARK && ((index = _NclFileIsVar(thefile, var)) > -1)) {
 					int bad = 0;
-					struct _NclFVarRec *var_info = thefile->file.var_info[index];
-					if (first) { /* save the dimension sizes */
-						var_ndims = var_info->num_dimensions;
-						for (i = 0; i < var_info->num_dimensions; i++) {
-							var_dim_sizes[i] = thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size;
+					if(use_new_hlfs)
+					{
+						NclNewFile newfile = (NclNewFile)thefile;
+						NclFileVarNode *varnode = NULL;
+						varnode = _getVarNodeFromNclFileGrpNode(newfile->newfile.grpnode, var);
+						if(NULL == varnode)
+						{
+							NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
+								NrmQuarkToString(var),
+								NrmQuarkToString(newfile->newfile.grpnode->path)));
 						}
-						first = 0;
+
+						if(first && (NULL != varnode->dim_rec))
+						{
+							var_ndims = varnode->dim_rec->n_dims;
+							for (i = 0; i < var_ndims; ++i)
+							{
+								var_dim_sizes[i] = varnode->dim_rec->dim_node[i].size;
+							}
+							first = 0;
+						}
+						else
+						{
+							if(NULL != varnode->dim_rec)
+							{
+								if(varnode->dim_rec->n_dims != var_ndims)
+								{
+									NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+										"File %s dimension count for variable does not conform to others in list; skipping file",
+								  		NrmQuarkToString(newfile->newfile.fpath)));
+									bad = 1;
+								}
+								else
+								{
+									for (i = 0; i < var_ndims; ++i)
+									{
+										if(((ng_size_t)varnode->dim_rec->dim_node[i].size) != var_dim_sizes[i])
+										{
+											NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+												"File %s dimension sizes do not conform to others in list; skipping file",
+										  		NrmQuarkToString(newfile->newfile.fpath)));
+											bad = 1;
+											break;
+										}
+									}
+								}
+							}
+							else
+							{
+								bad = 1;
+							}
+						}
+
+						if (bad)
+						{
+							files[list_index] = NULL;
+							agg_dim_count[list_index] = 0;
+							total_agg_dim_size--;
+							list_index--;
+						}
+						else
+						{
+							files[list_index] = thefile;
+							good_file_count++;
+							list_index--;
+						}
 					}
-					else {
-						if (var_info->num_dimensions != var_ndims) {
-							NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension count for variable  does not conform to others in list; skipping file",
-								  NrmQuarkToString(thefile->file.fpath));
-							bad = 1;
+					else
+					{
+						struct _NclFVarRec *var_info = thefile->file.var_info[index];
+						if (first) { /* save the dimension sizes */
+							var_ndims = var_info->num_dimensions;
+							for (i = 0; i < var_info->num_dimensions; i++) {
+								var_dim_sizes[i] = thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size;
+							}
+							first = 0;
 						}
 						else {
-							for (i = 0; i < var_info->num_dimensions; i++) {
-								if (thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size != var_dim_sizes[i]) {
-									NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension sizes do not conform to others in list; skipping file",
-										  NrmQuarkToString(thefile->file.fpath));
-									bad = 1;
-									break;
+							if (var_info->num_dimensions != var_ndims) {
+								NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension count for variable  does not conform to others in list; skipping file",
+								  	NrmQuarkToString(thefile->file.fpath));
+								bad = 1;
+							}
+							else {
+								for (i = 0; i < var_info->num_dimensions; i++) {
+									if (thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size != var_dim_sizes[i]) {
+										NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension sizes do not conform to others in list; skipping file",
+										  	NrmQuarkToString(thefile->file.fpath));
+										bad = 1;
+										break;
+									}
 								}
 							}
 						}
-					}
-					if (bad) {
-						files[list_index] = NULL;
-						agg_dim_count[list_index] = 0;
-						total_agg_dim_size--;
-						list_index--;
-					}
-					else {
-						files[list_index] = thefile;
-						good_file_count++;
-						list_index--;
+						if (bad) {
+							files[list_index] = NULL;
+							agg_dim_count[list_index] = 0;
+							total_agg_dim_size--;
+							list_index--;
+						}
+						else {
+							files[list_index] = thefile;
+							good_file_count++;
+							list_index--;
+						}
 					}
 				}
 				else {
@@ -748,6 +817,76 @@ void CallLIST_READ_FILEVAR_OP(void) {
 				thefile = (NclFile)_NclGetObj(*(obj*)file_md->multidval.val);
 				if (thefile && var != NrmNULLQUARK && ((index = _NclFileIsVar(thefile, var)) > -1)) {
 					int bad = 0;
+					if(use_new_hlfs)
+					{
+						NclNewFile newfile = (NclNewFile)thefile;
+						NclFileVarNode *varnode = NULL;
+						varnode = _getVarNodeFromNclFileGrpNode(newfile->newfile.grpnode, var);
+						if(NULL == varnode)
+						{
+							NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
+								NrmQuarkToString(var),
+								NrmQuarkToString(newfile->newfile.grpnode->path)));
+						}
+
+						if(first && (NULL != varnode->dim_rec))
+						{
+							bad = 0;
+							var_ndims = varnode->dim_rec->n_dims;
+							for (i = 0; i < var_ndims; ++i)
+							{
+								var_dim_sizes[i] = varnode->dim_rec->dim_node[i].size;
+							}
+							first = 0;
+						}
+						else
+						{
+							if(NULL != varnode->dim_rec)
+							{
+								bad = 0;
+								if(varnode->dim_rec->n_dims != var_ndims)
+								{
+									NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+										"File %s dimension count for variable does not conform to others in list; skipping file",
+								  		NrmQuarkToString(newfile->newfile.fpath)));
+									bad = 1;
+								}
+								else
+								{
+									for(i = 1; i < var_ndims; ++i)
+									{
+										if(((ng_size_t)varnode->dim_rec->dim_node[i].size) != var_dim_sizes[i])
+										{
+											NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+												"File %s dimension sizes do not conform to others in list; skipping file",
+										  		NrmQuarkToString(newfile->newfile.fpath)));
+											bad = 1;
+											break;
+										}
+									}
+								}
+							}
+						}
+
+						if(bad)
+						{
+							files[list_index] = NULL;
+							agg_dim_count[list_index] = 0;
+							list_index--;
+						}
+						else
+						{
+							agg_dim = 0;
+							agg_dim_name = varnode->dim_rec->dim_node[0].name;
+							total_agg_dim_size += varnode->dim_rec->dim_node[0].size;
+							agg_dim_count[list_index] = varnode->dim_rec->dim_node[0].size;
+							files[list_index] = thefile;
+							good_file_count++;
+							list_index--;
+						}
+					}
+					else
+					{
 					struct _NclFVarRec *var_info = thefile->file.var_info[index];
 					if (first) { /* save the dimension sizes */
 						var_ndims = var_info->num_dimensions;
@@ -786,6 +925,7 @@ void CallLIST_READ_FILEVAR_OP(void) {
 						files[list_index] = thefile;
 						good_file_count++;
 						list_index--;
+					}
 					}
 				}
 				else {
@@ -2534,7 +2674,7 @@ void CallINTRINSIC_FUNC_CALL(void) {
 				if(((NclSymbol*)*ptr)->u.bfunc != NULL) {
 					NclSymbol *func = (NclSymbol *)(*ptr);
 					NCL_PROF_PFENTER(func->name);
-					ret = (*((NclSymbol*)*ptr)->u.bfunc->thefunc)();
+					ret = (func->u.bfunc->thefunc)();
 					NCL_PROF_PFEXIT(func->name);
 /*
 * should actually map values back
@@ -2591,7 +2731,7 @@ void CallINTRINSIC_PROC_CALL(void) {
 				if(((NclSymbol*)*ptr)->u.bproc != NULL) {
 					NclSymbol *proc = (NclSymbol *)(*ptr);
 					NCL_PROF_PFENTER(proc->name);
-					ret = (*((NclSymbol*)*ptr)->u.bproc->theproc)();
+					ret = (proc->u.bproc->theproc)();
 					NCL_PROF_PFEXIT(proc->name);
 					if(ret < NhlWARNING) {
 						estatus = ret;
@@ -2801,7 +2941,6 @@ void CallLOOP_INC_OP(void) {
 					NclStackEntry *tmp_ptr;
 					NclStackEntry *data_ptr;
 					NclMultiDValData tmp_md;
-					NclMultiDValData tmp2_md;
 					NclSymbol *l_inc;
 					NclSymbol *l_dir;
 					NclMultiDValData end_md = NULL;;
@@ -3418,6 +3557,7 @@ void CallASSIGN_VAR_OP(void) {
 				NclSymbol *sym = NULL;
 				NhlErrorTypes ret = NhlNOERROR;
 				NhlArgVal udata;
+				NclAtt att_obj;
 			
 
 			ptr++;lptr++;fptr++;
@@ -3542,6 +3682,30 @@ void CallASSIGN_VAR_OP(void) {
 									}
 								}
 							}
+							/* HLU Refs also need to be added for any attributes that reference HLU objects */
+							att_obj = (NclAtt)_NclGetObj( lhs_var->u.data_var->var.att_id);
+							if (att_obj) {
+								NclAttList *attrec = att_obj->att.att_list;;
+								NclHLUObj hobj;
+									
+								while (attrec) {
+									tmp_md = (NclMultiDValData) attrec->attvalue;
+									if (! tmp_md || ! (tmp_md->obj.obj_type == Ncl_MultiDValHLUObjData)) {
+										attrec = attrec->next;
+										continue;
+									}
+									for (i = 0; i < tmp_md->multidval.totalelements; i++) {
+										hobj = (NclHLUObj) _NclGetObj(((int*)tmp_md->multidval.val)[i]);
+										if(lhs_var->u.data_var->var.thesym != NULL) {
+											_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,lhs_var->u.data_var->var.thesym->level);
+										} else {
+											_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,-1);
+										}
+									}
+									attrec = attrec->next;
+								}
+							}
+
 						} else if(rhs.kind == NclStk_LIST) {
 							int n;
 							NclDimRec dim_info[NCL_MAX_DIMENSIONS];
@@ -6858,8 +7022,7 @@ void CallASSIGN_VAR_VAR_OP(void) {
 				struct _NclVarRec *tmp_var;
 				NclMultiDValData tmp_md;
 				NhlArgVal udata;
-
-
+				NclAtt att_obj;
 	
 				ptr++;lptr++;fptr++;
 				rhs_sym = (NclSymbol*)*ptr;
@@ -6971,6 +7134,30 @@ void CallASSIGN_VAR_VAR_OP(void) {
 										}
 									}
 								}
+								/* HLU Refs also need to be added for any attributes that reference HLU objects */
+								att_obj = (NclAtt)_NclGetObj( lhs_var->u.data_var->var.att_id);
+								if (att_obj) {
+									NclAttList *attrec = att_obj->att.att_list;;
+									NclHLUObj hobj;
+									
+									while (attrec) {
+										tmp_md = (NclMultiDValData) attrec->attvalue;
+										if (! tmp_md || ! (tmp_md->obj.obj_type == Ncl_MultiDValHLUObjData)) {
+											attrec = attrec->next;
+											continue;
+										}
+										for (i = 0; i < tmp_md->multidval.totalelements; i++) {
+											hobj = (NclHLUObj) _NclGetObj(((int*)tmp_md->multidval.val)[i]);
+											if(lhs_var->u.data_var->var.thesym != NULL) {
+												_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,lhs_var->u.data_var->var.thesym->level);
+											} else {
+												_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,-1);
+											}
+										}
+										attrec = attrec->next;
+									}
+								}
+
 							}
 						}
 						if(rhs_sel_ptr != NULL) {

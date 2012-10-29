@@ -244,14 +244,6 @@ GRIDSPECSTUFF:
 	@echo "n"
 #endif
 
-#ifdef	BuildESMF
-ESMFSTUFF:
-	@echo "y"
-#else
-ESMFSTUFF:
-	@echo "n"
-#endif
-
 #ifdef BuildGRIB2
 GRIB2STUFF:
 	@echo "y"
@@ -265,14 +257,6 @@ V5DSTUFF:
 	@echo "y"
 #else
 V5DSTUFF:
-	@echo "n"
-#endif
-
-#ifdef	BuildDODS
-DODSSTUFF:
-	@echo "y"
-#else
-DODSSTUFF:
 	@echo "n"
 #endif
 

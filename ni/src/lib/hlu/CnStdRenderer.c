@@ -49,6 +49,16 @@ static NhlErrorTypes CnStdRender(
 #endif
 );
 
+static NhlIsoLine *CnStdGetIsoLines(
+#if     NhlNeedProto
+        NhlLayer                instance,
+        NhlContourPlotLayer     cnl,
+        int			n_levels,
+        float			*levels,
+	NhlString		entry_name
+#endif
+);
+
 
 extern int (_NHLCALLF(cpdrpl,CPDRPL))(
 #if	NhlNeedProto
@@ -189,7 +199,8 @@ NhlCnStdRendererClassRec NhlcnStdRendererClassRec = {
 /* layer_destroy 	*/    	NULL,
 	},
 	{
-/* render */		        CnStdRender
+/* render */		        CnStdRender,
+/* get_isolines */              CnStdGetIsoLines
 	},
 	{
 /* foo */		        0
@@ -497,8 +508,7 @@ static NhlErrorTypes UpdateLineAndLabelParams
                         _NhlGetGksCi(cl->base.wkptr,
                                      cnp->high_lbls.back_color);
         if (cnp->high_lbls.perim_lcolor == NhlTRANSPARENT)
-                cnp->high_lbls.gks_plcolor = 
-                        _NhlGetGksCi(cl->base.wkptr,NhlFOREGROUND);
+                cnp->high_lbls.gks_plcolor = NhlTRANSPARENT;
         else
                 cnp->high_lbls.gks_plcolor =
                         _NhlGetGksCi(cl->base.wkptr,
@@ -511,22 +521,15 @@ static NhlErrorTypes UpdateLineAndLabelParams
                 cnp->low_lbls.gks_color =
                          _NhlGetGksCi(cl->base.wkptr,
                                              cnp->low_lbls.color);
-/* 
- * the low label background can be transparent iff (and only if) the high
- * label background is transparent, but otherwise the color can be 
- * different. If the low label background is set transparent when
- * the high label is not transparent, default to the background color.
- */
+
         if (cnp->low_lbls.back_color == NhlTRANSPARENT)
-                cnp->low_lbls.gks_bcolor =  
-			_NhlGetGksCi(cl->base.wkptr,NhlBACKGROUND);
+                cnp->low_lbls.gks_bcolor =  NhlTRANSPARENT;
         else
                 cnp->low_lbls.gks_bcolor =
                         _NhlGetGksCi(cl->base.wkptr,
                                      cnp->low_lbls.back_color);
         if (cnp->low_lbls.perim_lcolor == NhlTRANSPARENT)
-                cnp->low_lbls.gks_plcolor = 
-                        _NhlGetGksCi(cl->base.wkptr,NhlFOREGROUND);
+                cnp->low_lbls.gks_plcolor = NhlTRANSPARENT;
         else
                 cnp->low_lbls.gks_plcolor =
                         _NhlGetGksCi(cl->base.wkptr,
@@ -768,6 +771,9 @@ static NhlErrorTypes UpdateLineAndLabelParams
  * of the corresponding HighLabel resource if that resource is not set to 
  * transparent. However, if the low label resource is set to transparent in
  * this case, it will be coerced to transparent.
+ * Update 2013/01/14: using the new transparency features, individual control
+ * of cnLowLabelPerimOn is now possible. And cnLowLabelBackgroundColor and
+ * cnLowLabelPerimColor can be transparent independent of the cnHighLabel values.
  * 
  * It could be possible to set the low label font height independently of
  * the high label font height, but it will require a more sophisticated
@@ -785,20 +791,28 @@ static NhlErrorTypes UpdateLineAndLabelParams
 		c_cpsetr("HLW",(float)(cnp->high_lbls.perim_space  * height));
 		c_cpsetr("HLA",(float)cnp->high_lbls.angle);
 		c_cpseti("HLO", (int) cnp->high_low_overlap);
+		cnp->hlb_val = 0;
 
-		if (cnp->high_lbls.back_color == NhlTRANSPARENT) {
-			if (cnp->high_lbls.perim_lcolor == NhlTRANSPARENT ||
-			    ! cnp->high_lbls.perim_on) 
+		if ((!cnp->high_lbls.on || cnp->high_lbls.back_color == NhlTRANSPARENT) &&
+		    (!cnp->low_lbls.on || cnp->low_lbls.back_color == NhlTRANSPARENT)) {
+			if ((!cnp->high_lbls.perim_on || cnp->high_lbls.perim_lcolor == NhlTRANSPARENT) &&
+			    (! cnp->low_lbls.perim_on || cnp->low_lbls.perim_lcolor == NhlTRANSPARENT))
 				c_cpseti("HLB",0); 
-			else
+			else {
 				c_cpseti("HLB",1);
+				cnp->hlb_val = 1;		
+			}
 		}
 		else {
-			if (cnp->high_lbls.perim_lcolor == NhlTRANSPARENT ||
-			    ! cnp->high_lbls.perim_on)
+			if ((!cnp->high_lbls.perim_on || cnp->high_lbls.perim_lcolor == NhlTRANSPARENT) &&
+			    (! cnp->low_lbls.perim_on || cnp->low_lbls.perim_lcolor == NhlTRANSPARENT)) {
 				c_cpseti("HLB",2);
-			else
+				cnp->hlb_val = 2;		
+			}
+			else {
 				c_cpseti("HLB",3);
+				cnp->hlb_val = 3;		
+			}
 		}
 	}
 
@@ -1270,7 +1284,7 @@ static NhlErrorTypes cnInitAreamap
 	if (cnp->aws_id < 1) {
 		cnp->aws_id = 
 			_NhlNewWorkspace(NhlwsAREAMAP,
-					 NhlwsNONE,1000000*sizeof(int));
+					 NhlwsNONE,20000000*sizeof(int));
 		if (cnp->aws_id < 1) 
 			return MIN(ret,(NhlErrorTypes)cnp->aws_id);
 	}
@@ -1847,6 +1861,226 @@ static NhlErrorTypes CnStdRender
 	return MIN(subret,ret);
 }
 
+static NhlIsoLine *CnStdGetIsoLines
+#if	NhlNeedProto
+(
+	NhlLayer		instance,
+        NhlContourPlotLayer     cnl,
+        int			n_levels,
+        float			*levels,
+	NhlString		entry_name
+        )
+#else
+(instance,cnl,order,entry_name)
+	NhlLayer		instance;
+        NhlContourPlotLayer     cnl;
+        int			n_levels;
+        float			*levels;
+	NhlString		entry_name;
+#endif
+{
+        NhlCnStdRendererLayer csrl = (NhlCnStdRendererLayer) instance;
+	NhlCnStdRendererLayerPart	  *csrp = &csrl->cnstdrenderer;
+	NhlContourPlotLayerPart 	  *cnp = &cnl->contourplot;
+	NhlTransformLayerPart 		  *tfp = &cnl->trans;
+	NhlString e_text;
+        NhlErrorTypes ret = NhlNOERROR,subret = NhlNOERROR;
+        Gint            err_ind;
+        Gclip           clip_ind_rect;
+	float           *clvp;
+	int             count;
+	int             i;
+	NhlIsoLine      *isolines, *ilp;
+
+	Cnl = cnl;
+	Cnp = cnp;
+	
+	ginq_clip(&err_ind,&clip_ind_rect);
+        gset_clip_ind(GIND_CLIP);
+
+	c_cprset();
+	SetCpParams(cnl,entry_name);
+
+/*
+ * Get the current bounds handling state
+ */
+	NhlVAGetValues(tfp->trans_obj->base.id, 
+		       NhlNtrDoBounds, &csrp->do_bounds,
+		       NULL);
+/*
+ * Only set the ORV parameter if overlaying on EZMAP. It can cause
+ * problems otherwise. (Not sure yet whether it is needed in some cases
+ * though, and perhaps not needed in certain Ezmap cases.
+ */
+	if (cnp->trans_obj->base.layer_class->base_class.class_name ==
+	    NhlmapTransObjClass->base_class.class_name) {
+		NhlVAGetValues(cnp->trans_obj->base.id, 
+			       NhlNtrOutOfRangeF, &cnp->out_of_range_val,
+			       NULL);
+		c_cpsetr("ORV",cnp->out_of_range_val);
+	}
+
+	if (cnp->sfp->missing_value_set)
+		c_cpsetr("SPV",cnp->sfp->missing_value);
+	else
+		c_cpsetr("SPV",(float)0.0);
+
+	if (cnp->low_level_log_on && cnl->trans.x_log) {
+		c_cpsetr("XC1",(float)tfp->data_xstart);
+		c_cpsetr("XCM",(float)tfp->data_xend);
+	}
+	else {
+		c_cpsetr("XC1",(float)cnp->xc1);
+		c_cpsetr("XCM",(float)cnp->xcm);
+	}
+	if (cnp->low_level_log_on && cnl->trans.y_log) {
+		c_cpsetr("YC1",(float)tfp->data_ystart);
+		c_cpsetr("YCN",(float)tfp->data_yend);
+	}
+	else {
+		c_cpsetr("YC1",(float)cnp->yc1);
+		c_cpsetr("YCN",(float)cnp->ycn);
+	}
+	c_cpseti("WSO", 3);		/* error recovery on */
+	c_cpseti("NVS",0);		/* no vertical strips */
+	c_cpseti("HLE",1);              /* search for equal high/lows */
+        c_cpseti("SET",0);
+        c_cpseti("RWC",500);
+        c_cpseti("RWG",1500);
+        c_cpseti("MAP",NhlcnMAPVAL);
+
+	c_cpsetr("PIT",MAX(0.0,cnp->max_point_distance));
+	
+        if (cnp->smoothing_on) {
+                c_cpsetr("T2D",cnp->smoothing_tension);
+                c_cpsetr("SSL",cnp->smoothing_distance);
+        }
+        else {
+                c_cpsetr("T2D",(float)0.0);
+        }
+	gset_fill_colr_ind((Gint)_NhlGetGksCi(cnl->base.wkptr,0));
+
+	subret = UpdateLineAndLabelParams(cnl,&cnp->do_lines,&cnp->do_labels);
+	if ((ret = MIN(subret,ret)) < NhlWARNING) {
+		ContourAbortDraw(cnl);
+		gset_clip_ind(clip_ind_rect.clip_ind);
+		return NULL;
+	}
+
+	/* Retrieve workspace pointers */
+
+	if ((cnp->fws = _NhlUseWorkspace(cnp->fws_id)) == NULL) {
+		e_text = "%s: error reserving float workspace";
+		NhlPError(NhlFATAL,NhlEUNKNOWN,e_text,entry_name);
+		ContourAbortDraw(cnl);
+		gset_clip_ind(clip_ind_rect.clip_ind);
+		return NULL;
+	}
+	if ((cnp->iws = _NhlUseWorkspace(cnp->iws_id)) == NULL) {
+		e_text = "%s: error reserving integer workspace";
+		NhlPError(NhlFATAL,NhlEUNKNOWN,e_text,entry_name);
+		ContourAbortDraw(cnl);
+		gset_clip_ind(clip_ind_rect.clip_ind);
+		return NULL;
+	}
+	/* Initialize the contour package */
+
+	subret = _NhlCprect(cnp->data,cnp->sfp->fast_dim,cnp->sfp->fast_len,
+			    cnp->sfp->slow_len,cnp->fws,cnp->iws,entry_name);
+	if ((ret = MIN(subret,ret)) < NhlWARNING) {
+		ContourAbortDraw(cnl);
+		gset_clip_ind(clip_ind_rect.clip_ind);
+		return NULL;
+	}
+
+	if (n_levels <= 0) {
+		clvp = (float *) cnp->levels->data;
+		count = cnp->level_count;
+	}
+	else {
+		count = n_levels;
+		clvp = levels;
+	}
+
+	isolines = (NhlIsoLine *) NhlMalloc(sizeof(NhlIsoLine) * count);
+	for (i = 0, ilp = isolines; i < count; i++, ilp++) {
+		int flag,npoints;
+		NhlBoolean done = False;
+		float *xloc = NULL, *yloc = NULL;
+		int current_seg_alloc = 10;
+		int current_point_count = 0;
+		int current_seg = 0;
+
+		flag = 0;
+/*
+		printf("Points for level %f:\n", clvp[i]);
+*/
+		ilp->level = clvp[i];
+		ilp->x = ilp->y = NULL;
+		ilp->start_point = ilp->n_points = NULL;
+		while (! done) {
+			subret = _NhlCpcltr(cnp->data,cnp->fws,cnp->iws,clvp[i],
+					    &flag,&xloc,&yloc,&npoints,entry_name);
+			if ((ret = MIN(subret,ret)) < NhlWARNING) {
+				ContourAbortDraw(cnl);
+				gset_clip_ind(clip_ind_rect.clip_ind);
+				return NULL;
+			}
+
+			if (flag == 0)
+				break;
+			if (current_seg == 0) {
+				ilp->x = NhlMalloc(sizeof(float) * npoints);
+				ilp->y = NhlMalloc(sizeof(float) * npoints);
+			}
+			else {
+				ilp->x = NhlRealloc(ilp->x, sizeof(float) * (current_point_count + npoints));
+				ilp->y = NhlRealloc(ilp->y, sizeof(float) * (current_point_count + npoints));
+			}
+			memcpy((char*)(ilp->x + current_point_count),xloc, npoints * sizeof(float)); 
+			memcpy((char*)(ilp->y + current_point_count),yloc, npoints * sizeof(float)); 
+
+			if (current_seg == 0) {
+				ilp->n_points = NhlMalloc(sizeof(int) * current_seg_alloc);
+				ilp->start_point = NhlMalloc(sizeof(int) * current_seg_alloc);
+			}
+			else if (current_seg == current_seg_alloc) {
+				ilp->n_points = NhlRealloc(ilp->n_points,sizeof(int) * current_seg_alloc * 2);
+				ilp->start_point = NhlRealloc(ilp->start_point,sizeof(int) * current_seg_alloc * 2);
+				current_seg_alloc *= 2;
+			}
+			ilp->n_points[current_seg] = npoints; 	
+			ilp->start_point[current_seg] = current_point_count; 	
+			current_point_count += npoints;
+			current_seg++;
+/*				
+			printf("\t%d points: ",npoints);
+			for (j = 0; j < npoints; j++) {
+				printf("(%f %f)", *(xloc + j), *(yloc + j));
+			}
+			printf("\n");
+*/
+		}
+		ilp->point_count = current_point_count;
+		ilp->n_segments = current_seg;
+	}
+
+	if (cnp->fws != NULL) {
+		subret = _NhlIdleWorkspace(cnp->fws);
+		ret = MIN(subret,ret);
+		cnp->fws = NULL;
+	}
+	if (cnp->iws != NULL) {
+		subret = _NhlIdleWorkspace(cnp->iws);
+		cnp->iws = NULL;
+		ret = MIN(subret,ret);
+	}
+	if (ret < NhlWARNING)
+		return NULL;
+
+	return isolines;
+}
+
 /*
  * Function:  hlucpfill
  *
@@ -2365,7 +2599,17 @@ void   (_NHLCALLF(hlucpchhl,HLUCPCHHL))
 		break;
 	case 2:
 		if (! Cnp->high_lbls.on) return;
-		gset_fill_colr_ind(Cnp->high_lbls.gks_bcolor);
+		if (Cnp->hlb_val > 1) {
+			if (Cnp->high_lbls.gks_bcolor == NhlTRANSPARENT) 
+				_NhlSetFillOpacity(Cnl, 0.0); 
+			else 
+				gset_fill_colr_ind(Cnp->high_lbls.gks_bcolor);
+		}
+		break;
+	case -2:
+		if (! Cnp->high_lbls.on) return;
+		if (Cnp->hlb_val > 1 && Cnp->high_lbls.gks_bcolor == NhlTRANSPARENT)
+			_NhlSetFillOpacity(Cnl, 1.0); 
 		break;
 	case 3:
 		if (! Cnp->high_lbls.on) {
@@ -2406,8 +2650,18 @@ void   (_NHLCALLF(hlucpchhl,HLUCPCHHL))
 		c_cpsetc("CTM",buf);
 		break;
 	case 4:
-		gset_line_colr_ind(Cnp->high_lbls.gks_plcolor);
-		gset_linewidth(Cnp->high_lbls.perim_lthick);
+		if (( Cnp->hlb_val % 2 == 1) &&
+		    (Cnp->high_lbls.perim_on == False || Cnp->high_lbls.perim_lcolor == NhlTRANSPARENT)) 
+			_NhlSetLineOpacity(Cnl, 0.0); 
+		else {
+			gset_line_colr_ind(Cnp->high_lbls.gks_plcolor);
+			gset_linewidth(Cnp->high_lbls.perim_lthick);
+		}
+		break;
+	case -4:
+		if (( Cnp->hlb_val % 2 == 1) && 
+		    (Cnp->high_lbls.perim_on == False || Cnp->high_lbls.perim_lcolor == NhlTRANSPARENT))
+			_NhlSetLineOpacity(Cnl, 1.0); 
 		break;
 	case 5:
 		if (! Cnp->low_lbls.on) {
@@ -2443,7 +2697,17 @@ void   (_NHLCALLF(hlucpchhl,HLUCPCHHL))
 		break;
 	case 6:
 		if (! Cnp->low_lbls.on) return;
-		gset_fill_colr_ind(Cnp->low_lbls.gks_bcolor);
+		if (Cnp->hlb_val > 1) {
+			if (Cnp->low_lbls.gks_bcolor == NhlTRANSPARENT) 
+				_NhlSetFillOpacity(Cnl, 0.0); 
+			else 
+				gset_fill_colr_ind(Cnp->low_lbls.gks_bcolor);
+		}
+		break;
+	case -6:
+		if (! Cnp->low_lbls.on) return;
+		if (Cnp->hlb_val > 1 && Cnp->low_lbls.gks_bcolor == NhlTRANSPARENT)
+			_NhlSetFillOpacity(Cnl, 1.0); 
 		break;
 	case 7:
 		if (! Cnp->low_lbls.on) {
@@ -2484,8 +2748,18 @@ void   (_NHLCALLF(hlucpchhl,HLUCPCHHL))
 		c_cpsetc("CTM",buf);
 		break;
 	case 8:
-		gset_line_colr_ind(Cnp->low_lbls.gks_plcolor);
-		gset_linewidth(Cnp->low_lbls.perim_lthick);
+		if (( Cnp->hlb_val % 2 == 1) &&
+		    (Cnp->low_lbls.perim_on == False || Cnp->low_lbls.perim_lcolor == NhlTRANSPARENT))
+			_NhlSetLineOpacity(Cnl, 0.0); 
+		else {
+			gset_line_colr_ind(Cnp->low_lbls.gks_plcolor);
+			gset_linewidth(Cnp->low_lbls.perim_lthick);
+		}
+		break;
+	case -8:
+		if (( Cnp->hlb_val % 2 == 1) &&
+		    (Cnp->low_lbls.perim_on == False || Cnp->low_lbls.perim_lcolor == NhlTRANSPARENT))
+			_NhlSetLineOpacity(Cnl, 1.0); 
 		break;
 	default:
 		break;
@@ -3053,11 +3327,8 @@ NhlBoolean GetEdgeAdjustedPolygon(
 	)
 {
 	*nout = nin;
-	float xs,ys,xe,ye;
 	int fgp = -1,lgp;
-	int done = False;
 	int i, ix;
-	int status;
 
 	/* find first and last good point */
 	if (xo[0] < 1e10) {
@@ -3167,44 +3438,25 @@ NhlErrorTypes _NhlMeshFill
 	NhlErrorTypes	ret = NhlNOERROR;
 	char		*e_text;
 
-	float		zval,orv,spv;
+	float		orv,spv;
 	float		xc1,xcm,yc1,ycn;
 	float		xmn,xmx,ymn,ymx;
-	int		i,j,k,izd1,izdm,izdn,indx,indy,icaf,map,iaid;
-	float		xccf,xccu,xccd,xcci,yccf,yccu,yccd,ycci;
+	int		i,j,k,izd1,izdm,izdn,icaf,map,iaid;
         float		*levels;
-	float		cxstep,cystep,dxstep,dystep;
+	float		cxstep,cystep;
 	float           xsoff,xeoff,ysoff,yeoff;
 	NhlBoolean      x_isbound,y_isbound;
-
 	float           tol1,tol2;
-	int             ipp1,ipp2,ipp3;
-	float           xcu1,xcu2,xcu3,ycu1,ycu2,ycu3;
-	float           xcf1,xcf2,xcf3,ycf1,ycf2,ycf3;
-	float           xd12,xd23,xd31,yd12,yd23,yd31;
-	float           fva1,fva2,fva3;
-	float           dn12,dn23,dn31;
-	int             bound1,bound2;
-	int             ibeg,iend,jbeg,jend;
 	int             grid_fill_ix;
-		
-	typedef struct {
-		int count;
-		int *dcell;
-	} DataCellLoc;
-	DataCellLoc *dcell_loc;
+
 	float *xarr, *yarr;
 	NhlBoolean ezmap = False;
 	float xcount,ycount;
         int lxsize,xc_count,yc_count,mode;
 	int jc,jcm1,jcp1;
 	float avg_cells_per_grid_box;
-	int status, pcount;
+	int status;
 	float mflx,mfby,mfrx,mfuy;
-	float flx,frx,fby,fuy,wlx,wrx,wby,wuy; int ll;
-	char climit[4];
-	float r1[2],r2[2],r3[2],r4[2];
-	float sr[4][2];
 	float min_minx, max_maxx, min_miny, max_maxy;
 	float max_coverage = 0;
 	int twice;
@@ -3387,7 +3639,6 @@ NhlErrorTypes _NhlMeshFill
 			PlaneSet *pps, ps[6];
 			int p,p1,p2,p0;
 			int jcv,icv;
-			int t;
 
 			twice = 1;
 

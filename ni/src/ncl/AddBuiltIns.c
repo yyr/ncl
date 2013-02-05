@@ -1,5 +1,5 @@
 /*
- *      $Id: AddBuiltIns.c 13741 2012-09-07 00:29:39Z dbrown $
+ *      $Id: AddBuiltIns.c 13994 2012-12-08 01:46:09Z dbrown $
  */
 /************************************************************************
 *                                                                       *
@@ -1029,6 +1029,12 @@ void
 );
 
 extern NhlErrorTypes _NclINhlGetErrorObjectId(
+#if NhlNeedProto
+void
+#endif
+);
+
+extern NhlErrorTypes _NclINhlGetIsoLines(
 #if NhlNeedProto
 void
 #endif
@@ -2471,6 +2477,13 @@ void _NclAddBuiltIns
     args = NewArgs(1);
     SetArgTemplate(args,nargs,"graphic",0,NclANY);nargs++;
     NclRegisterFunc(_NclINhlGetParentId,args,"NhlGetParentId",nargs);
+
+    nargs = 0;
+    args = NewArgs(2);
+    SetArgTemplate(args,nargs,"graphic",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,NclANY,0,NclANY);nargs++;
+    NclRegisterFunc(_NclINhlGetIsoLines,args,"NhlGetIsoLines",nargs);
+    NclRegisterFunc(_NclINhlGetIsoLines,args,"get_isolines",nargs);
 
     nargs = 0;
     args = NewArgs(2);

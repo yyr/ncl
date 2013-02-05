@@ -1,5 +1,5 @@
 #
-#      $Id: yMakefile 13833 2012-10-14 21:45:51Z haley $
+#      $Id: yMakefile 14125 2013-01-29 21:01:31Z haley $
 #
 ###########################################################################
 #			   Copyright (C)  1993			 	  #
@@ -14,7 +14,7 @@
 #				National Center for Atmospheric Research
 #				POB 3000, Boulder, Colorado
 #
-#	Date:		$Date: 2012-10-14 15:45:51 -0600 (Sun, 14 Oct 2012) $
+#	Date:		$Date: 2013-01-29 14:01:31 -0700 (Tue, 29 Jan 2013) $
 #
 #	Description:	
 #
@@ -28,6 +28,9 @@
 #	Options:
 
 MYBIN		=	ncl
+#ifdef JIRA1530
+MYXQFBIN	=	ncl.xq.fix
+#endif
 MYLIB		=	libncl
 MYLIB_API	=	libnclapi
 YACC		=	$(NYACC)
@@ -58,8 +61,8 @@ NETCDF4_DEFS =
 
 #ifdef UseNetCDF4Features
 NC4_FEATURES_DEFS = -DUSE_NETCDF4_FEATURES
-NC4_FEATURES_SRCS = NclNewFile.c NclNewGroup.c NclNewList.c NclNetCDF4.c NclNewOGR.c
-NC4_FEATURES_OBJS = NclNewFile.o NclNewGroup.o NclNewList.o NclNetCDF4.o NclNewOGR.o
+NC4_FEATURES_SRCS = NclAdvancedFile.c NclAdvancedGroup.c NclAdvancedList.c NclNetCDF4.c 
+NC4_FEATURES_OBJS = NclAdvancedFile.o NclAdvancedGroup.o NclAdvancedList.o NclNetCDF4.o
 #else
 #define NC4_FEATURES_DEFS
 #define NC4_FEATURES_SRCS
@@ -122,8 +125,13 @@ GRIB2_OBJS = NclGRIB2.o
 
 #ifdef BuildGDAL
 GDAL_DEFS = -DBuildGDAL
+#ifdef UseNetCDF4Features
+GDAL_SRCS = NclOGR.c NclAdvancedOGR.c
+GDAL_OBJS = NclOGR.o NclAdvancedOGR.o
+#else
 GDAL_SRCS = NclOGR.c
-GDAL_OBJS = NclOGR.o
+GDAL_OBJS = NclOGR.o 
+#endif
 #else
 #define GDAL_SRCS
 #define GDAL_OBJS
@@ -174,6 +182,10 @@ API_DEFS	=	-DMAKEAPI
 
 PROG_LIBS	=	$(NFPLIBS) $(HLULIBS) $(NCARGLIBS) $(NGMATHLIB)
 DEPLIBS		=	$(DEPNFPLIBS) $(DEPHLULIBS) $(DEPNCARGLIBS) $(DEPNGMATHLIB)
+#if JIRA1530
+PROG_XQFLIBS	=	$(NFPLIBS) $(HLULIBS) $(NCARGXQFLIBS) $(NGMATHLIB)
+DEPXQFLIBS	=	$(DEPNFPLIBS) $(DEPHLULIBS) $(DEPNCARGXQFLIBS) $(DEPNGMATHLIB)
+#endif
 
 #if defined(CYGWIN)
 EXTRA_CLDFLAGS = $(DEV_LIB_SEARCH) $(EXTRA_EXPORT_FLAGS) -Wl,-stack,0x400000
@@ -209,15 +221,16 @@ GEN_HDRS	=	NclTypeobj.h NclTypelogical.h \
 STATIC_HDRS	=	AttSupport.h DataSupport.h FileSupport.h Keywords.h \
 			Machine.h NclAtt.h NclData.h \
 			NclGroup.h NclFile.h NclFileInterfaces.h NclHLUObj.h NclMdInc.h \
-			NclNewFile.h NclNewGroup.h NclNewFileStructure.h \
+			NclAdvancedFile.h NclAdvancedGroup.h NclAdvancedFileStructure.h \
 			NclMultiDValData.h NclMultiDValHLUObjData.h \
 			OpsFuncs.h OpsList.h SrcTree.h Symbol.h VarSupport.h \
 			NclFileVar.h NclHLUVar.h HLUSupport.h NclCoordVar.h \
 			NclType.h \
+			NclExitCode.h \
 			NclMultiDValnclfileData.h NclMultiDValHLUObjData.h \
 			NclOneDValCoordData.h HLUFunctions.h \
 			NclCallBacksI.h date.h NclCCM.h NclGRIB.h NclGRIB2.h date.h tables.h \
-			ccmhdr.h editline.h editline_unix.h ListSupport.h NclList.h NclNewList.h \
+			ccmhdr.h editline.h editline_unix.h ListSupport.h NclList.h NclAdvancedList.h \
 			NclMultiDVallistData.h NclTypelist.h \
 			NclProf.h \
 			cptec_254_gtb.h dwd_002_gtb.h dwd_201_gtb.h dwd_202_gtb.h \
@@ -244,12 +257,13 @@ NIO_NCL_HDR_FILES = ApiRecords.h AttSupport.h DataSupport.h		\
 		FileSupport.h HLUSupport.h ListSupport.h NclAtt.h NclCCM.h		\
 		NclCallBacksI.h NclCoordVar.h NclData.h NclDataDefs.h	\
 		NclGroup.h NclFile.h NclFileInterfaces.h NclFileVar.h NclGRIB.h	\
-		NclNewGroup.h NclNewFile.h NclNewFileStructure.h NclOptions.h \
-		NclGRIB2.h NclHLUObj.h NclHLUVar.h NclList.h NclNewList.h 	\
+		NclAdvancedGroup.h NclAdvancedFile.h NclAdvancedFileStructure.h NclOptions.h \
+		NclGRIB2.h NclHLUObj.h NclHLUVar.h NclList.h NclAdvancedList.h 	\
 		NclMdInc.h NclMultiDValData.h NclMultiDValData.h.sed	\
 		NclMultiDValHLUObjData.h NclMultiDVallistData.h		\
 		NclMultiDValnclfileData.h NclOneDValCoordData.h		\
 		NclType.h NclType.h.sed NclTypelist.h NclVar.h		\
+		NclExitCode.h \
 		OpsList.h Symbol.h TypeSupport.h.sed NclGrpFuncs.null	\
 		TypeSupportMatTemplate.h.sed				\
 		TypeSupportMonoOpTemplate.h.sed				\
@@ -274,7 +288,7 @@ NIO_NCL_OTHER_FILES = AddFileFormats.c AttSupport.c DataSupport.c	\
 		FileSupport.c Formats.c GetGrids.c InitData.c		\
 		MatMulDValOp.c.sed Memory.c MultiDValOp.c.sed NclAtt.c	\
 		NclCCM.c NclCoordVar.c NclData.c NclGroup.c NclFile.c	\
-		NclNewFile.c NclNewGroup.c NclNewList.c  \
+		NclAdvancedFile.c NclAdvancedGroup.c NclAdvancedList.c  \
 		NclFileVar.c NclGRIB.c NclGRIB2.c NclHDF.c \
 		NclHDFEOS.c NclHDFEOS5.c NclHDF5.c h5reader.c h5writer.c \
 		NclMultiDValData.c.sed NclMultiDValnclfileData.c	\
@@ -436,6 +450,9 @@ LibraryTarget($(MYLIB),$(ALLOBJS))
 LibraryTarget($(MYLIB_API),$(APIOBJS))
 BuildSharedLibTarget(libNGncl,$(APIOBJS),1,0,$(NCDFLIBS) $(NETCD4LIBS) $(HDFEOSLIB)  $(HDFEOS5LIB) $(HDFLIB) $(HDF5LIB) $(GRIB2LIB) $(GDALLIB) $(GRIDSPECLIB) $(PNGLIB) $(CAIROLIB) $(UDUNITSLIB) $(V5DLIB) $(CTOFLIBS) -lm -lc)
 CProgram($(MYBIN),$(EXEOBJS),$(DEPLIBS))
+#ifdef JIRA1530
+CProgramXQF($(MYXQFBIN),$(EXEOBJS),$(DEPXQFLIBS))
+#endif
 InstallTarget(MakeNcl,$(INSTALL_BIN),$(BINPATH))
 BuildIncludes($(INSTALL_HDRS),ncarg/ncl,../..)
 InstallTarget($(INSTALL_HDRS),$(INSTALL_INC),$(NCLINCPATH))

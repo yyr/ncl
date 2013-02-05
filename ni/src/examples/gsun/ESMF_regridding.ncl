@@ -744,6 +744,7 @@ local latlon_dims, nlat, nlon, Extlon2d, Extlat2d, ExtGridCenter_lat, \
       ExtGridCenter_lon, tmp, ii, jj, DEBUG
 begin
     DEBUG = isatt_logical_true(opt,"Debug")
+    delta = get_att_value(opt,"GridCornerDelta",0.25)
 
     if ( any(dimsizes(lat2d).ne.dimsizes(lon2d) ) ) then
         print("calc_SCRIP_corners_noboundaries: lat and lon must have the same dimensions.")
@@ -840,10 +841,10 @@ begin
 ; would be the corner coordinates for the original grid.
 ;
     tmp = Extlat2d(:,1:nlonp1)+Extlat2d(:,0:nlon)
-    ExtGridCenter_lat       = ndtooned((tmp(1:nlatp1,:)+tmp(0:nlat,:))*0.25)
+    ExtGridCenter_lat       = ndtooned((tmp(1:nlatp1,:)+tmp(0:nlat,:))*delta)
 
     tmp = Extlon2d(:,1:nlonp1)+Extlon2d(:,0:nlon)
-    ExtGridCenter_lon       = ndtooned((tmp(1:nlatp1,:)+tmp(0:nlat,:))*0.25)
+    ExtGridCenter_lon       = ndtooned((tmp(1:nlatp1,:)+tmp(0:nlat,:))*delta)
     delete(tmp)
 
     if(DEBUG) then
@@ -923,7 +924,7 @@ begin
 
 ;---Triangulate and get the element connectivity
     if(DEBUG) then
-      print("unstructured_to_ESMF: triangulating the data ...")
+      print("unstructured_to_ESMF: triangulating the data ... this can be slow")
     end if
     ElementVertices = csstri(lat,lon)
     if(DEBUG) then
@@ -2060,7 +2061,7 @@ begin
 end
 
 ;======================================================================
-; This procedure calls the UNIX command "ESMF_RegridGenWeight".
+; This procedure calls the UNIX command "ESMF_RegridWeightGen".
 ;
 ;  srcGridFile - the name of the NetCDF source grid file (ESMF or SCRIP)
 ;  dstGridFile - the name of the NetCDF destination grid file (ESMF or SCRIP)
@@ -2394,6 +2395,15 @@ begin
     if(isatt(fid,"map_method")) then
       map_method = fid@map_method
     end if
+;---Error checking
+    ns = getfilevardimsizes(fid,"S")
+    if(all(ismissing(ns)).or.all(ns.eq.0)) then
+      print("ESMF_regrid_with_weights: error: there are no weights on this file.")
+      print("    This likely means there was a problem with the mapping")
+      print("    from the source grid to the destination grid.")
+      print("    Check that both grids are valid.")
+      return(fmsg)
+    end if
   end if
 
 ;
@@ -2418,13 +2428,15 @@ begin
   dstlon = fid->xc_b
 	
 ;---Check that the source grid "covers" the destination grid 
-  if ( .not.( \
+  if ( DEBUG.and..not.( \
        (min(dstlat).ge.min(srclat)).and.  \
        (max(dstlat).le.max(srclat)).and.  \
        (min(dstlon).ge.min(srclon)).and.  \
        (max(dstlon).le.max(srclon))   ) ) then
-      print("ESMF_regrid_with_weights: warning: destination grid is not completely")
-      print("                          covered by the source grid.")
+      print("ESMF_regrid_with_weights: warning: destination grid is not")
+      print("    completely covered by the source grid. This is not an error.")
+      print("    It just means your destination grid covers a larger area")
+      print("    than your source grid.")
   end if
 	
 ;---Get the dimensions and rank of the source grid and input grid.
@@ -2775,7 +2787,7 @@ begin
 ; Check for generic attributes to pass through; that is,
 ; attributes like "Debug".
 ;
-  gen_atts = (/"PrintTimings","Overwrite","ForceOverwrite","Debug"/)
+  gen_atts = (/"GridCornerDelta","PrintTimings","Overwrite","ForceOverwrite","Debug"/)
   do i=0,dimsizes(gen_atts)-1
     if(isatt(opt2,gen_atts(i))) then
       opt_new@$gen_atts(i)$ = opt2@$gen_atts(i)$
@@ -2816,7 +2828,7 @@ begin
 ;
 ;----------------------------------------------------------------------
 
-  grid_type = get_att_value(opt2,grid_type_name,"unknown")
+  grid_type = str_lower(get_att_value(opt2,grid_type_name,"unknown"))
 
 ;
 ; Check if SrcGridLat/SrcGridLon or DstGridLat/DstGridLon
@@ -2967,6 +2979,27 @@ begin
   if(DEBUG) then
     print("write_grid_description: " + grid_long_string + \
            " grid type is '" + grid_type + "'")
+  end if
+
+
+;
+; Error checking added in V6.1.1 to make sure user doesn't 
+; accidentally specify SrcFileName or DstFileName to be
+; the original input file names.
+;
+  if(isatt(opt2,grid_file_name).and.isfilepresent(opt2@$grid_file_name$).and.\
+     .not.is_SCRIP(opt2@$grid_file_name$)) then
+     print("ESMF_regrid: error: the file name given for the output " + grid_long_string)
+     print("    grid file (via the special option '" + grid_string + "FileName') already exists")
+     print("    ('" + opt2@$grid_file_name$ + "'), but doesn't appear to be a SCRIP")
+     print("    file. Make sure you are not overwriting any original data files!")
+     print("")
+     print("    Remember: '" + grid_string + "FileName' should be set to the name of the")
+     print("    *output* " + grid_long_string + " grid description file that will be")
+     print("    created, and not the name of the original input file that")
+     print("    contains your data or destination grid. Use '" + grid_string + "InputFileName'")
+     print("    for that purpose.")
+     exit
   end if
 
 ;---Check if user set a filename for the description file

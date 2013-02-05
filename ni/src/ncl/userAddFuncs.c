@@ -61,7 +61,7 @@ extern "C" {
 #include "FileSupport.h"
 #include "NclAtt.h"
 #include "NclList.h"
-#include "NclNewList.h"
+#include "NclAdvancedList.h"
 #include "ListSupport.h"
 #include "NclFileInterfaces.h"
 #include <signal.h>
@@ -1264,14 +1264,14 @@ NhlErrorTypes _Nclstr_split_by_length
             max_length = strlen(tmp_str);
     }
 
-    result = (char *) NclMalloc(max_length*sizeof(char));
+    result = (char *) NclCalloc(max_length, sizeof(char));
     if (!result)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
         return NhlFATAL;
     }
     
-    news_length = (int *) NclMalloc(max_length*sizeof(int));
+    news_length = (int *) NclCalloc(max_length, sizeof(int));
     if (! news_length)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -1385,6 +1385,7 @@ NhlErrorTypes _Nclstr_split_by_length
             else
             {
                 strncpy(result, tmp_str + ip, news_length[n-ns]);
+                result[news_length[n-ns]] = '\0';
                 ip += news_length[n-ns];
                 new_strs[n] = NrmStringToQuark(result);
               /*
@@ -4489,10 +4490,10 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
 
     theobj = (NclObj)_NclGetObj(*list_id);
 
-    if(0 == strcmp("NclNewListClass", theobj->obj.class_ptr->obj_class.class_name))
+    if(0 == strcmp("NclAdvancedListClass", theobj->obj.class_ptr->obj_class.class_name))
     {
-        NclNewList thelist = (NclNewList) theobj;
-        truelems = (int)thelist->newlist.n_elem;
+        NclAdvancedList thelist = (NclAdvancedList) theobj;
+        truelems = (int)thelist->advancedlist.n_elem;
     }
     else if(0 == strcmp("NclListClass",theobj->obj.class_ptr->obj_class.class_name))
     {

@@ -67,7 +67,8 @@ NhlCnRendererClassRec NhlcnRendererClassRec = {
 /* layer_destroy 	*/    	NULL,
 	},
 	{
-/* render */		        NULL
+/* render */		        NULL,
+/* get_isolines */              NULL
 	}
 };
 
@@ -138,6 +139,31 @@ NhlErrorTypes _NhlContourRender
                 instance->base.layer_class)->cnrenderer_class;
       
       return (*cnrcp->render)(instance,cnl,order,entry_name);
+}
+
+NhlIsoLine * _NhlGetIsoLines
+#if	NhlNeedProto
+(
+	NhlLayer		instance,
+        NhlContourPlotLayer     cnl,
+        int			n_levels,
+        float 			*levels,
+	NhlString		entry_name
+        )
+#else
+(instance,cnl,order,entry_name)
+	NhlLayer		instance;
+        NhlContourPlotLayer     cnl;
+        int			n_levels;
+        float 			*levels;
+	NhlString		entry_name;
+#endif
+{
+      NhlCnRendererClassPart *cnrcp =
+              &((NhlCnRendererClass)
+                instance->base.layer_class)->cnrenderer_class;
+      
+      return (*cnrcp->get_isolines)(instance,cnl,n_levels,levels,entry_name);
 }
 
 
@@ -257,7 +283,7 @@ static void GetCellInfo
 
 	if (xlinear && (xmin < cxd[0] || xmax > cxd[1])) {
 		ddiff = xmax - xmin;
-		stepsize = ddiff / (cnp->sfp->fast_len - 1);
+		stepsize = ddiff / (*mcount - 1);
 		offset = cxd[0] - xmin;
 		*xsoff += modf(offset/stepsize,&pint);
 		if (*xsoff >= 1.0) {
@@ -278,7 +304,7 @@ static void GetCellInfo
 	ymax = MAX(cnp->sfp->y_end,cnp->sfp->y_start);
 	if (ylinear && (ymin < cyd[0] || ymax > cyd[1])) {
 		ddiff = ymax - ymin;
-		stepsize = ddiff / (cnp->sfp->slow_len - 1);
+		stepsize = ddiff / (*ncount - 1);
 		offset = cyd[0] - ymin;
 		*ysoff += modf(offset/stepsize,&pint);
 		*ysoff = (*ysoff >= 1.0) ? *ysoff - 1 : *ysoff;

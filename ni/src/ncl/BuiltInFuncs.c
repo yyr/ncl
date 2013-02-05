@@ -1,5 +1,5 @@
 /*
- *      $Id: BuiltInFuncs.c 13760 2012-09-18 19:56:22Z huangwei $
+ *      $Id: BuiltInFuncs.c 14135 2013-02-03 14:15:14Z haley $
  */
 /************************************************************************
 *                                                                       *
@@ -53,7 +53,7 @@ extern "C" {
 #include "NclDataDefs.h"
 #include "Machine.h"
 #include "NclFile.h"
-#include "NclNewFile.h"
+#include "NclAdvancedFile.h"
 #include "NclVar.h"
 #include "NclCoordVar.h"
 #include "VarSupport.h"
@@ -69,7 +69,7 @@ extern "C" {
 #include "FileSupport.h"
 #include "NclAtt.h"
 #include "NclList.h"
-#include "NclNewList.h"
+#include "NclAdvancedList.h"
 #include "ListSupport.h"
 #include "NclFileInterfaces.h"
 #include <signal.h>
@@ -552,6 +552,74 @@ NhlErrorTypes _NclIListFuncs
         return(NhlNOERROR);
 }
 
+NclQuark *_NclGetAdvancedFileVarNames(void *therec, int *num_vars)
+{
+    NclFileGrpNode *grpnode = (NclFileGrpNode *) therec;
+    NclFileGrpNode *tmpgrpnode = NULL;
+    NclQuark *out_quarks = NULL;
+    NclQuark *tmp_quarks = NULL;
+    int n, nv;
+    int i;
+
+    *num_vars = 0;
+
+    if(NULL != grpnode->var_rec)
+    {
+        if(grpnode->var_rec->n_vars)
+        {
+            *num_vars = grpnode->var_rec->n_vars;
+
+            out_quarks = (NclQuark *)NclCalloc(*num_vars, sizeof(NclQuark));
+            assert(out_quarks);
+
+            for(i = 0; i < grpnode->var_rec->n_vars; ++i)
+            {
+                out_quarks[i] = grpnode->var_rec->var_node[i].real_name;
+            }
+        }
+    }
+
+    if(NULL != grpnode->grp_rec)
+    {
+        if(grpnode->grp_rec->n_grps)
+        {
+            for(n = 0; n < grpnode->grp_rec->n_grps; ++n)
+            {
+                tmpgrpnode = grpnode->grp_rec->grp_node[n];
+
+                tmp_quarks = _NclGetAdvancedFileVarNames((void *)tmpgrpnode, &nv);
+
+                if(nv)
+                {
+                    out_quarks = (NclQuark *)NclRealloc(out_quarks,
+                                                (*num_vars + nv) * sizeof(NclQuark));
+                    assert(out_quarks);
+
+                    for(i = 0; i < nv; ++i)
+                    {
+                        out_quarks[*num_vars + i] = tmp_quarks[i];
+                    }
+                    NclFree(tmp_quarks);
+
+                    *num_vars += nv;
+                }
+            }
+        }
+    }
+
+    return(out_quarks);
+}
+
+NclQuark *_NclAdvancedFileReadVarNames(NclFile thefile, int *num_vars)
+{
+    NclAdvancedFile advancedfile = (NclAdvancedFile) thefile;
+    NclQuark *out_quarks = NULL;
+
+    out_quarks = _NclGetAdvancedFileVarNames((void *)advancedfile->advancedfile.grpnode, num_vars);
+
+    return(out_quarks);
+}
+
 NhlErrorTypes _NclIGetFileVarNames
 #if	NhlNeedProto
 (void)
@@ -607,7 +675,12 @@ NhlErrorTypes _NclIGetFileVarNames
 	}
 
 	if(NULL != thefile)
-		var_names = _NclFileReadVarNames(thefile, &num_vars);
+	{
+		if(thefile->file.advanced_file_structure)
+			var_names = _NclAdvancedFileReadVarNames(thefile, &num_vars);
+		else
+			var_names = _NclFileReadVarNames(thefile, &num_vars);
+	}
 
 	if (NULL == var_names || num_vars == 0) {
 		string *tmp_str =(string*) NclMalloc(((NclTypeClass)nclTypestringClass)->type_class.size);
@@ -3161,16 +3234,18 @@ NhlErrorTypes _NclIfbinnumrec
 	string *fpath;
 	NclScalar missing;
 	int 	has_missing = 0;
-	char 	control_word[4];
+	char 	control_word[8];
 	int fd = -1;
-	int ind1,ind2;
+	long long ind1,ind2;
 	off_t cur_off;
 	int i;
 	ssize_t n;
 	ng_size_t dimsize = 1;
 	int swap_bytes = 0;
+	int marker_size = 4;
 	NhlErrorTypes ret = NhlNOERROR;
 	NclFileClassPart *fcp = &(nclFileClassRec.file_class);
+	
 
 	ret = _NclInitClass(nclFileClass);
 	if (ret < NhlWARNING)
@@ -3184,6 +3259,10 @@ NhlErrorTypes _NclIfbinnumrec
 		swap_bytes = 1;
 	}
 #endif
+	if (8 == *(int *)(fcp->options[Ncl_RECORD_MARKER_SIZE].value->multidval.val)) {
+		marker_size = 8;
+	}
+	memset((void*) control_word,0,marker_size);
 
 	fpath = (string*)NclGetArgValue(
 		0,
@@ -3208,26 +3287,26 @@ NhlErrorTypes _NclIfbinnumrec
 	i = 0;
 	while(1) {	
 		lseek(fd,cur_off,SEEK_SET);
-		n = read(fd,(control_word),4);
-		if(n != 4) {
+		n = read(fd,(control_word),marker_size);
+		if(n != marker_size) {
 			break;
 		}
 		if (! swap_bytes)
-			ind1 = *(int*)control_word;
+			ind1 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
 		else
-			_NclSwapBytes(&ind1,control_word,1,sizeof(int));
-		lseek(fd,cur_off + (off_t)(ind1 + 4),SEEK_SET);
-		n = read(fd,(control_word),4);
-		if(n != 4) {
+			_NclSwapBytes(&ind1,control_word,1,marker_size);
+		lseek(fd,cur_off + (off_t)(ind1 + marker_size),SEEK_SET);
+		n = read(fd,(control_word),marker_size);
+		if(n != marker_size) {
 			break;
 		}
-		if (! swap_bytes) 
-			ind2 = *(int*)control_word;
+		if (! swap_bytes)
+			ind2 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
 		else
-			_NclSwapBytes(&ind2,control_word,1,sizeof(int));
+			_NclSwapBytes(&ind2,control_word,1,marker_size);
 		if(ind1 ==  ind2) {
 				i++;
-				cur_off += (off_t)(ind1 + 8);
+				cur_off += (off_t)(ind1 + marker_size * 2);
 		} else {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinnumrec: an error occurred reading the record control words. Something is wrong with the FORTRAN binary file.");
 			close(fd);
@@ -3260,10 +3339,10 @@ NhlErrorTypes _NclIfbinrecwrite
 	NclScalar missing;
 	int 	has_missing = 0;
 	NclTypeClass type;
-	char 	control_word[4];
+	char 	control_word[8];
 	void *value;
 	ng_size_t i;
-	int ind1,ind2;
+	long long ind1,ind2;
 	int fd = -1;
 	ssize_t n;
 	int n_dims;
@@ -3275,6 +3354,7 @@ NhlErrorTypes _NclIfbinrecwrite
 	int itotal;
 	NclFileClassPart *fcp = &(nclFileClassRec.file_class);
 	int swap_bytes = 0;
+	int marker_size = 4;
 
 	ret = _NclInitClass(nclFileClass);
 	if (ret < NhlWARNING)
@@ -3288,10 +3368,12 @@ NhlErrorTypes _NclIfbinrecwrite
 		swap_bytes = 1;
 	}
 #endif
+	if (8 == *(int *)(fcp->options[Ncl_RECORD_MARKER_SIZE].value->multidval.val)) {
+		marker_size = 8;
+	}
 
-	control_word[0] = (char)0;
-	control_word[1] = (char)0;
-	
+	memset((void*) control_word,0,marker_size);
+
 	fpath = (string*)NclGetArgValue(
 		0,
 		3,
@@ -3337,6 +3419,7 @@ NhlErrorTypes _NclIfbinrecwrite
 		total *= dimsizes[i];
 	}
 	total *= type->type_class.size;
+
 #if !defined(NG32BIT)
 	if(total > INT_MAX) {
 	  NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecwrite: cannot write more than 2 Gb values to a file.");
@@ -3356,8 +3439,8 @@ NhlErrorTypes _NclIfbinrecwrite
 	if(*recnum != -1) {
 		while(i != *recnum + 1) {	
 			lseek(fd,cur_off,SEEK_SET);
-			n = read(fd,(control_word),4);
-			if(n != 4) {
+			n = read(fd,(control_word),marker_size);
+			if(n != marker_size) {
 /*
 * end of file reached
 */	
@@ -3366,21 +3449,21 @@ NhlErrorTypes _NclIfbinrecwrite
 				break;
 			}
 			if (! swap_bytes)
-				ind1 = *(int*)control_word;
+				ind1 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
 			else
-				_NclSwapBytes(&ind1,control_word,1,sizeof(int));
+				_NclSwapBytes(&ind1,control_word,1,marker_size);
 			lseek(fd,cur_off + (off_t)(ind1 + 4),SEEK_SET);
-			n = read(fd,(control_word),4);
-			if(n != 4) {
+			n = read(fd,(control_word),marker_size);
+			if(n != marker_size) {
 				NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecwrite: an error occurred reading the record control words. Something is wrong with the FORTRAN binary file.");
 				close(fd);
 				return(NhlFATAL);
 				break;
 			}
-			if (! swap_bytes) 
-				ind2 = *(int*)control_word;
+			if (! swap_bytes)
+				ind2 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
 			else
-				_NclSwapBytes(&ind2,control_word,1,sizeof(int));
+				_NclSwapBytes(&ind2,control_word,1,marker_size);
 			if(ind1 == ind2) {
 					i++;
 					cur_off += (off_t)(ind1 + 8);
@@ -3396,29 +3479,46 @@ NhlErrorTypes _NclIfbinrecwrite
 		lseek(fd,cur_off,SEEK_END);
 	}
 	if((rsize == -1)||(rsize== total)){
+		long long ll_total;
+		ll_total = itotal;
 		if (rsize != -1) {
 			/* seek to the beginning of current record */
 			cur_off -= (off_t)(rsize + 8);
 			lseek(fd,cur_off,SEEK_SET);
 		}
 		if (swap_bytes) {
-			int ltotal;
+			int l_total;
 			char *outdata = NclMalloc(total);
 			if (!outdata)
 				return (NhlFATAL);
 			_NclSwapBytes(outdata,value,itotal / type->type_class.size,type->type_class.size);
-			_NclSwapBytes(&ltotal,&itotal,1,4);
-			n = write(fd,&ltotal,4);
-			n = write(fd,outdata,itotal);
-			n = write(fd,&ltotal,4);
+			if (marker_size == 4) {
+				_NclSwapBytes(&l_total,&itotal,1,4);
+				n = write(fd,&l_total,4);
+				n = write(fd,outdata,itotal);
+				n = write(fd,&l_total,4);
+			}
+			else {
+				_NclSwapBytes(NULL,&ll_total,1,8);
+				n = write(fd,&ll_total,8);
+				n = write(fd,outdata,itotal);
+				n = write(fd,&ll_total,8);
+			}
 			close(fd);
 			NclFree(outdata);
 			return(NhlNOERROR);
 		}
-		else {
+		else if (marker_size == 4) {
 			n = write(fd,&itotal,4);
 			n = write(fd,value,itotal);
 			n = write(fd,&itotal,4);
+			close(fd);
+			return(NhlNOERROR);
+		}
+		else {
+			n = write(fd,&ll_total,8);
+			n = write(fd,value,itotal);
+			n = write(fd,&ll_total,8);
 			close(fd);
 			return(NhlNOERROR);
 		}
@@ -3449,10 +3549,10 @@ NhlErrorTypes _NclIfbinrecread
 	NclStackEntry data;
 	int 	has_missing = 0;
 	NclTypeClass thetype;
-	char 	control_word[4];
+	char 	control_word[8];
 	void *value;
 	ng_size_t i;
-	int ind1,ind2;
+	long long ind1,ind2;
 	int fd = -1;
 	ng_size_t size = 1, tmp_size = 1;
 	ssize_t n;
@@ -3460,6 +3560,7 @@ NhlErrorTypes _NclIfbinrecread
 	NhlErrorTypes ret = NhlNOERROR;
 	NclFileClassPart *fcp = &(nclFileClassRec.file_class);
 	int swap_bytes = 0;
+	int marker_size = 4;
 
 	ret = _NclInitClass(nclFileClass);
 	if (ret < NhlWARNING)
@@ -3473,10 +3574,12 @@ NhlErrorTypes _NclIfbinrecread
 		swap_bytes = 1;
 	}
 #endif
+	if (8 == *(int *)(fcp->options[Ncl_RECORD_MARKER_SIZE].value->multidval.val)) {
+		marker_size = 8;
+	}
 
-	control_word[0] = (char)0;
-	control_word[1] = (char)0;
-	
+	memset((void*) control_word,0,marker_size);
+
 	fpath = (string*)NclGetArgValue(
 		0,
 		4,
@@ -3560,35 +3663,47 @@ NhlErrorTypes _NclIfbinrecread
 	i = 0;
 	while(i != *recnum) {	
 		lseek(fd,cur_off,SEEK_SET);
-		n = read(fd,(control_word),4);
-		if(n != 4) {
+		n = read(fd,(control_word),marker_size);
+		if(n != marker_size) {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: a read error occurred while reading (%s) , can't continue",NrmQuarkToString(*fpath));
 			close(fd);
 			return(NhlFATAL);
 		}
 		if (! swap_bytes)
-			ind1 = *(int*)control_word;
-		else
-			_NclSwapBytes(&ind1,control_word,1,sizeof(int));
+			ind1 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
+		else if (marker_size == 4) {
+			int itmp;
+			_NclSwapBytes(&itmp,control_word,1,marker_size);
+			ind1 = itmp;
+		}
+		else {
+			_NclSwapBytes(&ind1,control_word,1,marker_size);
+		}
 		if(ind1 <= 0) {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: 0 or less than zero fortran control word, FILE NOT SEQUENTIAL ACCESS!");
 			close(fd);
 			return(NhlFATAL);
 		}
-		lseek(fd,cur_off + (off_t)(ind1 + 4),SEEK_SET);
-		n = read(fd,(control_word),4);
-		if(n != 4) {
+		lseek(fd,cur_off + (off_t)(ind1 + marker_size),SEEK_SET);
+		n = read(fd,(control_word),marker_size);
+		if(n != marker_size) {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: a read error occurred while reading (%s) , can't continue",NrmQuarkToString(*fpath));
 			close(fd);
 			return(NhlFATAL);
 		}
-		if (! swap_bytes) 
-			ind2 = *(int*)control_word;
-		else
-			_NclSwapBytes(&ind2,control_word,1,sizeof(int));
+		if (! swap_bytes)
+			ind2 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
+		else if (marker_size == 4) {
+			int itmp;
+			_NclSwapBytes(&itmp,control_word,1,marker_size);
+			ind2 = itmp;
+		}
+		else {
+			_NclSwapBytes(&ind2,control_word,1,marker_size);
+		}
 		if(ind1 == ind2) {
 			i++;
-			cur_off += (off_t)(ind1 + 8);
+			cur_off += (off_t)(ind1 + 2 * marker_size);
 		} else {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: an error occurred reading the record control words. Something is wrong with the FORTRAN binary file.");
 			close(fd);
@@ -3597,17 +3712,22 @@ NhlErrorTypes _NclIfbinrecread
 	}
 	if(i == *recnum) {
 		lseek(fd,cur_off,SEEK_SET);
-		n = read(fd,(control_word),4);
-		if(n != 4) {
+		n = read(fd,(control_word),marker_size);
+		if(n != marker_size) {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: a read error occurred while reading (%s) , can't continue",NrmQuarkToString(*fpath));
 			close(fd);
 			return(NhlFATAL);
 		}
 		if (! swap_bytes)
-			ind1 = *(int*)control_word;
-		else
-			_NclSwapBytes(&ind1,control_word,1,sizeof(int));
-/*		if(size != -1) {*/
+			ind1 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
+		else if (marker_size == 4) {
+			int itmp;
+			_NclSwapBytes(&itmp,control_word,1,marker_size);
+			ind1 = itmp;
+		}
+		else {
+			_NclSwapBytes(&ind1,control_word,1,marker_size);
+		}
 		if(tmp_size != -1) {
 			value = (void*)NclMalloc(thetype->type_class.size*size);
 			if(ind1 < size*thetype->type_class.size) {
@@ -3713,7 +3833,9 @@ NhlErrorTypes _NclIfbinread
 	int fd;
 	NclFileClassPart *fcp = &(nclFileClassRec.file_class);
 	int swap_bytes = 0;
-	int control_word;
+	char control_word[8];
+	int marker_size = 4;
+	long long ind1;
 
 	ret = _NclInitClass(nclFileClass);
 	if (ret < NhlWARNING)
@@ -3727,6 +3849,12 @@ NhlErrorTypes _NclIfbinread
 		swap_bytes = 1;
 	}
 #endif
+
+	if (8 == *(int *)(fcp->options[Ncl_RECORD_MARKER_SIZE].value->multidval.val)) {
+		marker_size = 8;
+	}
+
+	memset((void*) control_word,0,marker_size);
 
 	fpath = _NclGetArg(0,3,DONT_CARE);
 	dimensions = _NclGetArg(1,3,DONT_CARE);
@@ -3809,28 +3937,35 @@ NhlErrorTypes _NclIfbinread
 			size *= dimsizes[i];
 		}
 	}
-	if(read(fd,(void*)&control_word,4) != 4) {
+	if(read(fd,(void*)control_word,marker_size) != marker_size) {
 		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinread: An error occurred while reading the file (%s), check path",
 			  _NGResolvePath(path_string));
 		return(NhlFATAL);
 	}
-	if (swap_bytes) {
-		_NclSwapBytes(NULL,&control_word,1,sizeof(int));
+	if (! swap_bytes)
+		ind1 = marker_size == 4 ? *(int*)control_word : *(long long *) control_word;
+	else if (marker_size == 4) {
+		int itmp;
+		_NclSwapBytes(&itmp,control_word,1,marker_size);
+		ind1 = itmp;
 	}
-	if(control_word <= 0) {
+	else {
+		_NclSwapBytes(&ind1,control_word,1,marker_size);
+	}
+	if (ind1 <= 0) {
 		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinread: 0 or less than zero fortran control word, FILE NOT SEQUENTIAL ACCESS!");
 		close(fd);
 		return(NhlFATAL);
 	}
 	if(tmp_size == -1) {
-		size = control_word;
+		size = ind1;
 		n_dimensions = 1;
 		*dimsizes= size/thetype->type_class.size;
 		totalsize = size;
 	}
 	else {
 		totalsize = size * thetype->type_class.size;
-		if (totalsize > control_word) {
+		if (totalsize > ind1) {
 			NhlPError(NhlFATAL,NhlEUNKNOWN,
 				  "fbinread: requested variable size exceeds record size");
 			close(fd);
@@ -3842,7 +3977,7 @@ NhlErrorTypes _NclIfbinread
 	  NhlPError(NhlFATAL,ENOMEM,NULL);
 	  return( NhlFATAL);
 	}
-	lseek(fd,(off_t)4,SEEK_SET); /* skip the control word */
+	lseek(fd,(off_t)marker_size,SEEK_SET); /* skip the control word */
 	n = (ng_size_t) read(fd,tmp_ptr,totalsize);
 	if(n != totalsize)  {
 	  NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinread: an error occurred reading the FORTRAN binary file.");
@@ -5215,6 +5350,8 @@ NhlErrorTypes _NclIfbinwrite
 	ssize_t n;
 	NclFileClassPart *fcp = &(nclFileClassRec.file_class);
 	int swap_bytes = 0;
+	long long ll_total;
+	int marker_size = 4;
 
 	ret = _NclInitClass(nclFileClass);
 	if (ret < NhlWARNING)
@@ -5228,6 +5365,9 @@ NhlErrorTypes _NclIfbinwrite
 		swap_bytes = 1;
 	}
 #endif
+	if (8 == *(int *)(fcp->options[Ncl_RECORD_MARKER_SIZE].value->multidval.val)) {
+		marker_size = 8;
+	}
 
 	fpath = _NclGetArg(0,2,DONT_CARE);
 	value = _NclGetArg(1,2,DONT_CARE);
@@ -5283,6 +5423,7 @@ NhlErrorTypes _NclIfbinwrite
 	}
 #endif
 	itotalsize = (int)totalsize;
+	ll_total = totalsize;
 	if (swap_bytes) {
 		char *outdata = NclMalloc(totalsize);
 		int ltotal;
@@ -5291,22 +5432,33 @@ NhlErrorTypes _NclIfbinwrite
 			return (NhlFATAL);
 		}
 		_NclSwapBytes(outdata,tmp_ptr,tmp_md->multidval.totalelements,thetype->type_class.size);
-		_NclSwapBytes(&ltotal,&itotalsize,1,4);
-		n = write(fd,&ltotal,4);
-		n = write(fd,outdata,itotalsize);
-		n = write(fd,&ltotal,4);
-#if 0
-		NGCALLF(nclpfortranwrite,NCLPFORTRANWRITE)(path_string,outdata,&itotalsize,&ret,strlen(path_string));
-#endif
+		if (marker_size == 4) {
+			_NclSwapBytes(&ltotal,&itotalsize,1,4);
+			n = write(fd,&ltotal,4);
+			n = write(fd,outdata,itotalsize);
+			n = write(fd,&ltotal,4);
+		}
+		else {
+			_NclSwapBytes(NULL,&ll_total,1,8);
+			n = write(fd,&ll_total,8);
+			n = write(fd,outdata,itotalsize);
+			n = write(fd,&ll_total,8);
+		}
 		NclFree(outdata);
 	}
+	else if (marker_size == 4) {
+		n = write(fd,&itotalsize,4);
+		n = write(fd,tmp_ptr,itotalsize);
+		n = write(fd,&itotalsize,4);
+		close(fd);
+		return(NhlNOERROR);
+	}
 	else {
-#if 0
-		NGCALLF(nclpfortranwrite,NCLPFORTRANWRITE)(path_string,tmp_ptr,&itotalsize,&ret,strlen(path_string));
-#endif
-		n = write(fd,&itotalsize,4);
-		n = write(fd,tmp_ptr,totalsize);
-		n = write(fd,&itotalsize,4);
+		n = write(fd,&ll_total,8);
+		n = write(fd,tmp_ptr,itotalsize);
+		n = write(fd,&ll_total,8);
+		close(fd);
+		return(NhlNOERROR);
 	}
 	close(fd);
 	return(ret);
@@ -16992,10 +17144,10 @@ NhlErrorTypes _NclIGetVarDims
 			file_md= (NclMultiDValData)_NclVarValueRead(tmp_var,NULL,NULL);
 			thefile = (NclFile)_NclGetObj(*(obj*)file_md->multidval.val);
 
-			if(use_new_hlfs)
+			if(thefile->file.advanced_file_structure)
 			{
-				NclNewFile thenewfile = (NclNewFile) thefile;
-				NclFileGrpNode *grpnode = thenewfile->newfile.grpnode;
+				NclAdvancedFile theadvancedfile = (NclAdvancedFile) thefile;
+				NclFileGrpNode *grpnode = theadvancedfile->advancedfile.grpnode;
 
 				if(NULL != grpnode->dim_rec)
 				{
@@ -20125,10 +20277,10 @@ NhlErrorTypes _NclIListCount(void)
 	}
 	else
 	{
-		if(0 == strcmp("NclNewListClass", theobj->obj.class_ptr->obj_class.class_name))
+		if(0 == strcmp("NclAdvancedListClass", theobj->obj.class_ptr->obj_class.class_name))
 		{
-			NclNewList thelist = (NclNewList) theobj;
-			ret_val[0] = (int)thelist->newlist.n_elem;
+			NclAdvancedList thelist = (NclAdvancedList) theobj;
+			ret_val[0] = (int)thelist->advancedlist.n_elem;
 		}
 		else if(0 == strcmp("NclListClass",theobj->obj.class_ptr->obj_class.class_name))
 		{
@@ -20574,15 +20726,16 @@ NhlErrorTypes _NclISetFileOption(void)
 	NclMultiDValData tmp_md = NULL;
 	NclMultiDValData tmp_md1 = NULL;
 	NclFile f = NULL;
-	string format = NrmNULLQUARK;
+	string filetype = NrmNULLQUARK;
 	string option;
 	NhlErrorTypes ret;
+	int n = 1;
 	int n_dims = 1;
 
-        NrmQuark format_lower;
+        NrmQuark filetype_lower;
         NrmQuark option_lower;
-        NrmQuark nc_quark = NrmStringToQuark("nc");
-        NrmQuark fm_quark = NrmStringToQuark("format");
+	NrmQuark fs_quark = NrmStringToQuark("filestructure");
+	NrmQuark ad_lower_quark = NrmStringToQuark("advanced");
 
 	data = _NclGetArg(0,3,DONT_CARE);
 	switch(data.kind) {
@@ -20599,7 +20752,7 @@ NhlErrorTypes _NclISetFileOption(void)
 	if(tmp_md == NULL)
 		return(NhlFATAL);
 	if (tmp_md->multidval.data_type == NCL_string) {
-		format = *(string*)tmp_md->multidval.val;
+		filetype = *(string*)tmp_md->multidval.val;
 	}
 	else if (tmp_md->multidval.data_type == NCL_obj &&
 		 (tmp_md->obj.obj_type_mask & Ncl_MultiDValnclfileData)) {
@@ -20639,32 +20792,95 @@ NhlErrorTypes _NclISetFileOption(void)
 
 	_NclInitClass(nclFileClass);
 
-        format_lower = _NclGetLower(format);
+        filetype_lower = _NclGetLower(filetype);
         option_lower = _NclGetLower(option);
 
-        if((format_lower == nc_quark) && (fm_quark == option_lower))
+        if((NrmStringToQuark("nc") == filetype_lower) && (NrmStringToQuark("format") == option_lower))
         {
                 if(NCL_string == tmp_md1->multidval.data_type)
                 {
-                        NrmQuark *mode = (NrmQuark *) tmp_md1->multidval.val;
-                        NrmQuark netcdf4_quark = NrmStringToQuark("netcdf4");
-                        NrmQuark newfs_quark = NrmStringToQuark("usenewhlfs");
-                        NrmQuark mode_lower = _NclGetLower(*mode);
-
-                        if(netcdf4_quark == mode_lower)
+			NrmQuark *mode = (NrmQuark *) tmp_md1->multidval.val;
+			NrmQuark mode_lower = _NclGetLower(*mode);
+                        if(NrmStringToQuark("netcdf4") == mode_lower)
                         {
 				logical lval = True;
 				ng_size_t ndims = 1;
 				NclMultiDValData tmp_md2 = NULL;
 				tmp_md2 = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)(&lval),
 								NULL,1,&ndims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
-                                ret = _NclFileSetOption(f, format_lower, newfs_quark, tmp_md2);
-				use_new_hlfs = 1;
+                                ret = _NclFileSetOption(f, filetype_lower, fs_quark, tmp_md2);
+				NCLadvancedFileStructure[_NclNETCDF4] = 1;
+				/*Actually, _NclNETCDF4 should be alway 1, so we set NC3 to use new-fs.*/
+				NCLadvancedFileStructure[_NclNETCDF] = 1;
+                        }
+			else
+                        {
+				NCLadvancedFileStructure[_NclNETCDF4] = 0;
+				/*Actually, _NclNETCDF4 should be alway 1, so we set NC3 to use new-fs.*/
+				NCLadvancedFileStructure[_NclNETCDF] = 0;
                         }
                 }
         }
+	else if(fs_quark == option_lower)
+        {
+                if(NCL_string == tmp_md1->multidval.data_type)
+                {
+			NrmQuark fso = _NclGetLower(*(NrmQuark *)tmp_md1->multidval.val);
 
-	ret = _NclFileSetOption(f,format,option,tmp_md1);
+			if(NrmStringToQuark("all") == filetype_lower)
+			{
+				if(ad_lower_quark == fso)
+					NCLadvancedFileStructure[0] = 1;
+				else
+					NCLadvancedFileStructure[0] = 0;
+			}
+			else if(NrmStringToQuark("nc") == filetype_lower)
+			{
+				if(ad_lower_quark == fso)
+				{
+					NCLadvancedFileStructure[_NclNETCDF] = 1;
+					NCLadvancedFileStructure[_NclNETCDF4] = 1;
+				}
+				else
+				{
+					NCLadvancedFileStructure[_NclNETCDF] = 0;
+					NCLadvancedFileStructure[_NclNETCDF4] = 0;
+				}
+			}
+		      /*The following 6 lines are for 6.2.0. Wei 01/14/2013
+			else if(NrmStringToQuark("h5") == filetype_lower)
+			{
+				NCLadvancedFileStructure[_NclHDF5] = 1;
+			}
+			else if(NrmStringToQuark("he5") == filetype_lower)
+			{
+				if(ad_lower_quark == fso)
+					NCLadvancedFileStructure[_NclHDFEOS5] = 1;
+				else
+					NCLadvancedFileStructure[_NclHDFEOS5] = 0;
+			}
+			else if(NrmStringToQuark("shp") == filetype_lower)
+			{
+				if(ad_lower_quark == fso)
+					NCLadvancedFileStructure[_NclAdvancedOGR] = 1;
+				else
+					NCLadvancedFileStructure[_NclAdvancedOGR] = 0;
+			}
+		       */
+                }
+        }
+
+#ifdef USE_NETCDF4_FEATURES
+	for(n = 0; n < _NclNumberOfFileFormats; ++n)
+	{
+		if(NCLadvancedFileStructure[n])
+		{
+			_NclInitClass(nclAdvancedFileClass);
+			break;
+		}
+	}
+#endif
+	ret = _NclFileSetOption(f,filetype,option,tmp_md1);
 
 	return ret;
 }	
@@ -21029,10 +21245,10 @@ NhlErrorTypes   _NclIGetFileDimsizes
 
     if (f != NULL)
     {
-    if(use_new_hlfs)
+    if(f->file.advanced_file_structure)
     {
-        NclNewFile   thenewfile = (NclNewFile) f;
-        NclFileGrpNode *grpnode = thenewfile->newfile.grpnode;
+        NclAdvancedFile   theadvancedfile = (NclAdvancedFile) f;
+        NclFileGrpNode *grpnode = theadvancedfile->advancedfile.grpnode;
 
         if(NULL != grpnode->dim_rec)
         {
@@ -21256,11 +21472,7 @@ NhlErrorTypes   _NclIFileIsPresent
     for (i = 0; i < sz; i++) {
         fpath = (char *) NrmQuarkToString(files[i]);
         if (!strncmp(fpath, "http", 4)) {
-#ifdef BuildOPENDAP
-	    oc_open(fpath, &fid);
-#else
             fid = ncopen(fpath, NC_NOWRITE);
-#endif
             if (fid < 1)
                 file_exists[i] = 0;     /* false */
             else
@@ -29143,7 +29355,7 @@ NhlErrorTypes _NclItochar
                         }
                         else
                         {
-                            cur_str_len = strlen(str) + 1;
+                            cur_str_len = strlen(str);
                             if(max_str_len < cur_str_len)
                                max_str_len = cur_str_len;
                         }
@@ -29155,6 +29367,7 @@ NhlErrorTypes _NclItochar
                         NHLPERROR((NhlFATAL, errno, "tochar: memory allocation error."));
                         return NhlFATAL;
                     }
+		    memset(output, 0, total_elements*max_str_len);
 
                     if(total_elements > 1)
                     {
@@ -29182,7 +29395,6 @@ NhlErrorTypes _NclItochar
                                 output[n++] = str[j];
                             }
                         }
-                        output[n++] = '\0';
                     }
 
                     return(NclReturnValue((void*)output,

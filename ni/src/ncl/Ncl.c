@@ -18,6 +18,7 @@ extern "C" {
 #include   <ncarg/hlu/NresDB.h>
 #include   <ncarg/hlu/Workstation.h>
 #include   "defs.h"
+#include   "NclExitCode.h"
 #include   "Symbol.h"
 #include   "NclData.h"
 #include   "Machine.h"
@@ -36,6 +37,8 @@ extern "C" {
 #else
 #include   <dlfcn.h>
 #endif /*HPUX */
+
+int NclReturnStatus = NclNoError;
 
 extern NhlClass NhlworkstationClass;
 
@@ -97,7 +100,7 @@ short   NCLnoPrintElem = 0;     /* don't enumerate values in print() */
 short   NCLnoSysPager = 0;      /* don't pipe commands to system() to PAGER */
 short   NCLoldBehavior = 0;     /* retain former behavior for certain backwards-incompatible changes */
 	                        /* behaviors could be revised after an adoption period */
-short   NCLnewfs = 0;           /* Use new file structure */
+short	NCLadvancedFileStructure[_NclNumberOfFileFormats];
 
 char    *nclf = NULL;           /* script of NCL commands, may or may not be provided */
 
@@ -180,6 +183,9 @@ main(int argc, char **argv) {
     }
     NCL_ARGC = argc;
 
+    for(i = 0; i < _NclNumberOfFileFormats; ++i)
+        NCLadvancedFileStructure[i] = 0;
+
 #ifdef NCLDEBUG
     for (i = 0; i < NCL_ARGC; i++, *NCL_ARGV++)
         (void) printf("NCL_ARGV[%d] = %s\n", i, *NCL_ARGV);
@@ -232,8 +238,8 @@ main(int argc, char **argv) {
                 break;
 
             case 'f':
-                NCLnewfs = 1;
-                use_new_hlfs = 1;
+                for(i = 0; i < _NclNumberOfFileFormats; ++i)
+                    NCLadvancedFileStructure[i] = 1;
                 break;
 
             case 'h':
@@ -265,7 +271,7 @@ main(int argc, char **argv) {
      */
     if (!NCLnoCopyright) 
         (void) fprintf(stdout,
-            " Copyright (C) 1995-2012 - All Rights Reserved\n University Corporation for Atmospheric Research\n NCAR Command Language Version %s\n The use of this software is governed by a License Agreement.\n See http://www.ncl.ucar.edu/ for more details.\n", GetNCLVersion());
+            " Copyright (C) 1995-2013 - All Rights Reserved\n University Corporation for Atmospheric Research\n NCAR Command Language Version %s\n The use of this software is governed by a License Agreement.\n See http://www.ncl.ucar.edu/ for more details.\n", GetNCLVersion());
 
     /* Process any user-defined arguments */
     for (i = optind; i < argc; i++) {
@@ -505,11 +511,29 @@ main(int argc, char **argv) {
         cmd_line = 1;       /* reset to default: interactive */
     }
 
+    /* Load utility script */
+    strcpy(buffer, _NGResolvePath("$NCARG_ROOT/lib/ncarg/nclscripts/utilities.ncl"));
+    sr = stat(buffer, &sbuf);
+
+    if(0 == sr)
+    {
+        if(_NclPreLoadScript(buffer, 1) == NhlFATAL)
+	{
+	    NclReturnStatus = NclFileNotFound;
+            NhlPError(NhlINFO, NhlEUNKNOWN, "Error loading NCL utility script.");
+	}
+        else
+            yyparse(reset);
+    }
+
     /* Load any provided script */
     if (nclf != (char *) NULL) {
         (void) strcpy(buffer, _NGResolvePath(nclf));
         if (_NclPreLoadScript(buffer, 0) == NhlFATAL)
+	{
+	    NclReturnStatus = NclFileNotFound;
             NhlPError(NhlFATAL, NhlEUNKNOWN, "Error loading provided NCL script.");
+	}
         else
             yyparse(reset);
     } else {
@@ -528,7 +552,9 @@ main(int argc, char **argv) {
 
     NclFree(myName);
 
-    _NclExit(0);
+    _NclExit(NclReturnStatus);
+
+    return NclReturnStatus;
 }
 
 #ifdef __cplusplus

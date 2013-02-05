@@ -34,7 +34,9 @@ extern "C" {
 #include "Machine.h"
 #include "NclFileInterfaces.h"
 #include "NclFile.h"
-#include "NclNewFile.h"
+#ifdef USE_NETCDF4_FEATURES
+#include "NclAdvancedFile.h"
+#endif
 #include "NclGroup.h"
 #include "NclFileVar.h"
 #include "NclHLUVar.h"
@@ -47,7 +49,7 @@ extern "C" {
 #include "parser.h"
 #include "NclAtt.h"
 #include "NclList.h"
-#include "NclNewList.h"
+#include "NclAdvancedList.h"
 #include "NclHLUObj.h"
 #include "TypeSupport.h"
 #include "HLUSupport.h"
@@ -165,10 +167,10 @@ void CallTERM_LIST_OP(void) {
 	if(temporary_list_ptr != NULL) {
 		char *class_name = temporary_list_ptr->u.data_list->obj.class_ptr->obj_class.class_name;
 
-		if(0 == strcmp("NclNewListClass", class_name))
+		if(0 == strcmp("NclAdvancedListClass", class_name))
 		{
-			NclNewList newlist = (NclNewList) temporary_list_ptr->u.data_list;
-			n_elements = newlist->newlist.n_elem;
+			NclAdvancedList advancedlist = (NclAdvancedList) temporary_list_ptr->u.data_list;
+			n_elements = advancedlist->advancedlist.n_elem;
 			if(1 != n_elements)
 			{
 				estatus = _NclBuildNewListVar(n_elements, &output);
@@ -227,6 +229,7 @@ void CallLIST_READ_OP(void) {
 	NclSymbol *temporary;
 	NclStackEntry *list_ptr;
 	NclStackEntry *temporary_list_ptr;
+	NclStackEntry result;
 	NclStackEntry data;
 	NclList list;
 	NclList newlist;
@@ -681,16 +684,17 @@ void CallLIST_READ_FILEVAR_OP(void) {
 				thefile = (NclFile)_NclGetObj(*(obj*)file_md->multidval.val);
 				if (thefile && var != NrmNULLQUARK && ((index = _NclFileIsVar(thefile, var)) > -1)) {
 					int bad = 0;
-					if(use_new_hlfs)
+#ifdef USE_NETCDF4_FEATURES
+					if(thefile->file.advanced_file_structure)
 					{
-						NclNewFile newfile = (NclNewFile)thefile;
+						NclAdvancedFile advancedfile = (NclAdvancedFile)thefile;
 						NclFileVarNode *varnode = NULL;
-						varnode = _getVarNodeFromNclFileGrpNode(newfile->newfile.grpnode, var);
+						varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
 						if(NULL == varnode)
 						{
 							NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
 								NrmQuarkToString(var),
-								NrmQuarkToString(newfile->newfile.grpnode->path)));
+								NrmQuarkToString(advancedfile->advancedfile.grpnode->path)));
 						}
 
 						if(first && (NULL != varnode->dim_rec))
@@ -710,18 +714,18 @@ void CallLIST_READ_FILEVAR_OP(void) {
 								{
 									NHLPERROR((NhlWARNING,NhlEUNKNOWN,
 										"File %s dimension count for variable does not conform to others in list; skipping file",
-								  		NrmQuarkToString(newfile->newfile.fpath)));
+								  		NrmQuarkToString(advancedfile->advancedfile.fpath)));
 									bad = 1;
 								}
 								else
 								{
 									for (i = 0; i < var_ndims; ++i)
 									{
-										if(((ng_size_t)varnode->dim_rec->dim_node[i].size) != var_dim_sizes[i])
+										if(varnode->dim_rec->dim_node[i].size != var_dim_sizes[i])
 										{
 											NHLPERROR((NhlWARNING,NhlEUNKNOWN,
 												"File %s dimension sizes do not conform to others in list; skipping file",
-										  		NrmQuarkToString(newfile->newfile.fpath)));
+										  		NrmQuarkToString(advancedfile->advancedfile.fpath)));
 											bad = 1;
 											break;
 										}
@@ -749,6 +753,7 @@ void CallLIST_READ_FILEVAR_OP(void) {
 						}
 					}
 					else
+#endif
 					{
 						struct _NclFVarRec *var_info = thefile->file.var_info[index];
 						if (first) { /* save the dimension sizes */
@@ -817,76 +822,6 @@ void CallLIST_READ_FILEVAR_OP(void) {
 				thefile = (NclFile)_NclGetObj(*(obj*)file_md->multidval.val);
 				if (thefile && var != NrmNULLQUARK && ((index = _NclFileIsVar(thefile, var)) > -1)) {
 					int bad = 0;
-					if(use_new_hlfs)
-					{
-						NclNewFile newfile = (NclNewFile)thefile;
-						NclFileVarNode *varnode = NULL;
-						varnode = _getVarNodeFromNclFileGrpNode(newfile->newfile.grpnode, var);
-						if(NULL == varnode)
-						{
-							NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
-								NrmQuarkToString(var),
-								NrmQuarkToString(newfile->newfile.grpnode->path)));
-						}
-
-						if(first && (NULL != varnode->dim_rec))
-						{
-							bad = 0;
-							var_ndims = varnode->dim_rec->n_dims;
-							for (i = 0; i < var_ndims; ++i)
-							{
-								var_dim_sizes[i] = varnode->dim_rec->dim_node[i].size;
-							}
-							first = 0;
-						}
-						else
-						{
-							if(NULL != varnode->dim_rec)
-							{
-								bad = 0;
-								if(varnode->dim_rec->n_dims != var_ndims)
-								{
-									NHLPERROR((NhlWARNING,NhlEUNKNOWN,
-										"File %s dimension count for variable does not conform to others in list; skipping file",
-								  		NrmQuarkToString(newfile->newfile.fpath)));
-									bad = 1;
-								}
-								else
-								{
-									for(i = 1; i < var_ndims; ++i)
-									{
-										if(((ng_size_t)varnode->dim_rec->dim_node[i].size) != var_dim_sizes[i])
-										{
-											NHLPERROR((NhlWARNING,NhlEUNKNOWN,
-												"File %s dimension sizes do not conform to others in list; skipping file",
-										  		NrmQuarkToString(newfile->newfile.fpath)));
-											bad = 1;
-											break;
-										}
-									}
-								}
-							}
-						}
-
-						if(bad)
-						{
-							files[list_index] = NULL;
-							agg_dim_count[list_index] = 0;
-							list_index--;
-						}
-						else
-						{
-							agg_dim = 0;
-							agg_dim_name = varnode->dim_rec->dim_node[0].name;
-							total_agg_dim_size += varnode->dim_rec->dim_node[0].size;
-							agg_dim_count[list_index] = varnode->dim_rec->dim_node[0].size;
-							files[list_index] = thefile;
-							good_file_count++;
-							list_index--;
-						}
-					}
-					else
-					{
 					struct _NclFVarRec *var_info = thefile->file.var_info[index];
 					if (first) { /* save the dimension sizes */
 						var_ndims = var_info->num_dimensions;
@@ -925,7 +860,6 @@ void CallLIST_READ_FILEVAR_OP(void) {
 						files[list_index] = thefile;
 						good_file_count++;
 						list_index--;
-					}
 					}
 				}
 				else {
@@ -1706,7 +1640,7 @@ void CallSET_NEXT_OP(void)
 */
 			return;
 		} else {
-			if(0 == strcmp("NclNewListClass", list->obj.class_ptr->obj_class.class_name))
+			if(0 == strcmp("NclAdvancedListClass", list->obj.class_ptr->obj_class.class_name))
 			{
 				(void)_NclChangeSymbolType(temporary, LIST);
 				tmp_ptr->kind = NclStk_LIST;
@@ -2674,7 +2608,7 @@ void CallINTRINSIC_FUNC_CALL(void) {
 				if(((NclSymbol*)*ptr)->u.bfunc != NULL) {
 					NclSymbol *func = (NclSymbol *)(*ptr);
 					NCL_PROF_PFENTER(func->name);
-					ret = (func->u.bfunc->thefunc)();
+					ret = (*((NclSymbol*)*ptr)->u.bfunc->thefunc)();
 					NCL_PROF_PFEXIT(func->name);
 /*
 * should actually map values back
@@ -2731,7 +2665,7 @@ void CallINTRINSIC_PROC_CALL(void) {
 				if(((NclSymbol*)*ptr)->u.bproc != NULL) {
 					NclSymbol *proc = (NclSymbol *)(*ptr);
 					NCL_PROF_PFENTER(proc->name);
-					ret = (proc->u.bproc->theproc)();
+					ret = (*((NclSymbol*)*ptr)->u.bproc->theproc)();
 					NCL_PROF_PFEXIT(proc->name);
 					if(ret < NhlWARNING) {
 						estatus = ret;
@@ -2941,6 +2875,7 @@ void CallLOOP_INC_OP(void) {
 					NclStackEntry *tmp_ptr;
 					NclStackEntry *data_ptr;
 					NclMultiDValData tmp_md;
+					NclMultiDValData tmp2_md;
 					NclSymbol *l_inc;
 					NclSymbol *l_dir;
 					NclMultiDValData end_md = NULL;;
@@ -3545,309 +3480,501 @@ void CallVAR_READ_OP(void) {
 				}
 			}
 
-void CallASSIGN_VAR_OP(void) {
-				NclStackEntry rhs;
-				NclStackEntry data;
-				NclStackEntry *lhs_var = NULL;
-				NclMultiDValData rhs_md = NULL;
-				NclMultiDValData tmp_md = NULL;
-				NclSelectionRecord *sel_ptr = NULL;
-				int nsubs;	
-				ng_size_t i;
-				NclSymbol *sym = NULL;
-				NhlErrorTypes ret = NhlNOERROR;
-				NhlArgVal udata;
-				NclAtt att_obj;
+static void performASSIGN_VAR(NclSymbol *sym, int nsubs, NclStackEntry *lhs_var)
+{
+	NclStackEntry rhs;
+	NclStackEntry data;
+	NclMultiDValData rhs_md = NULL;
+	NclMultiDValData tmp_md = NULL;
+	NclSelectionRecord *sel_ptr = NULL;
+	ng_size_t i;
+	NhlErrorTypes ret = NhlNOERROR;
+	NhlArgVal udata;
 			
-
-			ptr++;lptr++;fptr++;
-			sym = (NclSymbol*)(*ptr);
-
-			ptr++;lptr++;fptr++;
-			nsubs = *(int*)ptr;
-
-			lhs_var = _NclRetrieveRec(sym,WRITE_IT);
-			if((estatus != NhlFATAL)&&(lhs_var != NULL)) {
-				if(lhs_var->kind == NclStk_NOVAL) {
-					if(nsubs != 0) {
-						estatus = NhlFATAL;
-						NhlPError(NhlFATAL,NhlEUNKNOWN,"Assign: %s is undefined, can not subscript an undefined variable",sym->name);
-						estatus = NhlFATAL;
-						_NclCleanUpStack(nsubs+1);
-					} else {
-						rhs = _NclPop();	
-						if(rhs.kind == NclStk_VAL) {
-							rhs_md = rhs.u.data_obj;
-							if(rhs_md != NULL) {
-								if(rhs_md->obj.status != TEMPORARY) {
+	if((estatus != NhlFATAL)&&(lhs_var != NULL)) {
+		if(lhs_var->kind == NclStk_NOVAL) {
+			if(nsubs != 0) {
+				estatus = NhlFATAL;
+				NhlPError(NhlFATAL,NhlEUNKNOWN,"Assign: %s is undefined, can not subscript an undefined variable",sym->name);
+				estatus = NhlFATAL;
+				_NclCleanUpStack(nsubs+1);
+			} else {
+				rhs = _NclPop();	
+				if(rhs.kind == NclStk_VAL) {
+					rhs_md = rhs.u.data_obj;
+					if(rhs_md != NULL) {
+						if(rhs_md->obj.status != TEMPORARY) {
 /*
 * This is ok no ponters are lost since rhs_md was permanent which means that
 * some NclVar object has a reference to it
 */
-									tmp_md = rhs_md;	
-									rhs_md= _NclCopyVal(rhs_md,NULL);
-									if(tmp_md->obj.status != PERMANENT) {
-										_NclDestroyObj((NclObj)tmp_md);
-									}
-				
-								}
-								if(rhs_md->obj.obj_type_mask & Ncl_MultiDValnclfileData) {
-									lhs_var->u.data_var= _NclFileVarCreate(NULL,NULL,Ncl_FileVar,0,sym,rhs_md,NULL,-1,NULL,NORMAL,sym->name,PERMANENT);
-								} else if(rhs_md->obj.obj_type_mask & Ncl_MultiDValHLUObjData ) {
-									lhs_var->u.data_var= _NclHLUVarCreate(NULL,NULL,Ncl_HLUVar,0,sym,rhs_md,NULL,-1,NULL,NORMAL,sym->name,PERMANENT);
-								} else {
-									lhs_var->u.data_var= _NclVarCreate(NULL,NULL,Ncl_Var,0,sym,rhs_md,NULL,-1,NULL,NORMAL,sym->name,PERMANENT);
-								}
-								lhs_var->kind = NclStk_NOVAL;
-								if(lhs_var->u.data_var != NULL) {
-									(void)_NclChangeSymbolType(sym,VAR);
-									lhs_var->kind = NclStk_VAR;
-								} else {
-									NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
-									estatus = NhlWARNING;
-								}
-							} 
-						} else if((rhs.kind == NclStk_VAR)&&(rhs.u.data_var->obj.status != TEMPORARY)) {
+							tmp_md = rhs_md;	
+							rhs_md= _NclCopyVal(rhs_md,NULL);
+							if(tmp_md->obj.status != PERMANENT) {
+								_NclDestroyObj((NclObj)tmp_md);
+							}
+		
+						}
+						if(rhs_md->obj.obj_type_mask & Ncl_MultiDValnclfileData) {
+							lhs_var->u.data_var= _NclFileVarCreate(NULL,NULL,Ncl_FileVar,0,sym,rhs_md,NULL,-1,NULL,NORMAL,sym->name,PERMANENT);
+						} else if(rhs_md->obj.obj_type_mask & Ncl_MultiDValHLUObjData ) {
+							lhs_var->u.data_var= _NclHLUVarCreate(NULL,NULL,Ncl_HLUVar,0,sym,rhs_md,NULL,-1,NULL,NORMAL,sym->name,PERMANENT);
+						} else {
+							lhs_var->u.data_var= _NclVarCreate(NULL,NULL,Ncl_Var,0,sym,rhs_md,NULL,-1,NULL,NORMAL,sym->name,PERMANENT);
+						}
+						lhs_var->kind = NclStk_NOVAL;
+						if(lhs_var->u.data_var != NULL) {
+							(void)_NclChangeSymbolType(sym,VAR);
+							lhs_var->kind = NclStk_VAR;
+						} else {
+							NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
+							estatus = NhlWARNING;
+						}
+					} 
+				} else if((rhs.kind == NclStk_VAR)&&(rhs.u.data_var->obj.status != TEMPORARY)) {
 /*
 * -----> need some modification here. Only time this happens is when a funcion
 * returns a variable. Otherwise ASSIGN_VAR_VAR_OP is used by the translator.
 * This should be changed to call possibly the _NclAssignVarToVar  function in
 * this situation as well as destroy the return variable if
 */
-							rhs_md = _NclVarValueRead(rhs.u.data_var,NULL,NULL);
-							if(rhs_md != NULL) {
-								if(rhs_md->obj.status != TEMPORARY) {
+					rhs_md = _NclVarValueRead(rhs.u.data_var,NULL,NULL);
+					if(rhs_md != NULL) {
+						if(rhs_md->obj.status != TEMPORARY) {
 /*
 * This is ok no ponters are lost since rhs_md was permanent which means that
 * some NclVar object has a reference to it
 */
-									tmp_md = rhs_md;
-									rhs_md= _NclCopyVal(rhs_md,NULL);
-									if(tmp_md->obj.status != PERMANENT) {
-										_NclDestroyObj((NclObj)tmp_md);
-									}
-								}
-								if(rhs_md->obj.obj_type_mask & Ncl_MultiDValnclfileData) { 
-									lhs_var->u.data_var= _NclFileVarCreate(NULL,NULL,Ncl_FileVar,0,sym,rhs_md,rhs.u.data_var->var.dim_info,rhs.u.data_var->var.att_id,rhs.u.data_var->var.coord_vars,NORMAL,sym->name,PERMANENT);
-								} else if(rhs_md->obj.obj_type_mask & Ncl_MultiDValHLUObjData ) {
-									lhs_var->u.data_var= _NclHLUVarCreate(NULL,NULL,Ncl_HLUVar,0,sym,rhs_md,rhs.u.data_var->var.dim_info,rhs.u.data_var->var.att_id,rhs.u.data_var->var.coord_vars,NORMAL,sym->name,PERMANENT);
-								} else {
-									lhs_var->u.data_var= _NclVarCreate(NULL,NULL,Ncl_Var,0,sym,rhs_md,rhs.u.data_var->var.dim_info,rhs.u.data_var->var.att_id,rhs.u.data_var->var.coord_vars,NORMAL,sym->name,PERMANENT);
-								}
-								if(lhs_var->u.data_var != NULL) {
-									(void)_NclChangeSymbolType(sym,VAR);
-									lhs_var->kind = NclStk_VAR;
-								} else {
-									NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
-									estatus = NhlWARNING;
-									lhs_var->kind = NclStk_NOVAL;
-								}
-							} else {
-								estatus = NhlFATAL;
-							} 
-							if(rhs.u.data_var->obj.status != PERMANENT) {
-								_NclDestroyObj((NclObj)rhs.u.data_var);
+							tmp_md = rhs_md;
+							rhs_md= _NclCopyVal(rhs_md,NULL);
+							if(tmp_md->obj.status != PERMANENT) {
+								_NclDestroyObj((NclObj)tmp_md);
 							}
-						} else if((rhs.kind == NclStk_VAR)&&(rhs.u.data_var->obj.status == TEMPORARY)) {
+						}
+						if(rhs_md->obj.obj_type_mask & Ncl_MultiDValnclfileData) { 
+							lhs_var->u.data_var= _NclFileVarCreate(NULL,NULL,Ncl_FileVar,0,sym,rhs_md,rhs.u.data_var->var.dim_info,rhs.u.data_var->var.att_id,rhs.u.data_var->var.coord_vars,NORMAL,sym->name,PERMANENT);
+						} else if(rhs_md->obj.obj_type_mask & Ncl_MultiDValHLUObjData ) {
+							lhs_var->u.data_var= _NclHLUVarCreate(NULL,NULL,Ncl_HLUVar,0,sym,rhs_md,rhs.u.data_var->var.dim_info,rhs.u.data_var->var.att_id,rhs.u.data_var->var.coord_vars,NORMAL,sym->name,PERMANENT);
+						} else {
+							lhs_var->u.data_var= _NclVarCreate(NULL,NULL,Ncl_Var,0,sym,rhs_md,rhs.u.data_var->var.dim_info,rhs.u.data_var->var.att_id,rhs.u.data_var->var.coord_vars,NORMAL,sym->name,PERMANENT);
+						}
+						if(lhs_var->u.data_var != NULL) {
+							(void)_NclChangeSymbolType(sym,VAR);
+							lhs_var->kind = NclStk_VAR;
+						} else {
+							NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
+							estatus = NhlWARNING;
+							lhs_var->kind = NclStk_NOVAL;
+						}
+					} else {
+						estatus = NhlFATAL;
+					} 
+					if(rhs.u.data_var->obj.status != PERMANENT) {
+						_NclDestroyObj((NclObj)rhs.u.data_var);
+					}
+				} else if((rhs.kind == NclStk_VAR)&&(rhs.u.data_var->obj.status == TEMPORARY)) {
 /*
 * Since lhs is not defined and this is ASSIGN_VAR_OP the change var_type to VAR
 */
-							lhs_var->u.data_var = rhs.u.data_var;
-							lhs_var->u.data_var->var.thesym = sym;
-							lhs_var->u.data_var->var.var_type = NORMAL;
-							lhs_var->u.data_var->var.var_quark = NrmStringToQuark(sym->name);
-							if(lhs_var->u.data_var != NULL) {
-								(void)_NclChangeSymbolType(sym,VAR);
-								lhs_var->kind = NclStk_VAR;
+					lhs_var->u.data_var = rhs.u.data_var;
+					lhs_var->u.data_var->var.thesym = sym;
+					lhs_var->u.data_var->var.var_type = NORMAL;
+					lhs_var->u.data_var->var.var_quark = NrmStringToQuark(sym->name);
+					if(lhs_var->u.data_var != NULL) {
+						(void)_NclChangeSymbolType(sym,VAR);
+						lhs_var->kind = NclStk_VAR;
+					} else {
+						NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
+						estatus = NhlWARNING;
+						lhs_var->kind = NclStk_NOVAL;
+					}
+					_NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT);
+					_NclCallCallBacks((NclObj)lhs_var->u.data_var,CREATED);
+					if(lhs_var->u.data_var->obj.obj_type_mask & Ncl_HLUVar) {
+						udata.ptrval = NclMalloc(sizeof(NclHLUUData));
+						((NclHLUUData*)udata.ptrval)->vq = lhs_var->u.data_var->var.var_quark;
+						((NclHLUUData*)udata.ptrval)->aq = -1;
+						tmp_md = (NclMultiDValData)_NclGetObj(lhs_var->u.data_var->var.thevalue_id);
+						((NclHLUVar)lhs_var->u.data_var)->hvar.cb = _NclAddCallback((NclObj)tmp_md,NULL,_NclHLUVarValChange,HLUVALCHANGE,&udata);
+						((NclHLUVar)lhs_var->u.data_var)->hvar.udata = udata.ptrval;
+
+						for(i = 0; i < tmp_md->multidval.totalelements;i++) {
+							if(lhs_var->u.data_var->var.thesym != NULL) {
+								_NclAddHLURef(((obj*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,-1,i,lhs_var->u.data_var->var.thesym->level);
 							} else {
-								NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
-								estatus = NhlWARNING;
-								lhs_var->kind = NclStk_NOVAL;
+								_NclAddHLURef(((obj*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,-1,i,-1);
 							}
-							_NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT);
-							_NclCallCallBacks((NclObj)lhs_var->u.data_var,CREATED);
-							if(lhs_var->u.data_var->obj.obj_type_mask & Ncl_HLUVar) {
-								udata.ptrval = NclMalloc(sizeof(NclHLUUData));
-								((NclHLUUData*)udata.ptrval)->vq = lhs_var->u.data_var->var.var_quark;
-								((NclHLUUData*)udata.ptrval)->aq = -1;
-								tmp_md = (NclMultiDValData)_NclGetObj(lhs_var->u.data_var->var.thevalue_id);
-								((NclHLUVar)lhs_var->u.data_var)->hvar.cb = _NclAddCallback((NclObj)tmp_md,NULL,_NclHLUVarValChange,HLUVALCHANGE,&udata);
-								((NclHLUVar)lhs_var->u.data_var)->hvar.udata = udata.ptrval;
-
-								for(i = 0; i < tmp_md->multidval.totalelements;i++) {
-									if(lhs_var->u.data_var->var.thesym != NULL) {
-										_NclAddHLURef(((obj*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,-1,i,lhs_var->u.data_var->var.thesym->level);
-									} else {
-										_NclAddHLURef(((obj*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,-1,i,-1);
-									}
-								}
-							}
-							/* HLU Refs also need to be added for any attributes that reference HLU objects */
-							att_obj = (NclAtt)_NclGetObj( lhs_var->u.data_var->var.att_id);
-							if (att_obj) {
-								NclAttList *attrec = att_obj->att.att_list;;
-								NclHLUObj hobj;
-									
-								while (attrec) {
-									tmp_md = (NclMultiDValData) attrec->attvalue;
-									if (! tmp_md || ! (tmp_md->obj.obj_type == Ncl_MultiDValHLUObjData)) {
-										attrec = attrec->next;
-										continue;
-									}
-									for (i = 0; i < tmp_md->multidval.totalelements; i++) {
-										hobj = (NclHLUObj) _NclGetObj(((int*)tmp_md->multidval.val)[i]);
-										if(lhs_var->u.data_var->var.thesym != NULL) {
-											_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,lhs_var->u.data_var->var.thesym->level);
-										} else {
-											_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,-1);
-										}
-									}
-									attrec = attrec->next;
-								}
-							}
-
-						} else if(rhs.kind == NclStk_LIST) {
-							int n;
-							NclDimRec dim_info[NCL_MAX_DIMENSIONS];
-							NclVar tmpvar;
-							NclNewList tmplist = (NclNewList)rhs.u.data_list;
-
-							tmpvar = (NclVar)_NclGetObj(tmplist->newlist.item[0]->obj_id);
-
-							rhs_md = _NclVarValueRead(tmpvar,NULL,NULL);
-							if(rhs_md != NULL)
-							{
-								if(rhs_md->obj.status != TEMPORARY)
-								{
-									tmp_md = rhs_md;
-									rhs_md= _NclCopyVal(rhs_md,NULL);
-									if(tmp_md->obj.status != PERMANENT)
-									{
-										_NclDestroyObj((NclObj)tmp_md);
-									}
-								}
-
-								for(n = 0; n < rhs_md->multidval.n_dims; n++)
-								{
-									dim_info[n].dim_size = rhs_md->multidval.dim_sizes[n];
-									dim_info[n].dim_num = n;
-									dim_info[n].dim_quark = -1;
-								}
-
-								lhs_var->u.data_var= _NclVarCreate(NULL,NULL,
-									Ncl_Var,0,sym,
-									rhs_md,
-									dim_info,
-									-1,
-									NULL,
-									NORMAL,sym->name,PERMANENT);
-								if(lhs_var->u.data_var != NULL)
-								{
-									(void)_NclChangeSymbolType(sym,VAR);
-									lhs_var->kind = NclStk_VAR;
-								}
-								else
-								{
-									NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
-									estatus = NhlWARNING;
-									lhs_var->kind = NclStk_NOVAL;
-								}
-							} else {
-								estatus = NhlFATAL;
-							} 
-						/*
-							if(rhs.u.data_var->obj.status != PERMANENT) {
-								_NclDestroyObj((NclObj)rhs.u.data_var);
-							}
-						*/
-						} else {
-							NhlPError(NhlFATAL,NhlEUNKNOWN,"Illegal right-hand side type for assignment");
-							estatus = NhlFATAL;
 						}
 					}
-				} else if(lhs_var->kind == NclStk_VAR) {
-					if((nsubs != lhs_var->u.data_var->var.n_dims)&&(nsubs != 0)) {
-						NhlPError(NhlFATAL,NhlEUNKNOWN,"Number of subscripts (%d) and number of dimensions (%d) do not match for variable (%s)",nsubs,lhs_var->u.data_var->var.n_dims,sym->name);
-						estatus = NhlFATAL;
-						_NclCleanUpStack(nsubs+1);
-					}
-					if(nsubs != 0) {
-						sel_ptr = _NclGetVarSelRec(lhs_var->u.data_var);
-						sel_ptr->n_entries = nsubs;
+				} else if(rhs.kind == NclStk_LIST) {
+					int n;
+					NclDimRec dim_info[NCL_MAX_DIMENSIONS];
+					NclVar tmpvar;
+					NclAdvancedList tmplist = (NclAdvancedList)rhs.u.data_list;
+
+					tmpvar = (NclVar)_NclGetObj(tmplist->advancedlist.item[0]->obj_id);
+
+					rhs_md = _NclVarValueRead(tmpvar,NULL,NULL);
+					if(rhs_md != NULL)
+					{
+						if(rhs_md->obj.status != TEMPORARY)
+						{
+							tmp_md = rhs_md;
+							rhs_md= _NclCopyVal(rhs_md,NULL);
+							if(tmp_md->obj.status != PERMANENT)
+							{
+								_NclDestroyObj((NclObj)tmp_md);
+							}
+						}
+
+						for(n = 0; n < rhs_md->multidval.n_dims; n++)
+						{
+							dim_info[n].dim_size = rhs_md->multidval.dim_sizes[n];
+							dim_info[n].dim_num = n;
+							dim_info[n].dim_quark = -1;
+						}
+
+						lhs_var->u.data_var= _NclVarCreate(NULL,NULL,
+							Ncl_Var,0,sym,
+							rhs_md,
+							dim_info,
+							-1,
+							NULL,
+							NORMAL,sym->name,PERMANENT);
+						if(lhs_var->u.data_var != NULL)
+						{
+							(void)_NclChangeSymbolType(sym,VAR);
+							lhs_var->kind = NclStk_VAR;
+						}
+						else
+						{
+							NhlPError(NhlWARNING,NhlEUNKNOWN,"Could not create variable (%s)",sym->name);
+							estatus = NhlWARNING;
+							lhs_var->kind = NclStk_NOVAL;
+						}
 					} else {
-						sel_ptr = NULL;
+						estatus = NhlFATAL;
+					} 
+				/*
+					if(rhs.u.data_var->obj.status != PERMANENT) {
+						_NclDestroyObj((NclObj)rhs.u.data_var);
 					}
-					if(estatus != NhlFATAL) {
-						for(i=0;i<nsubs;i++) {
-							data =_NclPop();
-							switch(data.u.sub_rec.sub_type) {
-							case INT_VECT:
+				*/
+				} else {
+					NhlPError(NhlFATAL,NhlEUNKNOWN,"Illegal right-hand side type for assignment");
+					estatus = NhlFATAL;
+				}
+			}
+		} else if(lhs_var->kind == NclStk_VAR) {
+			if((nsubs != lhs_var->u.data_var->var.n_dims)&&(nsubs != 0)) {
+				NhlPError(NhlFATAL,NhlEUNKNOWN,"Number of subscripts (%d) and number of dimensions (%d) do not match for variable (%s)",nsubs,lhs_var->u.data_var->var.n_dims,sym->name);
+				estatus = NhlFATAL;
+				_NclCleanUpStack(nsubs+1);
+			}
+			if(nsubs != 0) {
+				sel_ptr = _NclGetVarSelRec(lhs_var->u.data_var);
+				sel_ptr->n_entries = nsubs;
+			} else {
+				sel_ptr = NULL;
+			}
+			if(estatus != NhlFATAL) {
+				for(i=0;i<nsubs;i++) {
+					data =_NclPop();
+					switch(data.u.sub_rec.sub_type) {
+					case INT_VECT:
 /*
 * Need to free some stuff here
 */							
-								ret = _NclBuildVSelection(lhs_var->u.data_var,&data.u.sub_rec.u.vec,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case INT_SINGLE:
-							case INT_RANGE:
+						ret = _NclBuildVSelection(lhs_var->u.data_var,&data.u.sub_rec.u.vec,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
+						break;
+					case INT_SINGLE:
+					case INT_RANGE:
 /*
 * Need to free some stuff here
 */								
-								ret = _NclBuildRSelection(lhs_var->u.data_var,&data.u.sub_rec.u.range,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case COORD_VECT:
-								ret = _NclBuildCoordVSelection(lhs_var->u.data_var,&data.u.sub_rec.u.vec,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case COORD_SINGLE:
-							case COORD_RANGE:
-								ret = _NclBuildCoordRSelection(lhs_var->u.data_var,&data.u.sub_rec.u.range,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							}
-							_NclFreeSubRec(&data.u.sub_rec);
-							if(ret < NhlWARNING) {
-								estatus = NhlFATAL;
-								break;
-							}
-						}
+						ret = _NclBuildRSelection(lhs_var->u.data_var,&data.u.sub_rec.u.range,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
+						break;
+					case COORD_VECT:
+						ret = _NclBuildCoordVSelection(lhs_var->u.data_var,&data.u.sub_rec.u.vec,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
+						break;
+					case COORD_SINGLE:
+					case COORD_RANGE:
+						ret = _NclBuildCoordRSelection(lhs_var->u.data_var,&data.u.sub_rec.u.range,&(sel_ptr->selection[nsubs - i - 1]),nsubs - i - 1,data.u.sub_rec.name);
+						break;
 					}
-					if(estatus != NhlFATAL) {
-						rhs = _NclPop();	
-						if(rhs.kind == NclStk_VAL) {
-							rhs_md = rhs.u.data_obj;
-							if(rhs_md != NULL) {
-								ret = _NclAssignToVar(lhs_var->u.data_var,rhs_md,sel_ptr);
-								if(rhs_md->obj.status != PERMANENT) {
-									_NclDestroyObj((NclObj)rhs_md);
-								}
-								if(ret <= NhlWARNING) {
-									estatus = ret;
-								}
-							} else {
-								estatus = NhlFATAL;
-							}
-						} else if(rhs.kind == NclStk_VAR) {
+					_NclFreeSubRec(&data.u.sub_rec);
+					if(ret < NhlWARNING) {
+						estatus = NhlFATAL;
+						break;
+					}
+				}
+			}
+			if(estatus != NhlFATAL) {
+				rhs = _NclPop();	
+				if(rhs.kind == NclStk_VAL) {
+					rhs_md = rhs.u.data_obj;
+					if(rhs_md != NULL) {
+						ret = _NclAssignToVar(lhs_var->u.data_var,rhs_md,sel_ptr);
+						if(rhs_md->obj.status != PERMANENT) {
+							_NclDestroyObj((NclObj)rhs_md);
+						}
+						if(ret <= NhlWARNING) {
+							estatus = ret;
+						}
+					} else {
+						estatus = NhlFATAL;
+					}
+				} else if(rhs.kind == NclStk_VAR) {
 /*
 * I don't pass in a new missing in this situation because
 * _NclAssignToVar checks the missing values and it has
 * to visit each element anyways
 */
-							estatus = _NclAssignVarToVar(lhs_var->u.data_var,sel_ptr,rhs.u.data_var,NULL);
-							if(rhs.u.data_var->obj.status != PERMANENT) {
-								_NclDestroyObj((NclObj)rhs.u.data_var);
-							}
-						} else {
-							NhlPError(NhlFATAL,NhlEUNKNOWN,"Illegal right-hand side type for assignment");
-							estatus = NhlFATAL;
-						}
+					estatus = _NclAssignVarToVar(lhs_var->u.data_var,sel_ptr,rhs.u.data_var,NULL);
+					if(rhs.u.data_var->obj.status != PERMANENT) {
+						_NclDestroyObj((NclObj)rhs.u.data_var);
 					}
 				} else {
-					NhlPError(NhlFATAL,NhlEUNKNOWN,"Assignment not supported for left-hand type");
+					NhlPError(NhlFATAL,NhlEUNKNOWN,"Illegal right-hand side type for assignment");
 					estatus = NhlFATAL;
 				}
+			}
+		} else {
+			NhlPError(NhlFATAL,NhlEUNKNOWN,"Assignment not supported for left-hand type");
+			estatus = NhlFATAL;
+		}
 
-			} else {
-				_NclCleanUpStack(nsubs);
-			}
-			}
+	} else {
+		_NclCleanUpStack(nsubs);
+	}
+}
+
+void CallASSIGN_VAR_OP(void)
+{
+	NclStackEntry rhs;
+	NclStackEntry data;
+	NclStackEntry *lhs_var = NULL;
+	NclMultiDValData rhs_md = NULL;
+	NclMultiDValData tmp_md = NULL;
+	NclSelectionRecord *sel_ptr = NULL;
+	int nsubs;	
+	ng_size_t i;
+	NclSymbol *sym = NULL;
+	NhlErrorTypes ret = NhlNOERROR;
+	NhlArgVal udata;
+			
+
+	ptr++;lptr++;fptr++;
+	sym = (NclSymbol*)(*ptr);
+
+	ptr++;lptr++;fptr++;
+	nsubs = *(int*)ptr;
+
+	lhs_var = _NclRetrieveRec(sym,WRITE_IT);
+
+	performASSIGN_VAR(sym, nsubs, lhs_var);
+}
+
+NhlErrorTypes ClearDataBeforeReassign(NclStackEntry *data)
+{
+    NclStackEntry* var;
+    NclSymbol *thesym;
+    int sub_sel = 0;
+    NclObj tmp,pobj;
+    NclRefList *rlist = NULL;
+    int obj_id;
+    NhlErrorTypes ret = NhlNOERROR;
+
+    switch(data->kind)
+    {
+    case NclStk_VAL:
+        if (data->u.data_obj->obj.obj_type == Ncl_MultiDVallistData)
+        {
+            NclObj list_obj = _NclGetObj(*(int*) data->u.data_obj->multidval.val);
+            while ((tmp = _NclListPop(list_obj)))
+            {
+                if (tmp->obj.obj_type == Ncl_Var)
+                {
+                    switch(((NclVar)tmp)->var.var_type)
+                    {
+                        case VARSUBSEL:
+                        case COORDSUBSEL:
+                        case FILEVARSUBSEL:
+                            sub_sel = 1;
+                            break;
+                        case PARAM:
+                            NhlPError(NhlFATAL,NhlEUNKNOWN,
+                                "Deletion of parameters to functions and procedures is not allowed in NCL");
+                            return(NhlFATAL);
+                        case NORMAL:
+                        case COORD:
+                        case FILEVAR: 
+                        case RETURNVAR:
+                        case HLUOBJ :
+                        default:
+                            sub_sel = 0;
+                            break;
+                    }
+
+                    if(((NclVar)tmp)->var.thesym != NULL && !sub_sel)
+                    {
+                        var = _NclRetrieveRec(((NclVar)tmp)->var.thesym,DONT_CARE);
+                        thesym = ((NclVar)tmp)->var.thesym;
+                        if(((NclVar)tmp)->var.var_type == NORMAL)
+                        {
+                                                       /*
+                            * Can't destroy symbol since it may be referenced from the instruction
+                            * sequence. Changing it to UNDEF should do the trick though
+                            */
+                            _NclChangeSymbolType(thesym,UNDEF);
+                        }
+                        _NclDestroyObj((NclObj)tmp);
+                        if(var != NULL)
+                        {
+                            var->u.data_var = NULL;
+                            var->kind = NclStk_NOVAL;
+                        }
+                    }
+                }
+            }
+        }
+        _NclDestroyObj((NclObj)data->u.data_obj);
+        break;
+    case NclStk_VAR:
+        if(data->u.data_var != NULL)
+        {
+            switch(data->u.data_var->var.var_type)
+            {
+                case VARSUBSEL:
+                case COORDSUBSEL:
+                case FILEVARSUBSEL:
+                    sub_sel = 1;
+                    break;
+                case PARAM:
+                    NhlPError(NhlFATAL,NhlEUNKNOWN,"Deletion of parameters to functions and procedures is not allowed in NCL");
+                    return(NhlFATAL);
+                case NORMAL:
+                case COORD:
+                case FILEVAR: 
+                case RETURNVAR:
+                case HLUOBJ :
+                default:
+                    sub_sel = 0;
+                    break;
+            }
+
+        }
+
+        if((data->u.data_var != NULL)&&(data->u.data_var->var.thesym != NULL)&&(!sub_sel))
+        {
+            var = _NclRetrieveRec(data->u.data_var->var.thesym,DONT_CARE);
+            thesym = data->u.data_var->var.thesym;
+            tmp = (NclObj)data->u.data_var;
+            if(data->u.data_var->var.var_type == NORMAL)
+            {
+		/*
+		* Can't destroy symbol since it may be referenced from the instruction
+		* sequence. Changing it to UNDEF should do the trick though
+		*/
+                _NclChangeSymbolType(thesym,UNDEF);
+                data->kind = NclStk_NOVAL;
+                data->u.data_obj = NULL;
+                _NclPutRec(thesym, data);
+            }
+            _NclDestroyObj((NclObj)tmp);
+            if(var != NULL)
+            {
+                var->u.data_var = NULL;
+                var->kind = NclStk_NOVAL;
+            }
+        }
+        else
+        {
+            if((data->u.data_obj->obj.ref_count != 0)&&(!sub_sel))
+            {
+                int id = data->u.data_obj->obj.id;
+                switch(data->u.data_obj->obj.obj_type)
+                {
+                case Ncl_CoordVar:
+                    rlist = data->u.data_obj->obj.parents;
+                    while(rlist != NULL)
+                    {
+                        pobj = _NclGetObj(rlist->pid);
+                        if(pobj->obj.obj_type == Ncl_Var)
+                        {
+                            _NclDeleteCoordVar((NclVar)pobj,NrmQuarkToString(data->u.data_var->var.var_quark));
+                        }
+                        else
+                        {
+                            _NclDelParent((NclObj)data->u.data_obj,(NclObj)pobj);
+                        }
+                        if (_NclGetObj(id) != NULL)
+                            rlist = data->u.data_obj->obj.parents;
+                        else
+                            rlist = NULL;
+                    }
+                    break;
+                default:
+                    rlist = data->u.data_obj->obj.parents;
+                    while(rlist != NULL)
+                    {
+                        pobj = _NclGetObj(rlist->pid);
+                        _NclDelParent((NclObj)data->u.data_obj,(NclObj)pobj);
+                        rlist = rlist->next;
+                    }
+                    break;
+                }
+            }
+            else
+            {
+                var = NULL;
+                tmp = (NclObj)data->u.data_var;
+                _NclDestroyObj((NclObj)tmp);
+                if(var != NULL)
+                {
+                    var->u.data_var = NULL;
+                    var->kind = NclStk_NOVAL;
+                }
+            }
+        }
+        break;
+    default:
+        break;
+    }
+
+    data->kind = NclStk_NOVAL;
+    data->u.data_obj = NULL;
+
+    return ret;
+}
+
+
+void CallREASSIGN_VAR_OP(void)
+{
+    NclStackEntry rhs;
+    NclStackEntry data;
+    NclStackEntry *lhs_var = NULL;
+    NclMultiDValData rhs_md = NULL;
+    NclMultiDValData tmp_md = NULL;
+    NclSelectionRecord *sel_ptr = NULL;
+    int nsubs;    
+    ng_size_t i;
+    NclSymbol *sym = NULL;
+    NhlErrorTypes ret = NhlNOERROR;
+    NhlArgVal udata;
+
+    ptr++;lptr++;fptr++;
+    sym = (NclSymbol*)(*ptr);
+
+    ptr++;lptr++;fptr++;
+    nsubs = *(int*)ptr;
+
+    lhs_var = _NclRetrieveRec(sym,WRITE_IT);
+
+    ClearDataBeforeReassign(lhs_var);
+
+    performASSIGN_VAR(sym, nsubs, lhs_var);
+}
 
 void CallNEW_FRAME_OP(void) {
 				NclSymbol *proc;
@@ -5364,11 +5491,11 @@ void CallASSIGN_FILE_VAR_OP(void) {
 							int ndims = 0;
 
 #ifdef USE_NETCDF4_FEATURES
-							if(use_new_hlfs)
+							if(file->file.advanced_file_structure)
 							{
-								NclNewFile newfile = (NclNewFile) file;
+								NclAdvancedFile advancedfile = (NclAdvancedFile) file;
 								NclFileVarNode *varnode;
-								varnode = _getVarNodeFromNclFileGrpNode(newfile->newfile.grpnode, var);
+								varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
 								ndims = varnode->dim_rec->n_dims;
 							}
 							else
@@ -5386,7 +5513,7 @@ void CallASSIGN_FILE_VAR_OP(void) {
 										_NclCleanUpStack(nsubs +1);
 							} 
 							if(estatus != NhlFATAL)  {
-								if((nsubs != 0)&&(nsubs == file->file.var_info[index]->num_dimensions))  {
+								if((nsubs != 0)&&(nsubs == ndims))  {
 									sel_ptr = (NclSelectionRecord*)NclMalloc(sizeof(NclSelectionRecord));
 									sel_ptr->n_entries = nsubs;
 									for(i = 0 ; i < nsubs; i++) {
@@ -5723,11 +5850,11 @@ void CallFILE_VAR_OP(void) {
 				}
 
 #ifdef USE_NETCDF4_FEATURES
-				if(use_new_hlfs)
+				if(file->file.advanced_file_structure)
 				{
-					NclNewFile newfile = (NclNewFile)file;
+					NclAdvancedFile advancedfile = (NclAdvancedFile)file;
 					NclFileVarNode *varnode = NULL;
-					varnode = _getVarNodeFromNclFileGrpNode(newfile->newfile.grpnode, var);
+					varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
 					if(NULL == varnode)
 					{
 						NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
@@ -6048,6 +6175,121 @@ void CallASSIGN_VARATT_OP(void) {
 						}
 						id = value_md->obj.id;
 						ret = _NclWriteAtt(var->u.data_var,attname,value_md,sel_ptr);
+						if((value.kind == NclStk_VAR)&&(value.u.data_var->obj.status != PERMANENT)) {
+							 _NclDestroyObj((NclObj)value.u.data_var);
+						} else if((value.kind == NclStk_VAL)&& _NclGetObj(id) && (value.u.data_obj->obj.status != PERMANENT)){
+							 _NclDestroyObj((NclObj)value.u.data_obj);
+						} 
+						if( ret < NhlINFO) {
+							estatus = ret;
+						}
+					} else {
+						_NclCleanUpStack(1);
+					}
+				} else {
+					NhlPError(NhlFATAL,NhlEUNKNOWN,"Variable (%s) is undefined, can not assign attribute (%s)",thesym->name,attname);
+					estatus = NhlFATAL;
+				}
+			}
+
+void CallREASSIGN_VARATT_OP(void) {
+				NclSymbol *thesym = NULL;
+				char *attname = NULL;
+				int nsubs;
+				NhlErrorTypes ret = NhlNOERROR;
+				NclStackEntry *var = NULL,avar;
+				NclStackEntry value;
+				NclMultiDValData value_md = NULL,thevalue = NULL;
+				NclSelectionRecord *sel_ptr = NULL;
+				NclStackEntry data1;
+				
+				avar = _NclPop();
+				switch(avar.kind) {
+				case NclStk_VAL: 
+					thevalue = avar.u.data_obj;
+					break;
+				case NclStk_VAR:
+					thevalue = _NclVarValueRead(avar.u.data_var,NULL,NULL);
+					break;
+				default:
+					thevalue = NULL;
+					estatus = NhlFATAL;
+					break;
+				}
+
+				if((thevalue == NULL) || ((thevalue->multidval.kind != SCALAR) &&
+							  (thevalue->multidval.type != (NclTypeClass)nclTypestringClass))) {
+					NhlPError(NhlFATAL,NhlEUNKNOWN,"Variable Attribute names must be scalar string values can't continue");
+					estatus = NhlFATAL;
+				} else {
+					attname = NrmQuarkToString(*(NclQuark*)thevalue->multidval.val);
+					if(PERMANENT != avar.u.data_obj->obj.status) {
+						_NclDestroyObj((NclObj)avar.u.data_obj);
+					}
+				}
+
+				ptr++;lptr++;fptr++;
+				thesym = (NclSymbol*)(*ptr);
+
+				ptr++;lptr++;fptr++;
+				nsubs = (*(int*)ptr);
+	
+				var = _NclRetrieveRec(thesym,WRITE_IT);
+				if(var->u.data_var != NULL) {
+					if(nsubs == 1) {
+						sel_ptr = _NclGetVarSelRec(var->u.data_var);
+						sel_ptr->n_entries = 1;
+						data1 =_NclPop();
+						if(data1.u.sub_rec.name != NULL) {
+							NhlPError(NhlWARNING,NhlEUNKNOWN,"Named dimensions can not be used with variable attributes");
+							estatus = NhlWARNING;
+						}
+						switch(data1.u.sub_rec.sub_type) {
+						case INT_VECT:
+/*
+* Need to free some stuff here
+*/						
+							ret =_NclBuildVSelection(NULL,&data1.u.sub_rec.u.vec,&(sel_ptr->selection[0]),0,NULL);
+							break;
+						case INT_SINGLE:
+						case INT_RANGE:
+/*
+* Need to free some stuff here
+*/								
+							ret =_NclBuildRSelection(NULL,&data1.u.sub_rec.u.range,&(sel_ptr->selection[0]),0,NULL);
+							break;
+						case COORD_VECT:
+						case COORD_SINGLE:
+						case COORD_RANGE:
+							NhlPError(NhlFATAL,NhlEUNKNOWN,"Coordinate indexing can not be used with variable attributes");
+							estatus = NhlFATAL;
+							break;
+						}
+						 _NclFreeSubRec(&data1.u.sub_rec);
+						if(ret < NhlWARNING) 
+							estatus = NhlFATAL;
+					} else if(nsubs != 0){
+						NhlPError(NhlFATAL,NhlEUNKNOWN,"Attempt to subscript attribute with more than one dimension");
+						estatus = NhlFATAL;
+					}
+					if(!(estatus < NhlINFO)) {
+						int id;
+						value = _NclPop();
+						if(value.kind == NclStk_VAR) {
+							value_md = _NclVarValueRead(value.u.data_var,NULL,NULL);
+							if(value_md == NULL) {
+								estatus = NhlFATAL;
+							}
+						} else if(value.kind == NclStk_VAL){
+							value_md = value.u.data_obj;
+						} else {
+							NhlPError(NhlFATAL,NhlEUNKNOWN,"Attempt to assign illegal type or value to variable attribute");
+							estatus = NhlFATAL;
+						}
+						id = value_md->obj.id;
+
+						ret = _NclReplaceAtt(var->u.data_var,attname,value_md,sel_ptr);
+
 						if((value.kind == NclStk_VAR)&&(value.u.data_var->obj.status != PERMANENT)) {
 							 _NclDestroyObj((NclObj)value.u.data_var);
 						} else if((value.kind == NclStk_VAL)&& _NclGetObj(id) && (value.u.data_obj->obj.status != PERMANENT)){
@@ -7009,283 +7251,414 @@ void CallPARAM_FILEVAR_COORD_OP(void) {
 				}
 			}
 
-void CallASSIGN_VAR_VAR_OP(void) {
-				NhlErrorTypes ret = NhlNOERROR;
-				ng_size_t i;
-				int rhs_nsubs=0,lhs_nsubs=0;
-				NclStackEntry data;
-				NclStackEntry *rhs_var,*lhs_var;
-				NclSymbol *rhs_sym,*lhs_sym;
-				NclSelectionRecord *lhs_sel_ptr = NULL;
-				NclSelectionRecord *rhs_sel_ptr = NULL;
-				NclSelectionRecord rhs_sel;
-				struct _NclVarRec *tmp_var;
-				NclMultiDValData tmp_md;
-				NhlArgVal udata;
-				NclAtt att_obj;
-	
-				ptr++;lptr++;fptr++;
-				rhs_sym = (NclSymbol*)*ptr;
-				rhs_var = _NclRetrieveRec(rhs_sym,READ_IT);
-				ptr++;lptr++;fptr++;
-				rhs_nsubs = *(int*)ptr;
-				ptr++;lptr++;fptr++;
-				lhs_sym = (NclSymbol*)*ptr;
-				lhs_var = _NclRetrieveRec(lhs_sym,WRITE_IT);
-				ptr++;lptr++;fptr++;
-				lhs_nsubs = *(int*)ptr;
+void performASSIGN_VAR_VAR_OP(NclStackEntry *lhs_var, NclStackEntry *rhs_var,
+                              int lhs_nsubs, int rhs_nsubs,
+                              NclSymbol *lhs_sym, NclSymbol *rhs_sym)
+{
+    NhlErrorTypes ret = NhlNOERROR;
+    ng_size_t i;
+    NclStackEntry data;
+    NclSelectionRecord *lhs_sel_ptr = NULL;
+    NclSelectionRecord *rhs_sel_ptr = NULL;
+    NclSelectionRecord rhs_sel;
+    struct _NclVarRec *tmp_var;
+    NclMultiDValData tmp_md;
+    NhlArgVal udata;
 
-				if((rhs_var == NULL)||(rhs_var->kind == NclStk_NOVAL)) {
-					NhlPError(NhlFATAL,NhlEUNKNOWN," Assign: %s is undefined",rhs_sym->name);
-					estatus = NhlFATAL;
-				}
+    if((rhs_var == NULL)||(rhs_var->kind == NclStk_NOVAL))
+    {
+        NHLPERROR((NhlFATAL,NhlEUNKNOWN,"performASSIGN_VAR_VAR_OP: %s is undefined",rhs_sym->name));
+        estatus = NhlFATAL;
+    }
 
-				if((estatus!=NhlFATAL)&&(lhs_var != NULL)&&(lhs_var->kind == NclStk_NOVAL)) {
-					if(lhs_nsubs != 0) {
-						NhlPError(NhlFATAL,NhlEUNKNOWN,"Assign: %s is undefined, can not subscript an undefined variable",lhs_sym->name);
-						estatus = NhlFATAL;
-						_NclCleanUpStack(lhs_nsubs);
-					} else if(rhs_nsubs == 0) {
-						lhs_var->kind = NclStk_VAR;
-						lhs_var->u.data_var = _NclCopyVar(rhs_var->u.data_var,lhs_sym,NULL);
-						_NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT);	
-						lhs_var->u.data_var->var.thesym = lhs_sym;
-						(void)_NclChangeSymbolType(lhs_sym,VAR);
-						lhs_var->u.data_var->var.var_type = NORMAL;
-					} else if((rhs_nsubs != 0)&&(rhs_nsubs == rhs_var->u.data_var->var.n_dims)) {
-/*
-* This branch is where wholesale assigment of rhs to lhs occurs. including coords,atts and values
-*/
-					rhs_sel_ptr = &rhs_sel;
-					rhs_sel_ptr->n_entries = rhs_nsubs;
-					for(i=0;i<rhs_nsubs;i++) {
-						data =_NclPop();
-						switch(data.u.sub_rec.sub_type) {
-						case INT_VECT:
-/*
-* Need to free some stuff here
-*/							
-							ret = _NclBuildVSelection(rhs_var->u.data_var,&data.u.sub_rec.u.vec,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-							break;
-						case INT_SINGLE:
-						case INT_RANGE:
-/*
-* Need to free some stuff here
-*/								
-							ret = _NclBuildRSelection(rhs_var->u.data_var,&data.u.sub_rec.u.range,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-							break;
-						case COORD_VECT:
-							ret = _NclBuildCoordVSelection(rhs_var->u.data_var,&data.u.sub_rec.u.vec,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-							break;
-						case COORD_SINGLE:
-						case COORD_RANGE:
-							ret = _NclBuildCoordRSelection(rhs_var->u.data_var,&data.u.sub_rec.u.range,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-							break;
-						}
-						_NclFreeSubRec(&data.u.sub_rec);
-						if(ret < NhlWARNING) {
-							estatus = NhlFATAL;
-							break;
-						}
-					} 
-					if(estatus != NhlFATAL) {
-						lhs_var->kind = NclStk_VAR;
-						lhs_var->u.data_var = _NclVarRead(rhs_var->u.data_var,rhs_sel_ptr);
-						if(lhs_var->u.data_var == NULL) {
-							estatus = NhlFATAL;
-							lhs_var->kind = NclStk_NOVAL;
-						} else {
-							if(!_NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT)) {	
-								tmp_var = lhs_var->u.data_var;
-								lhs_var->u.data_var = _NclCopyVar(lhs_var->u.data_var,NULL,NULL);
-								_NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT);	
-								if(lhs_var->u.data_var->obj.status != PERMANENT) {
-									_NclDestroyObj((NclObj)tmp_var);
-								}
-								lhs_var->u.data_var->var.var_quark = NrmStringToQuark(lhs_sym->name);
-								lhs_var->u.data_var->var.thesym = lhs_sym;
-								(void)_NclChangeSymbolType(lhs_sym,VAR);
-								lhs_var->u.data_var->var.var_type = NORMAL;
-								_NclCallCallBacks((NclObj)lhs_var->u.data_var,CREATED);
-							} else {
-							
-/*
-* ----> May want to encapsulate the following into the NclVar object
-* 	A likely function interface would be: _NclChangeVar(int quark,NclSymbol *thesym, NclVarTypes var_type); 
-* 	which would be a method.
-*/
-								lhs_var->u.data_var->var.var_quark = NrmStringToQuark(lhs_sym->name);
-								lhs_var->u.data_var->var.thesym = lhs_sym;
-								(void)_NclChangeSymbolType(lhs_sym,VAR);
-								lhs_var->u.data_var->var.var_type = NORMAL;
-								_NclCallCallBacks((NclObj)lhs_var->u.data_var,CREATED);
-								if(lhs_var->u.data_var->obj.obj_type_mask & Ncl_HLUVar) {
-									udata.ptrval = NclMalloc(sizeof(NclHLUUData));
-									((NclHLUUData*)udata.ptrval)->vq = lhs_var->u.data_var->var.var_quark;
-									((NclHLUUData*)udata.ptrval)->aq = -1;
-									tmp_md = (NclMultiDValData)_NclGetObj(lhs_var->u.data_var->var.thevalue_id);
-									((NclHLUVar)lhs_var->u.data_var)->hvar.cb = _NclAddCallback((NclObj)tmp_md,NULL,_NclHLUVarValChange,HLUVALCHANGE,&udata);
-									((NclHLUVar)lhs_var->u.data_var)->hvar.udata = udata.ptrval;
-									for(i = 0; i < tmp_md->multidval.totalelements;i++) {
-										if(lhs_var->u.data_var->var.thesym != NULL) {
-											_NclAddHLURef(((obj*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,-1,i,lhs_var->u.data_var->var.thesym->level);
-										} else {
-											_NclAddHLURef(((obj*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,-1,i,-1);
-										}
-									}
-								}
-								/* HLU Refs also need to be added for any attributes that reference HLU objects */
-								att_obj = (NclAtt)_NclGetObj( lhs_var->u.data_var->var.att_id);
-								if (att_obj) {
-									NclAttList *attrec = att_obj->att.att_list;;
-									NclHLUObj hobj;
-									
-									while (attrec) {
-										tmp_md = (NclMultiDValData) attrec->attvalue;
-										if (! tmp_md || ! (tmp_md->obj.obj_type == Ncl_MultiDValHLUObjData)) {
-											attrec = attrec->next;
-											continue;
-										}
-										for (i = 0; i < tmp_md->multidval.totalelements; i++) {
-											hobj = (NclHLUObj) _NclGetObj(((int*)tmp_md->multidval.val)[i]);
-											if(lhs_var->u.data_var->var.thesym != NULL) {
-												_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,lhs_var->u.data_var->var.thesym->level);
-											} else {
-												_NclAddHLURef(((int*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,attrec->quark,i,-1);
-											}
-										}
-										attrec = attrec->next;
-									}
-								}
+    if((estatus!=NhlFATAL)&&(lhs_var != NULL)&&(lhs_var->kind == NclStk_NOVAL))
+    {
+        if(lhs_nsubs != 0)
+        {
+            NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+                      "performASSIGN_VAR_VAR_OP: %s is undefined, can not subscript an undefined variable",
+                       lhs_sym->name));
+            estatus = NhlFATAL;
+            _NclCleanUpStack(lhs_nsubs);
+        }
+        else if(rhs_nsubs == 0)
+        {
+            lhs_var->kind = NclStk_VAR;
+            lhs_var->u.data_var = _NclCopyVar(rhs_var->u.data_var,lhs_sym,NULL);
+            _NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT);    
+            lhs_var->u.data_var->var.thesym = lhs_sym;
+            (void)_NclChangeSymbolType(lhs_sym,VAR);
+            lhs_var->u.data_var->var.var_type = NORMAL;
+        }
+        else if((rhs_nsubs != 0)&&(rhs_nsubs == rhs_var->u.data_var->var.n_dims))
+        {
+            /*
+             * This branch is where wholesale assigment of rhs to lhs occurs. including coords,atts and values
+             */
+            rhs_sel_ptr = &rhs_sel;
+            rhs_sel_ptr->n_entries = rhs_nsubs;
+            for(i=0;i<rhs_nsubs;i++)
+            {
+                data =_NclPop();
+                switch(data.u.sub_rec.sub_type)
+                {
+                    case INT_VECT:
+                         /*
+                         * Need to free some stuff here
+                         */                
+                         ret = _NclBuildVSelection(rhs_var->u.data_var,&data.u.sub_rec.u.vec,
+                                                   &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                   rhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case INT_SINGLE:
+                    case INT_RANGE:
+                         /*
+                         * Need to free some stuff here
+                         */                    
+                         ret = _NclBuildRSelection(rhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.range,
+                                                   &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                   rhs_nsubs - i - 1,
+                                                   data.u.sub_rec.name);
+                         break;
+                    case COORD_VECT:
+                         ret = _NclBuildCoordVSelection(rhs_var->u.data_var,
+                                                        &data.u.sub_rec.u.vec,
+                                                        &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                        rhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case COORD_SINGLE:
+                    case COORD_RANGE:
+                        ret = _NclBuildCoordRSelection(rhs_var->u.data_var,
+                                                        &data.u.sub_rec.u.range,
+                                                        &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                        rhs_nsubs - i - 1,data.u.sub_rec.name);
+                        break;
+                }
 
-							}
-						}
-						if(rhs_sel_ptr != NULL) {
-                                                        for(i = 0; i <  rhs_sel_ptr->n_entries; i++) {
-                                                                if(rhs_sel_ptr->selection[i].sel_type == Ncl_VECSUBSCR){
-                                                                        NclFree(rhs_sel_ptr->selection[i].u.vec.ind);
-                                                                        rhs_sel_ptr->selection[i].u.vec.ind = NULL;
-                                                                }
-                                                        }
-                                                }
+                _NclFreeSubRec(&data.u.sub_rec);
+                if(ret < NhlWARNING)
+                {
+                    estatus = NhlFATAL;
+                    break;
+                }
+            } 
 
-/*
-*-----> end of questionable code
-*/
-					}
-					} else {
-						NhlPError(NhlFATAL,NhlEUNKNOWN,"Number of subscripts on rhs do not match number of dimensions of variable,(%d) Subscripts used, (%d) Subscripts expected",rhs_nsubs,rhs_var->u.data_var->var.n_dims);
-						estatus = NhlFATAL;
-						_NclCleanUpStack(rhs_nsubs);
-						
-					}
-				} else if((estatus !=NhlFATAL)&&(lhs_var->kind == NclStk_VAR)&&(lhs_var->u.data_var != NULL)) {
-/*
-* When the target variable is already defined just normal assignment occurs if it is not subscripted
-* if it is then the _NclAssignVarToVar is used which is different then the normal assignment provided
-* by the ASSIGN_VAR_OP operator.
-*/
-					if(rhs_nsubs == 0) {
-						rhs_sel_ptr = NULL;
-					} else if((estatus != NhlFATAL)&&(rhs_nsubs != rhs_var->u.data_var->var.n_dims)) {
-						NhlPError(NhlFATAL,NhlEUNKNOWN,"Number of subscripts on rhs do not match number of dimensions of variable,(%d) Subscripts used, (%d) Subscripts expected",rhs_nsubs,rhs_var->u.data_var->var.n_dims);
-						estatus = NhlFATAL;
-						_NclCleanUpStack(rhs_nsubs);
-					} else {
-						rhs_sel_ptr = &rhs_sel;
-						rhs_sel_ptr->n_entries = rhs_nsubs;
-				
-						for(i=0;i<rhs_nsubs;i++) {
-							data =_NclPop();
-							switch(data.u.sub_rec.sub_type) {
-							case INT_VECT:
-/*
-* Need to free some stuff here
-*/							
-								ret = _NclBuildVSelection(rhs_var->u.data_var,&data.u.sub_rec.u.vec,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case INT_SINGLE:
-							case INT_RANGE:
-/*
-* Need to free some stuff here
-*/								
-								ret = _NclBuildRSelection(rhs_var->u.data_var,&data.u.sub_rec.u.range,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case COORD_VECT:
-								ret = _NclBuildCoordVSelection(rhs_var->u.data_var,&data.u.sub_rec.u.vec,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case COORD_SINGLE:
-							case COORD_RANGE:
-								ret = _NclBuildCoordRSelection(rhs_var->u.data_var,&data.u.sub_rec.u.range,&(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),rhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							}
-							_NclFreeSubRec(&data.u.sub_rec);
-							if(ret < NhlWARNING) {
-								estatus = NhlFATAL;
-								break;
-							}
-						} 
-					} 
-					if((lhs_nsubs ==0)&&(estatus != NhlFATAL)){
-						lhs_sel_ptr = NULL;
-					} else if((estatus != NhlFATAL)&&(lhs_nsubs != lhs_var->u.data_var->var.n_dims)) {
-						NhlPError(NhlFATAL,NhlEUNKNOWN,"Number of subscripts on lhs do not match number of dimensions of variable,(%d) Subscripts used, (%d) Subscripts expected",lhs_nsubs,lhs_var->u.data_var->var.n_dims);
-						estatus = NhlFATAL;
-						_NclCleanUpStack(lhs_nsubs);
-					} else if (estatus != NhlFATAL) {
-						lhs_sel_ptr = _NclGetVarSelRec(lhs_var->u.data_var); 
-						lhs_sel_ptr->n_entries = lhs_nsubs;
-						for(i=0;i<lhs_nsubs;i++) {
-							data =_NclPop();
-							switch(data.u.sub_rec.sub_type) {
-							case INT_VECT:
-/*
-* Need to free some stuff here
-*/							
-								ret = _NclBuildVSelection(lhs_var->u.data_var,&data.u.sub_rec.u.vec,&(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),lhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case INT_SINGLE:
-							case INT_RANGE:
-/*
-* Need to free some stuff here
-*/									
-								ret = _NclBuildRSelection(lhs_var->u.data_var,&data.u.sub_rec.u.range,&(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),lhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case COORD_VECT:
-								ret = _NclBuildCoordVSelection(lhs_var->u.data_var,&data.u.sub_rec.u.vec,&(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),lhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							case COORD_SINGLE:
-							case COORD_RANGE:
-								ret = _NclBuildCoordRSelection(lhs_var->u.data_var,&data.u.sub_rec.u.range,&(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),lhs_nsubs - i - 1,data.u.sub_rec.name);
-								break;
-							}
-							_NclFreeSubRec(&data.u.sub_rec);
-							if(ret < NhlWARNING) {
-								estatus = NhlFATAL;
-								break;
-							}
-						} 
-					} 
-					if(estatus != NhlFATAL) {
-						ret = _NclAssignVarToVar(lhs_var->u.data_var,lhs_sel_ptr,rhs_var->u.data_var,rhs_sel_ptr);
-						if(ret < NhlINFO) {
-							estatus = ret;
-						}
-					} 
-                                       if(rhs_sel_ptr != NULL) {
-                                                for(i = 0; i <  rhs_sel_ptr->n_entries; i++) {
-                                                        if(rhs_sel_ptr->selection[i].sel_type == Ncl_VECSUBSCR){
-                                                                NclFree(rhs_sel_ptr->selection[i].u.vec.ind);
-                                                                rhs_sel_ptr->selection[i].u.vec.ind = NULL;
-                                                        }
-                                                }
-                                        }
-				} else {
-					estatus = NhlFATAL;
-					_NclCleanUpStack(rhs_nsubs);
-					_NclCleanUpStack(lhs_nsubs);
-				}
-			}
+            if(estatus != NhlFATAL)
+            {
+                lhs_var->kind = NclStk_VAR;
+                lhs_var->u.data_var = _NclVarRead(rhs_var->u.data_var,rhs_sel_ptr);
+                if(lhs_var->u.data_var == NULL)
+                {
+                    estatus = NhlFATAL;
+                    lhs_var->kind = NclStk_NOVAL;
+                }
+                else
+                {
+                    if(!_NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT))
+                    {    
+                        tmp_var = lhs_var->u.data_var;
+                        lhs_var->u.data_var = _NclCopyVar(lhs_var->u.data_var,NULL,NULL);
+                        _NclSetStatus((NclObj)lhs_var->u.data_var,PERMANENT);    
+                        if(lhs_var->u.data_var->obj.status != PERMANENT)
+                        {
+                            _NclDestroyObj((NclObj)tmp_var);
+                        }
+                        lhs_var->u.data_var->var.var_quark = NrmStringToQuark(lhs_sym->name);
+                        lhs_var->u.data_var->var.thesym = lhs_sym;
+                        (void)_NclChangeSymbolType(lhs_sym,VAR);
+                        lhs_var->u.data_var->var.var_type = NORMAL;
+                        _NclCallCallBacks((NclObj)lhs_var->u.data_var,CREATED);
+                    }
+                    else
+                    {
+                        /*
+                        * ----> May want to encapsulate the following into the NclVar object
+                        *     A likely function interface would be: _NclChangeVar(int quark,NclSymbol *thesym, NclVarTypes var_type); 
+                        *     which would be a method.
+                        */
+
+                        lhs_var->u.data_var->var.var_quark = NrmStringToQuark(lhs_sym->name);
+                        lhs_var->u.data_var->var.thesym = lhs_sym;
+                        (void)_NclChangeSymbolType(lhs_sym,VAR);
+                        lhs_var->u.data_var->var.var_type = NORMAL;
+                        _NclCallCallBacks((NclObj)lhs_var->u.data_var,CREATED);
+
+                        if(lhs_var->u.data_var->obj.obj_type_mask & Ncl_HLUVar)
+                        {
+                            udata.ptrval = NclMalloc(sizeof(NclHLUUData));
+                            ((NclHLUUData*)udata.ptrval)->vq = lhs_var->u.data_var->var.var_quark;
+                            ((NclHLUUData*)udata.ptrval)->aq = -1;
+                            tmp_md = (NclMultiDValData)_NclGetObj(lhs_var->u.data_var->var.thevalue_id);
+                            ((NclHLUVar)lhs_var->u.data_var)->hvar.cb = _NclAddCallback((NclObj)tmp_md,NULL,_NclHLUVarValChange,HLUVALCHANGE,&udata);
+                            ((NclHLUVar)lhs_var->u.data_var)->hvar.udata = udata.ptrval;
+                            for(i = 0; i < tmp_md->multidval.totalelements;i++)
+                            {
+                                if(lhs_var->u.data_var->var.thesym != NULL)
+                                {
+                                    _NclAddHLURef(((obj*)tmp_md->multidval.val)[i],
+                                                  lhs_var->u.data_var->var.var_quark,-1,i,
+                                                  lhs_var->u.data_var->var.thesym->level);
+                                }
+                                else
+                                {
+                                    _NclAddHLURef(((obj*)tmp_md->multidval.val)[i],lhs_var->u.data_var->var.var_quark,-1,i,-1);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if(rhs_sel_ptr != NULL)
+                {
+                    for(i = 0; i <  rhs_sel_ptr->n_entries; i++)
+                    {
+                        if(rhs_sel_ptr->selection[i].sel_type == Ncl_VECSUBSCR)
+                        {
+                            NclFree(rhs_sel_ptr->selection[i].u.vec.ind);
+                            rhs_sel_ptr->selection[i].u.vec.ind = NULL;
+                        }
+                    }
+                }
+                /*
+                *-----> end of questionable code
+                */
+            }
+        }
+        else
+        {
+            NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+                      "performASSIGN_VAR_VAR_OP: Number of subscripts on rhs do not match\n\t\t\t%s, (%d) %s, (%d) %s\n",
+                      "number of dimensions of variable", rhs_nsubs, "Subscripts used", rhs_var->u.data_var->var.n_dims));
+            estatus = NhlFATAL;
+            _NclCleanUpStack(rhs_nsubs);
+            
+        }
+    }
+    else if((estatus !=NhlFATAL)&&(lhs_var->kind == NclStk_VAR)&&(lhs_var->u.data_var != NULL))
+    {
+       /*
+       * When the target variable is already defined just normal assignment occurs if it is not subscripted
+       * if it is then the _NclAssignVarToVar is used which is different then the normal assignment provided
+       * by the ASSIGN_VAR_OP operator.
+       */
+
+        if(rhs_nsubs == 0)
+        {
+            rhs_sel_ptr = NULL;
+        }
+        else if((estatus != NhlFATAL)&&(rhs_nsubs != rhs_var->u.data_var->var.n_dims))
+        {
+            NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+                      "performASSIGN_VAR_VAR_OP: Number of subscripts on rhs do not match\n\t\t\t%s, (%d) %s, (%d) %s\n",
+                      "number of dimensions of variable", rhs_nsubs, "Subscripts used", rhs_var->u.data_var->var.n_dims));
+            estatus = NhlFATAL;
+            _NclCleanUpStack(rhs_nsubs);
+        }
+        else
+        {
+            rhs_sel_ptr = &rhs_sel;
+            rhs_sel_ptr->n_entries = rhs_nsubs;
+    
+            for(i=0;i<rhs_nsubs;i++)
+            {
+                data =_NclPop();
+                switch(data.u.sub_rec.sub_type)
+                {
+                    case INT_VECT:
+                         /*
+                         * Need to free some stuff here
+                         */                
+                         ret = _NclBuildVSelection(rhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.vec,
+                                                   &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                   rhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case INT_SINGLE:
+                    case INT_RANGE:
+                         /*
+                         * Need to free some stuff here
+                         */                    
+                         ret = _NclBuildRSelection(rhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.range,
+                                                   &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                   rhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case COORD_VECT:
+                         ret = _NclBuildCoordVSelection(rhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.vec,
+                                                   &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                   rhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case COORD_SINGLE:
+                    case COORD_RANGE:
+                         ret = _NclBuildCoordRSelection(rhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.range,
+                                                   &(rhs_sel_ptr->selection[rhs_nsubs - i - 1]),
+                                                   rhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                }
+
+                _NclFreeSubRec(&data.u.sub_rec);
+
+                if(ret < NhlWARNING)
+                {
+                    estatus = NhlFATAL;
+                    break;
+                }
+            } 
+        } 
+
+        if((lhs_nsubs ==0)&&(estatus != NhlFATAL))
+        {
+            lhs_sel_ptr = NULL;
+        }
+        else if((estatus != NhlFATAL)&&(lhs_nsubs != lhs_var->u.data_var->var.n_dims))
+        {
+            NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+                      "performASSIGN_VAR_VAR_OP: Number of subscripts on lhs do not match\n\t\t\t%s, (%d) %s, (%d) %s\n",
+                      "number of dimensions of variable", lhs_nsubs, "Subscripts used", lhs_var->u.data_var->var.n_dims));
+            estatus = NhlFATAL;
+            _NclCleanUpStack(lhs_nsubs);
+        }
+        else if (estatus != NhlFATAL)
+        {
+            lhs_sel_ptr = _NclGetVarSelRec(lhs_var->u.data_var); 
+            lhs_sel_ptr->n_entries = lhs_nsubs;
+
+            for(i=0;i<lhs_nsubs;i++)
+            {
+                data =_NclPop();
+                switch(data.u.sub_rec.sub_type)
+                {
+                    case INT_VECT:
+                         /*
+                         * Need to free some stuff here
+                         */                
+                         ret = _NclBuildVSelection(lhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.vec,
+                                                   &(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),
+                                                   lhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case INT_SINGLE:
+                    case INT_RANGE:
+                         /*
+                         * Need to free some stuff here
+                         */                        
+                         ret = _NclBuildRSelection(lhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.range,
+                                                   &(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),
+                                                   lhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case COORD_VECT:
+                         ret = _NclBuildCoordVSelection(lhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.vec,
+                                                   &(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),
+                                                   lhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                    case COORD_SINGLE:
+                    case COORD_RANGE:
+                         ret = _NclBuildCoordRSelection(lhs_var->u.data_var,
+                                                   &data.u.sub_rec.u.range,
+                                                   &(lhs_sel_ptr->selection[lhs_nsubs - i - 1]),
+                                                   lhs_nsubs - i - 1,data.u.sub_rec.name);
+                         break;
+                }
+
+                _NclFreeSubRec(&data.u.sub_rec);
+
+                if(ret < NhlWARNING)
+                {
+                    estatus = NhlFATAL;
+                    break;
+                }
+            } 
+        } 
+
+        if(estatus != NhlFATAL)
+        {
+            ret = _NclAssignVarToVar(lhs_var->u.data_var,lhs_sel_ptr,rhs_var->u.data_var,rhs_sel_ptr);
+            if(ret < NhlINFO)
+            {
+                estatus = ret;
+            }
+        } 
+
+        if(rhs_sel_ptr != NULL)
+        {
+            for(i = 0; i <  rhs_sel_ptr->n_entries; i++)
+            {
+                if(rhs_sel_ptr->selection[i].sel_type == Ncl_VECSUBSCR)
+                {
+                    NclFree(rhs_sel_ptr->selection[i].u.vec.ind);
+                    rhs_sel_ptr->selection[i].u.vec.ind = NULL;
+                }
+            }
+        }
+    }
+    else
+    {
+        estatus = NhlFATAL;
+        _NclCleanUpStack(rhs_nsubs);
+        _NclCleanUpStack(lhs_nsubs);
+    }
+}
+
+void CallASSIGN_VAR_VAR_OP(void)
+{
+    int lhs_nsubs=0;
+    int rhs_nsubs=0;
+    NclSymbol *lhs_sym = NULL;
+    NclSymbol *rhs_sym = NULL;
+    NclStackEntry *lhs_var = NULL;
+    NclStackEntry *rhs_var = NULL;
+
+    ptr++;lptr++;fptr++;
+    rhs_sym = (NclSymbol*)*ptr;
+    rhs_var = _NclRetrieveRec(rhs_sym,READ_IT);
+
+    ptr++;lptr++;fptr++;
+    rhs_nsubs = *(int*)ptr;
+
+    ptr++;lptr++;fptr++;
+    lhs_sym = (NclSymbol*)*ptr;
+    lhs_var = _NclRetrieveRec(lhs_sym,WRITE_IT);
+
+    ptr++;lptr++;fptr++;
+    lhs_nsubs = *(int*)ptr;
+
+    performASSIGN_VAR_VAR_OP(lhs_var, rhs_var, lhs_nsubs, rhs_nsubs,
+                             lhs_sym, rhs_sym);
+}
+
+void CallREASSIGN_VAR_VAR_OP(void)
+{
+    int lhs_nsubs=0;
+    int rhs_nsubs=0;
+    NclSymbol *lhs_sym = NULL;
+    NclSymbol *rhs_sym = NULL;
+    NclStackEntry *lhs_var = NULL;
+    NclStackEntry *rhs_var = NULL;
+
+    ptr++;lptr++;fptr++;
+    rhs_sym = (NclSymbol*)*ptr;
+    rhs_var = _NclRetrieveRec(rhs_sym,READ_IT);
+
+    ptr++;lptr++;fptr++;
+    rhs_nsubs = *(int*)ptr;
+
+    ptr++;lptr++;fptr++;
+    lhs_sym = (NclSymbol*)*ptr;
+    lhs_var = _NclRetrieveRec(lhs_sym,WRITE_IT);
+
+    ptr++;lptr++;fptr++;
+    lhs_nsubs = *(int*)ptr;
+
+    ClearDataBeforeReassign(lhs_var);
+
+    performASSIGN_VAR_VAR_OP(lhs_var, rhs_var, lhs_nsubs, rhs_nsubs,
+                             lhs_sym, rhs_sym);
+}
 
 void CallPUSHNULL(void) {
 				NclStackEntry data;
@@ -7594,6 +7967,10 @@ NclExecuteReturnStatus _NclExecute
 				CallASSIGN_VAR_OP();
 			}
 			break;
+			case REASSIGN_VAR_OP : {
+				CallREASSIGN_VAR_OP();
+			}
+			break;
 			case NEW_FRAME_OP : {
 				CallNEW_FRAME_OP();
 			}
@@ -7667,6 +8044,10 @@ NclExecuteReturnStatus _NclExecute
 				CallASSIGN_VARATT_OP();
 			}
 			break;
+			case REASSIGN_VARATT_OP : {
+				CallREASSIGN_VARATT_OP();
+			}
+			break;
 /*****************************
 * Four Operand Instructions  *
 *****************************/
@@ -7702,6 +8083,10 @@ NclExecuteReturnStatus _NclExecute
 				CallASSIGN_VAR_VAR_OP();
 			}
 			break;
+			case REASSIGN_VAR_VAR_OP : {
+				CallREASSIGN_VAR_VAR_OP();
+			}
+			break;
 			case PUSHNULL : {
 				CallPUSHNULL();
 			}
@@ -7710,11 +8095,6 @@ NclExecuteReturnStatus _NclExecute
 				{
 					CallFILE_GROUP_OP();
 				}
-			      /*
-				fprintf(stdout, "\tfile: %s, line:%d\n", __FILE__, __LINE__);
-				fprintf(stdout, "\tbreak *ptr: %d\n", *ptr);
-				fprintf(stdout, "\tbreak FILE_GROUP_OP: %d\n", FILE_GROUP_OP);
-			       */
 				break;
 			case FILE_GROUPVAL_OP :
 				/*
@@ -7734,6 +8114,11 @@ NclExecuteReturnStatus _NclExecute
 				exit ( -1 );
 				break;
 			default:
+			      /*
+			       *fprintf(stderr, "function %s, file: %s, line: %d\n",
+			       *                 __PRETTY_FUNCTION__, __FILE__, __LINE__)
+			       *fprintf(stderr, "\tUNKNOWN Operator *ptr: %ld\n", (long)*ptr);
+			       */
 				break;
 		}
 		if(estatus < NhlINFO) {

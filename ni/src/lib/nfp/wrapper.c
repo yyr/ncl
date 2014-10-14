@@ -83,9 +83,16 @@ extern NhlErrorTypes wrf_pvo_W(void);
 extern NhlErrorTypes wrf_avo_W(void);
 extern NhlErrorTypes wrf_helicity_W(void);
 extern NhlErrorTypes wrf_updraft_helicity_W(void);
+extern NhlErrorTypes wrf_wetbulb_W(void);
+extern NhlErrorTypes wrf_omega_W(void);
+extern NhlErrorTypes wrf_virtual_temp_W(void);
 extern NhlErrorTypes wrf_ll_to_ij_W(void);
 extern NhlErrorTypes wrf_ij_to_ll_W(void);
 extern NhlErrorTypes wrf_wps_read_nml_W(void);
+extern NhlErrorTypes wrf_wps_open_int_W(void);
+extern NhlErrorTypes wrf_wps_rdhead_int_W(void);
+extern NhlErrorTypes wrf_wps_rddata_int_W(void);
+extern NhlErrorTypes wrf_wps_read_int_W(void);
 
 extern NhlErrorTypes cape_thermo_W(void);
 extern NhlErrorTypes gaus_lobat_W(void);
@@ -117,6 +124,7 @@ extern NhlErrorTypes gc_inout_W(void);
 extern NhlErrorTypes gc_inout_mask_func_W(void);
 extern NhlErrorTypes gc_inout_mask_proc_W(void);
 extern NhlErrorTypes gc_onarc_W(void);
+extern NhlErrorTypes area_poly_sphere_W(void);
 
 extern NhlErrorTypes dv2uvf_W(void);
 extern NhlErrorTypes dv2uvg_W(void);
@@ -209,6 +217,7 @@ extern NhlErrorTypes spcorr_W(void);
 extern NhlErrorTypes spcorr_n_W(void);
 extern NhlErrorTypes pdfxy_bin_W(void);
 extern NhlErrorTypes pdfx_bin_W(void);
+extern NhlErrorTypes kolsm2_n_W(void);
 
 extern NhlErrorTypes nggcog_W(void);
 extern NhlErrorTypes ngritd_W(void);
@@ -363,6 +372,7 @@ extern NhlErrorTypes ngezlogo_W(void);
 extern NhlErrorTypes cancor_W(void);
 extern NhlErrorTypes regcoef_W(void);
 extern NhlErrorTypes regCoef_W(void);
+extern NhlErrorTypes regCoef_n_W(void);
 extern NhlErrorTypes regCoef_shields_W(void);
 extern NhlErrorTypes regline_W(void);
 extern NhlErrorTypes reg_multlin_W(void);
@@ -398,6 +408,7 @@ extern NhlErrorTypes esccr_shields_W(void);
 extern NhlErrorTypes esccv_W(void);
 extern NhlErrorTypes escorc_W(void);
 extern NhlErrorTypes escovc_W(void);
+extern NhlErrorTypes escorc_n_W(void);
 extern NhlErrorTypes ezfftf_W(void);
 extern NhlErrorTypes ezfftb_W(void);
 extern NhlErrorTypes cfftf_W(void);
@@ -405,7 +416,10 @@ extern NhlErrorTypes cfftb_W(void);
 extern NhlErrorTypes cfftf_frq_reorder_W(void);
 extern NhlErrorTypes fft2df_W(void);
 extern NhlErrorTypes fft2db_W(void);
+extern NhlErrorTypes lspoly_old_W(void);
+extern NhlErrorTypes lspoly_n_old_W(void);
 extern NhlErrorTypes lspoly_W(void);
+extern NhlErrorTypes lspoly_n_W(void);
 extern NhlErrorTypes fourier_info_W(void);
 extern NhlErrorTypes stdatmus_z2tdp_W(void);
 extern NhlErrorTypes stdatmus_p2tdz_W(void);
@@ -522,6 +536,8 @@ extern NhlErrorTypes rtest_W(void);
 extern NhlErrorTypes equiv_sample_size_W(void);
 extern NhlErrorTypes z2geouv_W(void);
 extern NhlErrorTypes NhlGetNamedColorIndex_W(void);
+extern NhlErrorTypes rgba_to_color_index_W(void);
+extern NhlErrorTypes color_index_to_rgba_W(void);
 extern NhlErrorTypes output_gif_W(void);
 /*
 extern NhlErrorTypes attcreate_W(void);
@@ -583,6 +599,15 @@ extern NhlErrorTypes sparse_matrix_mult_W(void);
 
 extern NhlErrorTypes dim_gamfit_n_W(void);
 extern NhlErrorTypes dim_spi_n_W(void);
+
+/* added by mabouali */
+/* for the Google Earth Project */
+extern NhlErrorTypes directVincenty_W(void);
+extern NhlErrorTypes rgba2png_W(void);
+extern NhlErrorTypes add_NCL_KML_Arrow_W(void);
+extern NhlErrorTypes add_NCL_KML_2DGrid_W(void);
+extern NhlErrorTypes add_NCL_KML_UnstructGrid_W(void);
+extern NhlErrorTypes TransformCoordinate_W(void);
 
 /* 
  * ESMF regridding functions.
@@ -1680,6 +1705,45 @@ void NclAddUserFuncs(void)
         NclRegisterFunc(wrf_updraft_helicity_W,args,"wrf_updraft_helicity",nargs);
 
 /*
+ * Register "wrf_wetbulb".
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(3);
+
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+
+        NclRegisterFunc(wrf_wetbulb_W,args,"wrf_wetbulb",nargs);
+/*
+ * Register "wrf_omega".
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(4);
+
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+
+        NclRegisterFunc(wrf_omega_W,args,"wrf_omega",nargs);
+/*
+ * Register "wrf_virtual_temp".
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(2);
+
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+
+        NclRegisterFunc(wrf_virtual_temp_W,args,"wrf_virtual_temp",nargs);
+/*
  * Register "wrf_ll_to_ij".
  *
  * Create private argument array
@@ -1708,6 +1772,66 @@ void NclAddUserFuncs(void)
         SetArgTemplate(args,nargs,"logical",1,dimsizes);nargs++;
 
         NclRegisterFunc(wrf_ij_to_ll_W,args,"wrf_ij_to_ll",nargs);
+
+/*
+ * Register "wrf_wps_open_int".
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(1);
+
+        dimsizes[0] = 1;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+
+        NclRegisterFunc(wrf_wps_open_int_W,args,"wrf_wps_open_int",nargs);
+
+/*
+ * Register "wrf_wps_rdhead_int"
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(7);
+
+        dimsizes[0] = 1;
+        SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"numeric",1,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+
+        NclRegisterProc(wrf_wps_rdhead_int_W,args,"wrf_wps_rdhead_int",nargs);
+
+/*
+ * Register "wrf_wps_rddata_int"
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(3);
+
+        dimsizes[0] = 1;
+        SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"numeric",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"numeric",1,dimsizes);nargs++;
+
+        NclRegisterFunc(wrf_wps_rddata_int_W,args,"wrf_wps_rddata_int",nargs);
+
+/*
+ * Register "wrf_wps_read_int".
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(1);
+
+        dimsizes[0] = 1;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+
+        NclRegisterFunc(wrf_wps_read_int_W,args,"wrf_wps_read_int",nargs);
 
 /*
  * Register "wrf_wps_read_nml".
@@ -1906,6 +2030,20 @@ void NclAddUserFuncs(void)
     SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
     SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
     NclRegisterFunc(gc_onarc_W,args,"gc_onarc",nargs);
+
+/*
+ * Register "area_poly_sphere".
+ *
+ * Create private argument array
+ */
+    nargs = 0;
+    args = NewArgs(3);
+
+    SetArgTemplate(args,nargs,"numeric",1,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",1,NclANY);nargs++;
+    dimsizes[0] = 1;
+    SetArgTemplate(args,nargs,"numeric",1,dimsizes);nargs++;
+    NclRegisterFunc(area_poly_sphere_W,args,"area_poly_sphere",nargs);
 
 /*
  * Register "gc_pnt2gc".
@@ -3245,6 +3383,20 @@ void NclAddUserFuncs(void)
         SetArgTemplate(args,nargs,"logical",1,dimsizes);nargs++;
 
         NclRegisterFunc(pdfx_bin_W,args,"pdfx_bin",nargs);
+
+/*
+ * Register "kolsm2_n".
+ *
+ * Create private argument array
+ */
+        nargs = 0;
+        args = NewArgs(3);
+
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"integer",1,NclANY);nargs++;
+
+        NclRegisterFunc(kolsm2_n_W,args,"kolsm2_n",nargs);
 
 /*
  * Register "simpeq"
@@ -5380,6 +5532,19 @@ void NclAddUserFuncs(void)
 
     NclRegisterFunc(regCoef_W,args,"regCoef",nargs);
 /*
+ * Register "regCoef_n".
+ *
+ * Create private argument array.
+ */
+    nargs = 0;
+    args = NewArgs(4);
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"integer",1,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"integer",1,NclANY);nargs++;
+
+    NclRegisterFunc(regCoef_n_W,args,"regCoef_n",nargs);
+/*
  * Register "regCoef_shields".
  *
  * Create private argument array.
@@ -5827,6 +5992,19 @@ void NclAddUserFuncs(void)
 
     NclRegisterFunc(escorc_W,args,"escorc",nargs);
 /*
+ * Register "escorc_n".
+ *
+ * Create private argument array.
+ */
+    nargs = 0;
+    args = NewArgs(4);
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"integer",1,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"integer",1,NclANY);nargs++;
+
+    NclRegisterFunc(escorc_n_W,args,"escorc_n",nargs);
+/*
  * Register "escovc".
  *
  * Create private argument array.
@@ -5922,6 +6100,22 @@ void NclAddUserFuncs(void)
     NclRegisterFunc(fft2db_W,args,"fft2db",nargs);
 
 /*
+ * Register "lspoly_old".
+ *
+ * Create private argument array.
+ */
+    nargs = 0;
+    args = NewArgs(4);
+
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    dimsizes[0] = 1;
+    SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+
+    NclRegisterFunc(lspoly_old_W,args,"lspoly_old",nargs);
+
+/*
  * Register "lspoly".
  *
  * Create private argument array.
@@ -5936,6 +6130,40 @@ void NclAddUserFuncs(void)
     SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
 
     NclRegisterFunc(lspoly_W,args,"lspoly",nargs);
+
+/*
+ * Register "lspoly_n".
+ *
+ * Create private argument array.
+ */
+    nargs = 0;
+    args = NewArgs(5);
+
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    dimsizes[0] = 1;
+    SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+    SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+
+    NclRegisterFunc(lspoly_n_W,args,"lspoly_n",nargs);
+
+/*
+ * Register "lspoly_n_old".
+ *
+ * Create private argument array.
+ */
+    nargs = 0;
+    args = NewArgs(5);
+
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    SetArgTemplate(args,nargs,"numeric",0,NclANY);nargs++;
+    dimsizes[0] = 1;
+    SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+    SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+
+    NclRegisterFunc(lspoly_n_old_W,args,"lspoly_n_old",nargs);
 /*
  * Register "fourier_info".
  *
@@ -7128,6 +7356,22 @@ void NclAddUserFuncs(void)
     SetArgTemplate(args, nargs, "string", 0, NclANY);   nargs++;
     NclRegisterFunc(NhlGetNamedColorIndex_W, args, "NhlGetNamedColorIndex", nargs);
 
+/*
+ *  Register rgba_to_color_index.
+ */
+    nargs = 0;
+    args = NewArgs(1);
+    SetArgTemplate(args, nargs, "float", 0, NclANY);  nargs++;
+    NclRegisterFunc(rgba_to_color_index_W, args, "rgba_to_color_index", nargs);
+
+/*
+ *  Register color_index_to_rgba.
+ */
+
+    nargs = 0;
+    args = NewArgs(1);
+    SetArgTemplate(args, nargs, "integer", 1, NclANY);  nargs++;
+    NclRegisterFunc(color_index_to_rgba_W, args, "color_index_to_rgba", nargs);
 
 /*
  *  Register output_gif.
@@ -7770,6 +8014,140 @@ void NclAddUserFuncs(void)
 
     NclRegisterProc(write_matrix_W, args, "write_matrix", nargs);
 
+#ifdef BuildGDAL    
+/*
+ * Register "directVincenty".
+ *
+ * Create private argument array.
+ */
+ 
+        nargs = 0;
+        args = NewArgs(8);
+        SetArgTemplate(args,nargs,"double",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"double",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"double",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"double",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"double",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"double",0,NclANY);nargs++;
+        dimsizes[0]=1;
+        SetArgTemplate(args,nargs,"double",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"double",1,dimsizes);nargs++;
+        NclRegisterProc(directVincenty_W,args,"directVincenty",nargs);
+
+/*
+ * Register "rgba2png".
+ *
+ * Create private argument array.
+ */
+ 
+        nargs = 0;
+        args = NewArgs(8);
+        dimsizes[0]=1;
+        SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"uint",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"uint",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"uint",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"uint",0,NclANY);nargs++;
+        SetArgTemplate(args,nargs,"uint",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"uint",1,dimsizes);nargs++;
+        SetArgTemplate(args,nargs,"uint",1,dimsizes);nargs++;
+        NclRegisterProc(rgba2png_W,args,"rgba2png",nargs);     
+
+/*
+ * Register "add_NCL_KML_Arrow".
+ *
+ * Create private argument array.
+ */
+ 
+        nargs = 0;
+        args = NewArgs(18);
+        dimsizes[0]=1;
+        SetArgTemplate(args,0,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,1,"uint",1,dimsizes);nargs++;
+        SetArgTemplate(args,2,"uint",1,dimsizes);nargs++;
+        SetArgTemplate(args,3,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,4,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,5,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,6,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,7,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,8,"uint",2,NclANY);nargs++;
+        SetArgTemplate(args,9,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,10,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,11,"float",1,dimsizes);nargs++;
+        SetArgTemplate(args,12,"float",1,dimsizes);nargs++;
+        SetArgTemplate(args,13,"float",1,dimsizes);nargs++;
+        SetArgTemplate(args,14,"uint",1,dimsizes);nargs++;
+        SetArgTemplate(args,15,"logical",1,dimsizes);nargs++;
+        SetArgTemplate(args,16,"logical",1,dimsizes);nargs++;
+        SetArgTemplate(args,17,"logical",1,dimsizes);nargs++;
+
+        NclRegisterProc(add_NCL_KML_Arrow_W,args,"add_NCL_KML_Arrow",nargs);  
+
+
+/*
+ * Register "add_NCL_KML_2DGrid_W".
+ *
+ * Create private argument array.
+ */
+ 
+        nargs = 0;
+        args = NewArgs(9);
+        dimsizes[0]=1;
+        SetArgTemplate(args,0,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,1,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,2,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,3,"float",2,NclANY);nargs++;
+        SetArgTemplate(args,4,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,5,"uint",1,dimsizes);nargs++;
+        SetArgTemplate(args,6,"logical",1,dimsizes);nargs++;
+        SetArgTemplate(args,7,"logical",1,dimsizes);nargs++;
+        SetArgTemplate(args,8,"logical",1,dimsizes);nargs++;
+
+        NclRegisterProc(add_NCL_KML_2DGrid_W,args,"add_NCL_KML_2DGrid",nargs);
+
+
+/*
+ * Register "add_NCL_KML_UnstructGrid_W".
+ *
+ * Create private argument array.
+ */
+ 
+        nargs = 0;
+        args = NewArgs(10);
+        dimsizes[0]=1;
+        SetArgTemplate(args,0,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,1,"uint",2,NclANY);nargs++;
+        SetArgTemplate(args,2,"float",1,NclANY);nargs++;
+        SetArgTemplate(args,3,"float",1,NclANY);nargs++;
+        SetArgTemplate(args,4,"float",1,NclANY);nargs++;
+        SetArgTemplate(args,5,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,6,"uint",1,dimsizes);nargs++;
+        SetArgTemplate(args,7,"logical",1,dimsizes);nargs++;
+        SetArgTemplate(args,8,"logical",1,dimsizes);nargs++;
+        SetArgTemplate(args,9,"logical",1,dimsizes);nargs++;
+
+        NclRegisterProc(add_NCL_KML_UnstructGrid_W,args,"add_NCL_KML_UnstructGrid",nargs);
+
+
+/*
+ * Register "TransformCoordinate_W".
+ *
+ * Create private argument array.
+ */
+ 
+        nargs = 0;
+        args = NewArgs(5);
+        dimsizes[0]=1;
+        SetArgTemplate(args,0,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,0,"string",1,dimsizes);nargs++;
+        SetArgTemplate(args,2,"double",0,NclANY);nargs++;
+        SetArgTemplate(args,3,"double",0,NclANY);nargs++;
+        SetArgTemplate(args,4,"double",0,NclANY);nargs++;
+
+        NclRegisterProc(TransformCoordinate_W,args,"transform_coordinate",nargs);
+
+#endif
+        
 /* 
  * ESMF regridding functions.
  */
@@ -9004,7 +9382,7 @@ int *get_dims_for_n_funcs(int arg_num,  int num_args, NclStackEntry tmpdata,
   void *dims_ptr;
   int i, *dims; 
   ng_size_t num_dims[1];
-  string *dim_names;
+  NrmQuark *dim_names;
   NclVar tmpvar;
 
   switch(tmpdata.kind) {
@@ -9038,7 +9416,7 @@ int *get_dims_for_n_funcs(int arg_num,  int num_args, NclStackEntry tmpdata,
   }
   else {
     if(tmpvar != NULL) {
-      dim_names = (string *)NclGetArgValue(1,2,NULL,NULL,NULL,NULL,NULL,0);
+      dim_names = (NrmQuark *)NclGetArgValue(1,2,NULL,NULL,NULL,NULL,NULL,0);
     }
     else {
       NhlPError(NhlFATAL,NhlEUNKNOWN,"%s: Can't determine dimension names from input array",name);

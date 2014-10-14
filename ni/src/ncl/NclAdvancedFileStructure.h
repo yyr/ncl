@@ -59,6 +59,7 @@ typedef struct _NclFileAttNode
 {
     NclQuark          name;
     NclBasicDataTypes type;
+    ng_size_t         id;
     int               n_elem;
     void             *value;
     nc_type           the_nc_type;
@@ -104,8 +105,10 @@ typedef struct _NclFileCompoundRecord
     NclQuark          name;
     nc_type           xtype;
     nc_type           base_nc_type;
+    void             *value;
 
     NclFileCompoundNode    *compnode;
+
 } NclFileCompoundRecord;
 
 typedef struct _NclFileEnumNode
@@ -188,6 +191,8 @@ typedef struct _NclFileVarNode
     ng_size_t         cache_nelems;
     float             cache_preemption;
 
+    void             *udt;
+
     void             *value;
 } NclFileVarNode;
 
@@ -212,7 +217,7 @@ typedef struct _NclFileGrpNode      NclFileGrpNode;
 struct _NclFileGrpNode
 {
     ng_size_t            fid;
-    ng_size_t            id;
+    ng_size_t            gid;
     ng_size_t            pid;
     
     NclQuark             name;

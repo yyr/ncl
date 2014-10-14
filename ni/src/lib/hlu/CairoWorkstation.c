@@ -1,5 +1,5 @@
 /*
- *      $Id: CairoWorkstation.c,v 1.8 2010-03-29 16:30:03 brownrig Exp $
+ *      $Id: CairoWorkstation.c 15126 2014-03-14 20:41:42Z brownrig $
  */
 
 #include   <stdio.h>
@@ -7,7 +7,6 @@
 #include   <ncarg/hlu/CairoWorkstationP.h>
 #include   <ncarg/hlu/ConvertersP.h>
 #include   <ncarg/hlu/pageutil.h>
-
 #include "hlu.h"
 #include "CairoWorkstation.h"
 
@@ -57,6 +56,13 @@ static NhlResource resourcesDocumentWS[] = {
         _NhlUSET((NhlPointer) - 1), _NhlRES_DEFAULT, NULL},
 
     /* End-documented-resources */
+        
+    /* HACK:  Enables the paint-clip-stroke drawing hack intended to deal with faint gaps sometime seen between 
+     * adject filled regions. See Jira ncl-1913 
+     */
+    {NhlNwkCairoFillWorkaround, NhlCwkCairoFillWorkaround, NhlTBoolean,
+        sizeof (NhlBoolean), Oset(cairo_fill_hack), NhlTImmediate,
+        _NhlUSET((NhlPointer) False), _NhlRES_DEFAULT, NULL},
 };
 
 /* Resources for the Image Workstation */
@@ -98,6 +104,14 @@ static NhlResource resourcesImageWS[] = {
     {NhlNwkHeight, NhlCwkHeight, NhlTInteger, sizeof (int),
         Oset(pixconfig.height), NhlTImmediate,
         _NhlUSET((NhlPointer) 1024), _NhlRES_NOSACCESS, NULL},
+
+    /* See Jira ncl-1913.  The drawing hack does not apply to ImageWorkstations, but we silently include this resource 
+     * here to suppress warnings if a user has it set -- it should quietly do nothing, rather than throw warnings that
+     * its not going to do anything!
+     */
+    {NhlNwkCairoFillWorkaround, NhlCwkCairoFillWorkaround, NhlTBoolean,
+        sizeof (NhlBoolean), Oset(cairo_fill_hack), NhlTImmediate,
+        _NhlUSET((NhlPointer) False), _NhlRES_DEFAULT, NULL},
 };
 
 static NhlResource resourcesWindowWS[] = {
@@ -135,11 +149,65 @@ static NhlResource resourcesWindowWS[] = {
     {NhlNwkIconTitle, NhlCwkIconTitle, NhlTString, sizeof (NhlString),
         Oset(xwinconfig.icon_title), NhlTImmediate, _NhlUSET((NhlPointer) NULL),
         _NhlRES_NOSACCESS, (NhlFreeFunc) NhlFree},
+
+    /* See Jira ncl-1913.  The drawing hack does not apply to ImageWorkstations, but we silently include this resource 
+     * here to suppress warnings if a user has it set -- it should quietly do nothing, rather than throw warnings that
+     * its not going to do anything!
+     */
+    {NhlNwkCairoFillWorkaround, NhlCwkCairoFillWorkaround, NhlTBoolean,
+        sizeof (NhlBoolean), Oset(cairo_fill_hack), NhlTImmediate,
+        _NhlUSET((NhlPointer) False), _NhlRES_DEFAULT, NULL},
+};
+
+static NhlResource resourcesQtWS[] = {
+    {NhlNwkFormat, NhlCwkFormat, NhlTCairoFormat, sizeof (NhlCairoFormat),
+        Oset(format), NhlTImmediate, _NhlUSET((NhlPointer) NhlCQT),
+        _NhlRES_NOSACCESS, NULL},
+
+    {"no.res", "no.res", NhlTBoolean, sizeof (NhlBoolean), Oset(window_id_set),
+        NhlTImmediate, _NhlUSET((NhlPointer) True),
+        _NhlRES_NOACCESS | _NhlRES_PRIVATE, NULL},
+    {NhlNwkWindowId, NhlCwkWindowId, NhlTInteger, sizeof (int), Oset(window_id),
+        NhlTProcedure, _NhlUSET((NhlPointer) _NhlResUnset), _NhlRES_NOSACCESS, NULL},
+    {"no.res", "no.res", NhlTBoolean, sizeof (NhlBoolean), Oset(pause_set),
+        NhlTImmediate, _NhlUSET((NhlPointer) True),
+        _NhlRES_NOACCESS | _NhlRES_PRIVATE, NULL},
+    {NhlNwkPause, NhlCwkPause, NhlTBoolean, sizeof (NhlBoolean),
+        Oset(pause), NhlTProcedure, _NhlUSET((NhlPointer) _NhlResUnset), 0, NULL},
+
+    {"no.res", "no.res", NhlTInteger, sizeof (int), Oset(xwinconfig.type),
+        NhlTImmediate, _NhlUSET((NhlPointer) NGC_XWINCONFIG),
+        _NhlRES_NOACCESS | _NhlRES_PRIVATE, NULL},
+    {NhlNpositionX, NhlCpositionX, NhlTInteger, sizeof (int), Oset(xwinconfig.x),
+        NhlTImmediate, _NhlUSET((NhlPointer) 0), _NhlRES_NOSACCESS, NULL},
+    {NhlNpositionY, NhlCpositionY, NhlTInteger, sizeof (int), Oset(xwinconfig.y),
+        NhlTImmediate, _NhlUSET((NhlPointer) 0), _NhlRES_NOSACCESS, NULL},
+    {NhlNwkWidth, NhlCwkWidth, NhlTInteger, sizeof (int),
+        Oset(xwinconfig.width),
+        NhlTImmediate, _NhlUSET((NhlPointer) 512), _NhlRES_NOSACCESS, NULL},
+    {NhlNwkHeight, NhlCwkHeight, NhlTInteger, sizeof (int),
+        Oset(xwinconfig.height), NhlTImmediate,
+        _NhlUSET((NhlPointer) 512), _NhlRES_NOSACCESS, NULL},
+    {NhlNwkTitle, NhlCwkTitle, NhlTString, sizeof (NhlString),
+        Oset(xwinconfig.title), NhlTImmediate, _NhlUSET((NhlPointer) NULL),
+        _NhlRES_NOSACCESS, (NhlFreeFunc) NhlFree},
+    {NhlNwkIconTitle, NhlCwkIconTitle, NhlTString, sizeof (NhlString),
+        Oset(xwinconfig.icon_title), NhlTImmediate, _NhlUSET((NhlPointer) NULL),
+        _NhlRES_NOSACCESS, (NhlFreeFunc) NhlFree},
+    
+    /* See Jira ncl-1913.  The drawing hack does not apply to ImageWorkstations, but we silently include this resource 
+     * here to suppress warnings if a user has it set -- it should quietly do nothing, rather than throw warnings that
+     * its not going to do anything!
+     */
+    {NhlNwkCairoFillWorkaround, NhlCwkCairoFillWorkaround, NhlTBoolean,
+        sizeof (NhlBoolean), Oset(cairo_fill_hack), NhlTImmediate,
+        _NhlUSET((NhlPointer) False), _NhlRES_DEFAULT, NULL},
 };
 
 /* forward declarations of helper functions */
 static NhlErrorTypes fixupFilename(NhlCairoWorkstationLayer layer, char* filenameSuffix, char* callingFunc);
 static NhlErrorTypes checkUlLRBounds(NhlCairoWorkstationLayerPart*, char*);
+static void setCairoFillHackValue(NhlLayer layer);
 
 /*
  * CairoWorkstation base_class method declarations
@@ -165,17 +233,22 @@ static NhlErrorTypes CairoImageWorkstationInitialize(NhlClass class, NhlLayer re
         NhlLayer new, _NhlArgList args, int num_args);
 static NhlErrorTypes CairoWindowWorkstationInitialize(NhlClass class, NhlLayer req,
         NhlLayer new, _NhlArgList args, int num_args);
+static NhlErrorTypes CairoQtWorkstationInitialize(NhlClass class, NhlLayer req,
+        NhlLayer new, _NhlArgList args, int num_args);
 
 
 static NhlErrorTypes CairoDocumentWorkstationOpen(NhlLayer instance);
 static NhlErrorTypes CairoImageWorkstationOpen(NhlLayer instance);
 static NhlErrorTypes CairoWindowWorkstationOpen(NhlLayer instance);
+static NhlErrorTypes CairoQtWorkstationOpen(NhlLayer instance);
 
 static NhlErrorTypes CairoDocumentWorkstationActivate(NhlLayer instance);
 static NhlErrorTypes CairoImageWorkstationActivate(NhlLayer instance);
 static NhlErrorTypes CairoWindowWorkstationActivate(NhlLayer instance);
+static NhlErrorTypes CairoQtWorkstationActivate(NhlLayer instance);
 
 static NhlErrorTypes CairoWindowWorkstationClear(NhlLayer instance);
+static NhlErrorTypes CairoQtWorkstationClear(NhlLayer instance);
 
 /* class-record for PS/PDF output formats */
 NhlCairoWorkstationClassRec NhlcairoDocumentWorkstationClassRec = {
@@ -372,9 +445,75 @@ NhlCairoWorkstationClassRec NhlcairoWindowWorkstationClassRec = {
 
 };
 
+/* class-record for qt-based output formats */
+NhlCairoWorkstationClassRec NhlcairoQtWorkstationClassRec = {
+    {
+        /* class_name           */ "qtWorkstationClass",
+        /* nrm_class            */ NrmNULLQUARK,
+        /* layer_size           */ sizeof (NhlCairoWorkstationLayerRec),
+        /* class_inited         */ False,
+        /* superclass           */ (NhlClass) & NhlworkstationClassRec,
+        /* cvt_table            */ NULL,
+
+        /* layer_resources      */ resourcesQtWS,
+        /* num_resources        */ NhlNumber(resourcesQtWS),
+        /* all_resources        */ NULL,
+        /* callbacks            */ NULL,
+        /* num_callbacks        */ 0,
+        /* class_callbacks      */ NULL,
+        /* num_class_callbacks  */ 0,
+
+        /* class_part_initialize */ CairoWorkstationClassPartInitialize,
+        /* class_initialize      */ CairoWorkstationClassInitialize,
+        /* layer_initialize      */ CairoQtWorkstationInitialize,
+        /* layer_set_values      */ CairoWorkstationSetValues,
+        /* layer_set_values_hook */ NULL,
+        /* layer_get_values      */ CairoWorkstationGetValues,
+        /* layer_reparent        */ NULL,
+        /* layer_destroy         */ CairoWorkstationDestroy,
+
+        /* child_resources       */ NULL,
+
+        /* layer_draw            */ NULL,
+
+        /* layer_pre_draw        */ NULL,
+        /* layer_draw_segonly    */ NULL,
+        /* layer_post_draw       */ NULL,
+        /* layer_clear           */ NULL
+    },
+
+    {
+        /* current_wks_count */ NhlInheritCurrentWksCount,
+        /* gks_wks_recs      */ NhlInheritGksWksRecs,
+        /* hlu_wks_flag      */ NhlInheritHluWksFlag,
+        /* def_background    */
+        {1.0, 1.0, 1.0},
+        /* rgb_dbm           */ NULL,
+        /* pal               */ NhlInheritPalette,
+        /* open_work         */ CairoQtWorkstationOpen,
+        /* close_work        */ NhlInheritClose,
+        /* activate_work     */ CairoQtWorkstationActivate,
+        /* deactivate_work   */ NhlInheritDeactivate,
+        /* alloc_colors      */ NhlInheritAllocateColors,
+        /* update_work       */ NhlInheritUpdate,
+        /* clear_work        */ CairoQtWorkstationClear,
+        /* lineto_work       */ NhlInheritLineTo,
+        /* fill_work         */ NhlInheritFill,
+        /* marker_work       */ NhlInheritMarker,
+        /* notify_work       */ NULL,
+        /* update_drawbb     */ NULL
+    },
+
+    {
+        /* foo  */ 0
+    }
+
+};
+
 NhlClass NhlcairoDocumentWorkstationClass = (NhlClass) & NhlcairoDocumentWorkstationClassRec;
 NhlClass NhlcairoImageWorkstationClass = (NhlClass) & NhlcairoImageWorkstationClassRec;
 NhlClass NhlcairoWindowWorkstationClass = (NhlClass) & NhlcairoWindowWorkstationClassRec;
+NhlClass NhlcairoQtWorkstationClass = (NhlClass) & NhlcairoQtWorkstationClassRec;
 
 /*
  * Function:    nhlfcairoXXXXXworkstationclass
@@ -401,6 +540,10 @@ _NHLCALLF(nhlfcairoimageworkstationclass, NHLFCAIROIMAGEWORKSTATIONCLASS)
 NhlClass
 _NHLCALLF(nhlfcairowindowworkstationclass, NHLFCAIROWINDOWWORKSTATIONCLASS)
 (void) { return NhlcairoWindowWorkstationClass; }
+
+NhlClass
+_NHLCALLF(nhlfcairoqtworkstationclass, NHLFCAIROQTWORKSTATIONCLASS)
+(void) { return NhlcairoQtWorkstationClass; }
 
 /*
  * Function:    CairoWorkstationClassPartInitialize
@@ -447,18 +590,24 @@ CairoWorkstationClassInitialize(void) {
             {NhlCPS, "NEWPS"},
             {NhlCPDF, "PDF"},
             {NhlCPDF, "NEWPDF"},
-            {NhlCEPS, "EPS"}
+            {NhlCEPS, "EPS"},
+            {NhlCSVG, "SVG"}
         };
 
         _NhlEnumVals imageFormats[] = {
             {NhlCPNG, "NEWPNG"},
             {NhlCPNG, "PNG"},
-            {NhlCTIFF, "TIFF"}
+            {NhlCTIFF, "TIFF"},
         };
 
         _NhlEnumVals windowFormats[] = {
             {NhlCX11, "X11"}
         };
+
+        _NhlEnumVals qtFormats[] = {
+            {NhlCQT, "QT"}
+        };
+
 
         _NhlEnumVals orientvals[] = {
             {NhlPORTRAIT, "Portrait"},
@@ -472,6 +621,8 @@ CairoWorkstationClassInitialize(void) {
                 imageFormats, NhlNumber(imageFormats));
         (void) _NhlRegisterEnumType(NhlcairoWindowWorkstationClass, NhlTCairoFormat,
                 windowFormats, NhlNumber(windowFormats));
+        (void) _NhlRegisterEnumType(NhlcairoQtWorkstationClass, NhlTCairoFormat,
+                qtFormats, NhlNumber(qtFormats));
 
         (void) _NhlRegisterEnumType(NhlcairoDocumentWorkstationClass, NhlTWorkOrientation,
                 orientvals, NhlNumber(orientvals));
@@ -528,6 +679,11 @@ CairoDocumentWorkstationInitialize(NhlClass lclass, NhlLayer req, NhlLayer new, 
             newCairo->work.gkswkstype = CEPS;
             suffix = "eps";
             break;
+            
+        case NhlCSVG:
+            newCairo->work.gkswkstype = CSVG;
+            suffix = "svg";
+            break;            
 
         default:
             NhlPError(NhlWARNING, NhlEUNKNOWN,
@@ -581,7 +737,7 @@ CairoImageWorkstationInitialize(NhlClass lclass, NhlLayer req, NhlLayer new, _Nh
             newCairo->work.gkswkstype = CTIFF;
             suffix = "tif";
             break;
-
+            
         default:
             NhlPError(NhlWARNING, NhlEUNKNOWN,
                     "%s: Invalid format \"%d\" defaulting to PNG",
@@ -669,6 +825,74 @@ CairoWindowWorkstationInitialize(NhlClass lclass, NhlLayer req, NhlLayer new, _N
     return ret;
 }
 
+static NhlErrorTypes
+CairoQtWorkstationInitialize(NhlClass lclass, NhlLayer req, NhlLayer new, _NhlArgList args, int num_args) {
+    char func[] = "CairoQtWorkstationInitialize";
+
+    NhlCairoWorkstationLayer newCairo = (NhlCairoWorkstationLayer) new;
+    NhlCairoWorkstationLayerPart *cairoLayer = &newCairo->cairo;
+    NhlErrorTypes ret = NhlNOERROR;
+    char* tstr;
+
+    newCairo->work.gkswksconid = 0;
+    cairoLayer->dev_bounds_updated = False;
+
+    /*
+     * Set gkswkstype
+     */
+    if(cairoLayer->format != NhlCQT)
+    {
+        NHLPERROR((NhlWARNING, NhlEUNKNOWN,
+                "%s: Invalid format \"%d\" defaulting to QT",
+                func, cairoLayer->format));
+    }
+    newCairo->work.gkswkstype = CQT;
+
+    cairoLayer->pause = True;
+
+    if (cairoLayer->window_id_set)
+    {
+        newCairo->work.gkswksconid = cairoLayer->window_id;
+        /*
+         * Force pause to False if the user provides a window id
+         * GKS can't grab event's and still allow the user to grab
+         * events.
+         */
+        if ((cairoLayer->pause_set) && (cairoLayer->pause))
+        {
+            NHLPERROR((NhlINFO, NhlEUNKNOWN,
+                    "%s:If the %s resource is specified, the %s resource must be False",
+                    func, NhlNwkWindowId, NhlNwkPause));
+            ret = NhlINFO;
+        }
+        cairoLayer->pause = False;
+    }
+
+    if (!cairoLayer->xwinconfig.title)
+        cairoLayer->xwinconfig.title = (char*) newCairo->base.name;
+    tstr = cairoLayer->xwinconfig.title;
+    cairoLayer->xwinconfig.title =
+            (char*) NhlMalloc((unsigned) strlen(tstr) + 1);
+    if (!cairoLayer->xwinconfig.title) {
+        NHLPERROR((NhlFATAL, ENOMEM, NULL));
+        return NhlFATAL;
+    }
+    strcpy(cairoLayer->xwinconfig.title, tstr);
+
+    if (!cairoLayer->xwinconfig.icon_title)
+        cairoLayer->xwinconfig.icon_title = (char*) newCairo->base.name;
+    tstr = cairoLayer->xwinconfig.icon_title;
+    cairoLayer->xwinconfig.icon_title =
+            (char*) NhlMalloc((unsigned) strlen(tstr) + 1);
+    if (!cairoLayer->xwinconfig.icon_title) {
+        NHLPERROR((NhlFATAL, ENOMEM, NULL));
+        return NhlFATAL;
+    }
+    strcpy(cairoLayer->xwinconfig.icon_title, tstr);
+
+    return ret;
+}
+
 
 /*
  * Function:    CairoWorkstationSetValues
@@ -688,6 +912,8 @@ CairoWorkstationSetValues(NhlLayer old, NhlLayer ref, NhlLayer new, _NhlArgList 
     char func[] = "CairoWorkstationInitialize";
     NhlCairoWorkstationLayerPart *newLp = &((NhlCairoWorkstationLayer) new)->cairo;
     NhlCairoWorkstationLayerPart *oldLp = &((NhlCairoWorkstationLayer) old)->cairo;
+    NhlWorkstationLayerPart *newParent = &((NhlWorkstationLayer) new)->work;
+    NhlWorkstationLayerPart *oldParent = &((NhlWorkstationLayer) old)->work;
     NhlErrorTypes ret = NhlNOERROR;
 
 #if 0
@@ -719,7 +945,15 @@ CairoWorkstationSetValues(NhlLayer old, NhlLayer ref, NhlLayer new, _NhlArgList 
         newLp->lower_y = 126;
         newLp->upper_y = 666;
     }
-
+    
+    if (newParent->bkgnd_opacity != oldParent->bkgnd_opacity) {
+        _NhlSetBackgroundOpacity(new, newParent->bkgnd_opacity);
+    }
+    
+    if (newParent->antialias != oldParent->antialias) {
+        _NhlSetAntialiasingMode(new, NhlNON_TEXT_ANTIALIAS_MODE);
+    }
+    
     return ret;
 }
 
@@ -788,7 +1022,14 @@ CairoWorkstationDestroy(NhlLayer l) {
             NhlFree(cairo->xwinconfig.title);
         if (cairo->xwinconfig.icon_title)
             NhlFree(cairo->xwinconfig.icon_title);
-    } else {
+    }
+  /*
+   *else if (cairo->format == NhlCQT) {
+   *    fprintf(stderr, "file %s, line: %d, function: %s\n",
+   *                    __FILE__, __LINE__, __PRETTY_FUNCTION__);
+   *}
+   */
+    else {
         if (cairo->filename)
             NhlFree(cairo->filename);
     }
@@ -862,6 +1103,8 @@ CairoDocumentWorkstationOpen(NhlLayer l) {
     h = cairo->upper_y - cairo->lower_y;
     d = MAX(w, h);
     work->work.vswidth_dev_units = d / 72 * cairo->dpi;
+    
+    setCairoFillHackValue(l);
 
     return ret;
 }
@@ -974,6 +1217,39 @@ CairoWindowWorkstationOpen(NhlLayer l) {
 *****/
 }
 
+static NhlErrorTypes
+CairoQtWorkstationOpen(NhlLayer l) {
+    char func[] = "QtWorkstationOpen";
+    NhlCairoWorkstationLayerPart *cairo = &((NhlCairoWorkstationLayer) l)->cairo;
+    Gescape_in_data gesc_in_xwconf;
+    NhlErrorTypes ret;
+
+    /* we need to calculate the NDC frame within the image... */
+    int minRange = (cairo->xwinconfig.width < cairo->xwinconfig.height) ? cairo->xwinconfig.width : cairo->xwinconfig.height;
+    int adjust = (cairo->xwinconfig.width - minRange) / 2;
+    cairo->lower_x = adjust;
+    cairo->upper_x = cairo->xwinconfig.width - adjust;
+    adjust = (cairo->xwinconfig.height - minRange) / 2;
+    cairo->lower_y = adjust;
+    cairo->upper_y = cairo->xwinconfig.height - adjust;
+
+    /* Note that these can be set for the "next" workstation */
+    c_ngseti("lx", cairo->lower_x);
+    c_ngseti("ux", cairo->upper_x);
+    c_ngseti("ly", cairo->lower_y);
+    c_ngseti("uy", cairo->upper_y);
+
+    /* image width/height must be set before opening workstation */
+    cairo->xwinconfig.work_id = -1; /* part of the escape mechanism; -1 means "apply to *next* workstation */
+    gesc_in_xwconf.escape_r1.data = &cairo->xwinconfig;
+    gesc_in_xwconf.escape_r1.size = sizeof(cairo->xwinconfig);
+    gescape(NGESC_CNATIVE, &gesc_in_xwconf, NULL, NULL);
+
+    ret = (*NhlworkstationClassRec.work_class.open_work)(l);
+
+    return ret;
+}
+
 /*
  * Function:    CairoXXXXXWorkstationActivate
  *
@@ -1026,6 +1302,12 @@ CairoWindowWorkstationActivate(NhlLayer l) {
     return (*(lc->work_class.activate_work))(l);
 }
 
+static NhlErrorTypes
+CairoQtWorkstationActivate(NhlLayer l) {
+    NhlWorkstationClass lc = (NhlWorkstationClass) NhlworkstationClass;
+    return (*(lc->work_class.activate_work))(l);
+}
+
 /*
  * Function:	CairoWindowWorkstationClear
  *
@@ -1047,6 +1329,13 @@ CairoWindowWorkstationClear(NhlLayer layer) {
         indat.escape_r1.data = wkid;
         gescape(-1396, &indat, NULL, &outdat);
     }
+
+    return (*(wksClass->work_class.clear_work))(layer);
+}
+
+static NhlErrorTypes
+CairoQtWorkstationClear(NhlLayer layer) {
+    NhlWorkstationClass wksClass = (NhlWorkstationClass) NhlworkstationClass;
 
     return (*(wksClass->work_class.clear_work))(layer);
 }
@@ -1135,3 +1424,25 @@ checkUlLRBounds(NhlCairoWorkstationLayerPart *cairoLayer, char* callingFunc)
 
     return ret;
 }
+
+
+/*
+ * This hack is intended to address a deficiency in cairo's "fill" operation on document workstations (i.e., the
+ * dreaded "thin white lines/gaps" problem). See Jira ticket ncl-1913.
+ * 
+ */
+
+void setCairoFillHackValue(NhlLayer layer)
+{
+    NhlCairoWorkstationLayer wLayer = (NhlCairoWorkstationLayer) layer;        
+    NhlBoolean fillMode = wLayer->cairo.cairo_fill_hack;        
+    _NGCCairoFillHack fillHackRec;
+    Gescape_in_data gesc;
+    
+    fillHackRec.type = NGC_CAIROFILLHACK;
+    fillHackRec.work_id = wLayer->work.gkswksid;
+    fillHackRec.fill_mode_boolean = fillMode;
+    gesc.escape_r1.data = &fillHackRec;
+    gesc.escape_r1.size = sizeof(fillHackRec);
+    gescape(NGESC_CNATIVE, &gesc, NULL, NULL);                                
+}       

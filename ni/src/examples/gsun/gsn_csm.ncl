@@ -651,6 +651,18 @@ begin
         end if 
       end if 
 ;
+; Check for function codes
+;
+      if(isatt(res,"gsnLeftStringFuncCode")) then
+        left@gsnLeftStringFuncCode = get_res_value(res, \
+                                        "gsnLeftStringFuncCode","~")
+      else
+        if(isatt(res,"gsnStringFuncCode")) then
+          left@gsnLeftStringFuncCode = get_res_value_keep(res, \
+                                          "gsnStringFuncCode","~")
+        end if 
+      end if 
+;
 ; Check for font color
 ;
       if(isatt(res,"gsnLeftStringFontColor")) then
@@ -695,6 +707,18 @@ begin
         if(isatt(res,"gsnStringFontHeightF")) then
           center@gsnCenterStringFontHeightF = get_res_value_keep(res, \
                                              "gsnStringFontHeightF",0.0)
+        end if 
+      end if 
+;
+; Check for function codes
+;
+      if(isatt(res,"gsnCenterStringFuncCode")) then
+        center@gsnCenterStringFuncCode = get_res_value(res, \
+                                           "gsnCenterStringFuncCode","~")
+      else
+        if(isatt(res,"gsnStringFuncCode")) then
+          center@gsnCenterStringFuncCode = get_res_value_keep(res, \
+                                             "gsnStringFuncCode","~")
         end if 
       end if 
 ;
@@ -744,6 +768,18 @@ begin
         end if 
       end if 
 ;
+; Check for function codes.
+;
+      if(isatt(res,"gsnRightStringFuncCode")) then
+        right@gsnRightStringFuncCode = get_res_value(res, \
+                                         "gsnRightStringFuncCode","~")
+      else
+        if(isatt(res,"gsnStringFuncCode")) then
+          right@gsnRightStringFuncCode = get_res_value_keep(res, \
+                                           "gsnStringFuncCode","~")
+        end if 
+      end if 
+;
 ; Check for font color
 ;
       if(isatt(res,"gsnRightStringFontColor")) then
@@ -760,6 +796,9 @@ begin
   end if
   if(isatt(res,"gsnStringFontHeightF")) then
     delete(res@gsnStringFontHeightF)
+  end if
+  if(isatt(res,"gsnStringFuncCode")) then
+    delete(res@gsnStringFuncCode)
   end if
   if(isatt(res,"gsnStringFontColor")) then
     delete(res@gsnStringFontColor)
@@ -1000,6 +1039,10 @@ begin
                        "gsnLeftStringFontHeightF",      \
                        "gsnCenterStringFontHeightF",    \
                        "gsnRightStringFontHeightF",     \
+                       "gsnStringFuncCode",      \
+                       "gsnLeftStringFuncCode",      \
+                       "gsnCenterStringFuncCode",    \
+                       "gsnRightStringFuncCode",     \
                        "gsnLeftStringParallelPosF",     \
                        "gsnCenterStringParallelPosF",   \
                        "gsnRightStringParallelPosF",    \
@@ -1790,6 +1833,7 @@ begin
 
   just         = (/"left","center","right"/)
   fhghts       = (/0.,0.,0./)
+  fcodes       = (/"~","~","~"/)
   strings      = (/"","",""/)  
   colors       = True  ;  We can't set to an array, because colors could
                        ; be integers or strings. Instead, we'll use
@@ -1804,12 +1848,16 @@ begin
     strings(0) = left_string@sub_string
     if(isatt(left_string,"gsnLeftStringFontHeightF")) then
       fhghts(0) = get_res_value_keep(left_string,"gsnLeftStringFontHeightF",0.)
+    else if(isatt(left_string,"gsnStringFontHeightF")) then
+      fhghts(0) = get_res_value_keep(left_string,"gsnStringFontHeightF",0.)
     else
-      if(isatt(left_string,"gsnStringFontHeightF")) then
-        fhghts(0) = get_res_value_keep(left_string,"gsnStringFontHeightF",0.)
-      else
-        fhghts(0) = get_res_value_keep(txres,"txFontHeightF",0.0)
-      end if
+      fhghts(0) = get_res_value_keep(txres,"txFontHeightF",0.0)
+    end if
+    end if
+    if(isatt(left_string,"gsnLeftStringFuncCode")) then
+      fcodes(0) = get_res_value_keep(left_string,"gsnLeftStringFuncCode","~")
+    else
+      fcodes(0) = get_res_value_keep(left_string,"gsnStringFuncCode","~")
     end if
     if(isatt(left_string,"gsnLeftStringFontColor")) then
       colors@s0 = get_res_value_keep(left_string,"gsnLeftStringFontColor",1)
@@ -1824,12 +1872,16 @@ begin
     strings(1) = center_string@sub_string
     if(isatt(center_string,"gsnCenterStringFontHeightF")) then
       fhghts(1) = get_res_value_keep(center_string,"gsnCenterStringFontHeightF",0.)
+    else if(isatt(center_string,"gsnStringFontHeightF")) then
+      fhghts(1) = get_res_value_keep(center_string,"gsnStringFontHeightF",0.)
     else
-      if(isatt(center_string,"gsnStringFontHeightF")) then
-        fhghts(1) = get_res_value_keep(center_string,"gsnStringFontHeightF",0.)
-      else
-        fhghts(1) = get_res_value_keep(txres,"txFontHeightF",0.0)
-      end if
+      fhghts(1) = get_res_value_keep(txres,"txFontHeightF",0.0)
+    end if
+    end if
+    if(isatt(center_string,"gsnCenterStringFuncCode")) then
+      fcodes(1) = get_res_value_keep(center_string,"gsnCenterStringFuncCode","~")
+    else
+      fcodes(1) = get_res_value_keep(center_string,"gsnStringFuncCode","~")
     end if
     if(isatt(center_string,"gsnCenterStringFontColor")) then
       colors@s1 = get_res_value_keep(center_string,"gsnCenterStringFontColor",1)
@@ -1844,12 +1896,16 @@ begin
     strings(2) = right_string@sub_string
     if(isatt(right_string,"gsnRightStringFontHeightF")) then
       fhghts(2) = get_res_value_keep(right_string,"gsnRightStringFontHeightF",0.)
+    else if(isatt(right_string,"gsnStringFontHeightF")) then
+      fhghts(2) = get_res_value_keep(right_string,"gsnStringFontHeightF",0.)
     else
-      if(isatt(right_string,"gsnStringFontHeightF")) then
-        fhghts(2) = get_res_value_keep(right_string,"gsnStringFontHeightF",0.)
-      else
-        fhghts(2) = get_res_value_keep(txres,"txFontHeightF",0.0)
-      end if
+      fhghts(2) = get_res_value_keep(txres,"txFontHeightF",0.0)
+    end if
+    end if
+    if(isatt(right_string,"gsnRightStringFuncCode")) then
+      fcodes(2) = get_res_value_keep(right_string,"gsnRightStringFuncCode","~")
+    else
+      fcodes(2) = get_res_value_keep(right_string,"gsnStringFuncCode","~")
     end if
     if(isatt(right_string,"gsnRightStringFontColor")) then
       colors@s2 = get_res_value_keep(right_string,"gsnRightStringFontColor",1)
@@ -1882,6 +1938,7 @@ begin
         text_object = create just(i)+"string" textItemClass wks
           "txString"      : strings(i)
           "txFontHeightF" : fhghts(i)
+          "txFuncCode"    : fcodes(i)
           "txFontColor"   : colors@$ss$
         end create
 
@@ -1910,8 +1967,8 @@ end
 ;                  res[1]  : logical                                    ;
 ;                  type[1] : string                                     ;
 ;                                                                       ;
-; Sets some resources for a PlotManager labeblar. This is for the       ;
-; "new" labelbar being created in NCL V6.1.0 and later.                 ;
+; Sets some resources for a PlotManager labelbar. This is for when we   ;
+; decide to use the PlotManager labelbar instead of the custom labelbar.;
 ;                                                                       ;
 ; The "type" allows you to check for special plots, like polar plots.   ;
 ;***********************************************************************;
@@ -1956,8 +2013,10 @@ end
 ; "type" is the type of plot ("ce", "polar", and so on) so the labelbar ;
 ; can be positioned differently depending on the plot.                  ;
 ;                                                                       ;
-; This is for NCL V6.0.0 and earlier. With NCL V6.1.0, we went back to  ;
-; using the PlotManager labelbar.                                       ;
+; Eventually we want to move to using the PlotManager labelbar. This is ;
+; what the global GSN_OLD_LABELBAR variable is for. If it's set to True,;
+; then the PlotManager labelbar is *not* used, and instead, a custom    ;
+; one via this routine, is created.                                     ;
 ;***********************************************************************;
 undef("add_labelbar")
 procedure add_labelbar(wks:graphic,plot,zone:integer, \
@@ -2213,7 +2272,8 @@ end
 ; This procedure "fixes" a PlotManager labelbar by adjusting the label  ;
 ; font heights, among possibly other things.                            ;
 ;                                                                       ;
-; This is for NCL V6.1.0 and later.                                     ;
+; This is for when we decide to start using the PlotManager labelbar    ;
+; again (GSN_OLD_LABELBAR = False).                                     ;
 ;***********************************************************************;
 undef("fix_labelbar")
 procedure fix_labelbar(plot:graphic,font_height:numeric,res)
@@ -2693,6 +2753,7 @@ begin
 ;    gsnXYBelowFillColors
 ;    gsnXYRightFillColors
 ;    gsnXYLeftFillColors
+;    gsnXYFillOpacities
 ;
 ; If the first one is set, it overwrites the others. If
 ; none of them are set, then no fill color will be used.
@@ -2717,8 +2778,18 @@ begin
         below_fill_colors = get_res_value(res2,"gsnXYBelowFillColors",-1)
       end if
     end if
-  end if
 
+    if(isatt(res2,"gsnXYFillOpacityF")) then
+      fill_opacs = conform(above_fill_colors, \
+                           get_res_value(res2,"gsnXYFillOpacityF",1.0), \
+                           -1)
+    else if(isatt(res2,"gsnXYFillOpacities")) then
+      fill_opacs = get_res_value(res2,"gsnXYFillOpacities",1.0)
+    else
+      fill_opacs = conform(above_fill_colors,1.0,-1)
+    end if
+    end if
+  end if
   nacol = dimsizes(above_fill_colors)
   nbcol = dimsizes(below_fill_colors)
 
@@ -2822,20 +2893,25 @@ begin
 ;
     do ab = 0,1
       if (rgbArrayA.eq.True) then
-        gsres@gsFillColor = above_fill_colors(iacol,:)
+        gsres@gsFillColor    = above_fill_colors(iacol,:)
+        gsres@gsFillOpacityF = fill_opacs(iacol,:)
       else
-        gsres@gsFillColor = above_fill_colors(iacol)
+        gsres@gsFillColor    = above_fill_colors(iacol)
+        gsres@gsFillOpacityF = fill_opacs(iacol)
       end if
       if(ab.eq.1)
         y1 = (/yi(n+1,:)/)
         y2 = (/yi(n,:)/)
 ; Color for when first curve is > second curve
         delete(gsres@gsFillColor)    ; just in case
+        delete(gsres@gsFillOpacityF)
         if (rgbArrayB.eq.True) then
-          gsres@gsFillColor = below_fill_colors(ibcol,:)
+          gsres@gsFillColor    = below_fill_colors(ibcol,:)
+          gsres@gsFillOpacityF = fill_opacs(ibcol,:)
         else
-          gsres@gsFillColor = below_fill_colors(ibcol)
-	end if
+          gsres@gsFillColor    = below_fill_colors(ibcol)
+          gsres@gsFillOpacityF = fill_opacs(ibcol)
+        end if
       end if
 ;
 ; Get areas where y1 > y2.
@@ -3502,10 +3578,7 @@ begin
       "vpHeightF"    : vphf
       "mpLimitMode"  : limit_mode
     end getvalues
-;
-; We allow either mpLimitMode to be "LatLon" (1) or "Corners" (5)
-;
-    if(limit_mode.eq.1)
+    if(limit_mode.ne.5) then
       getvalues map
         "mpMinLonF"    : min_lon
         "mpMaxLonF"    : max_lon
@@ -3514,18 +3587,13 @@ begin
         "mpCenterLonF" : center_lon
       end getvalues
     else
-      if(limit_mode.eq.5)
-        getvalues map
-          "mpLeftCornerLonF"  : min_lon
-          "mpRightCornerLonF" : max_lon
-          "mpLeftCornerLatF"  : min_lat
-          "mpRightCornerLatF" : max_lat
-          "mpCenterLonF"      : center_lon
-        end getvalues
-      else
-        print("add_map_tickmarks: Warning: you cannot use mpLimitMode=" + limit_mode + " with the gsm_csm_map routines")
-        return 
-      end if
+      getvalues map
+        "mpLeftCornerLonF"  : min_lon
+        "mpRightCornerLonF" : max_lon
+        "mpLeftCornerLatF"  : min_lat
+        "mpRightCornerLatF" : max_lat
+        "mpCenterLonF"      : center_lon
+      end getvalues
     end if
 
 ; Create tickmark values for lat/lon labels.
@@ -4409,7 +4477,8 @@ begin
 
       fill_atts = (/"gsnXYFillColors", "gsnXYAboveFillColors", \
                     "gsnXYBelowFillColors","gsnXYLeftFillColors", \
-                    "gsnXYRightFillColors"/)
+                    "gsnXYRightFillColors","gsnXYFillOpacities", \
+                    "gsnXYFillOpacityF"/)
       if(any(isatt(res2,fill_atts))) then
 ;
 ; Make sure you collect the appropriate resources to pass
@@ -4605,10 +4674,12 @@ begin
 ;
 ; These resources allow you to control the look of the fill patterns
 ; in the bars. You can change the fill line thickness, the density of
-; the fill pattern, or the thickness of the stippled dots.
+; the fill pattern, the thickness of the stippled dots, or the opacity
+; of the bar colors.
 ;
       bar_outline_thickness = get_res_value(res2,"gsnXYBarChartOutlineThicknessF",1.0)
       bar_fill_line_thickness = get_res_value(res2,"gsnXYBarChartFillLineThicknessF",1.0)
+      bar_fill_opacity = get_res_value(res2,"gsnXYBarChartFillOpacityF",1.0)
       bar_fill_scale = get_res_value(res2,"gsnXYBarChartFillScaleF",1.0)
       bar_fill_dot_size = get_res_value(res2,"gsnXYBarChartFillDotSizeF",0.0)
     end if                  ; Done checking special resources.
@@ -5072,6 +5143,10 @@ begin
         gsres@gsEdgesOn        = True
         gsres@gsEdgeThicknessF = bar_outline_thickness
       end if
+      gsres@gsFillLineThicknessF = bar_fill_line_thickness
+      gsres@gsFillOpacityF       = bar_fill_opacity
+      gsres@gsFillScaleF         = bar_fill_scale
+      gsres@gsFillDotSizeF       = bar_fill_dot_size
       do i=0,ncurves-1 
         var_string = unique_string("polygons"+i)
 ;
@@ -5595,7 +5670,7 @@ function gsn_csm_map_ce(wks:graphic,resources:logical)
 local i, res, map_object, tickmark_object, calldraw, callframe, \
 left_string, center_string, right_string, main_zone, min_lat, max_lat, \
 min_lon, max_lon, res2, tmres, ticks_on, display_mode, rel_c_lat, rel_c_lon, \
-center_lon, center_lat
+center_lon, center_lat, lon_range, lat_range, font_height
 begin
 ; Initialize.
     main_zone     = 2         ; Zone for main title (may change later)
@@ -5666,103 +5741,11 @@ begin
     mlon_spacing = get_res_value(res2,"gsnMinorLonSpacing",0.)
     center_lon   = get_res_value_keep(res2, "mpCenterLonF",  0)
     center_lat   = get_res_value_keep(res2, "mpCenterLatF",  0)
+    center_rot   = get_res_value_keep(res2, "mpCenterRotF",  0)
     rel_c_lat    = get_res_value(res2, "mpRelativeCenterLat", False)
     rel_c_lon    = get_res_value(res2, "mpRelativeCenterLon", False)
     shape_mode   = get_res_value(res2,"mpShapeMode","FixedAspectFitBB")
     limit_mode   = get_res_value(res2,"mpLimitMode","LatLon")
-    if((typeof(limit_mode).eq."integer".and.(limit_mode.ne.1.and. \
-                                             limit_mode.ne.5)).or. \
-       (typeof(limit_mode).eq."string").and.(lower_case(limit_mode).ne. \
-                                             "latlon".and. \
-                                             lower_case(limit_mode).ne. \
-                                             "corners"))
-     print("gsn_csm_map_ce: Warning: you cannot use mpLimitMode=" + limit_mode + " with the gsm_csm_map routines.")
-     return 
-    end if
-;
-; If automatic tick marks are turned on, or if mpCenterLatF != 0
-; (rotated map), then turn off gsn_csm generated tickmarks.
-; 
-    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
-    if(display_mode.eq.1.or.display_mode.eq.2.or.center_lat.ne.0) then
-      ticks_on = get_res_value(res2,"gsnTickMarksOn",False)
-    else
-      ticks_on = get_res_value(res2,"gsnTickMarksOn",True)
-    end if
-
-;
-; If mpCenterLonF is set, but mpMinLonF/mpLeftCornerLonF and/or 
-; mpMaxLonF/mpRightCornerLonF are not, then we need to set them.
-;
-    if(lower_case(limit_mode).eq."latlon")
-      min_lon_str = "mpMinLonF"
-      max_lon_str = "mpMaxLonF"
-      min_lat_str = "mpMinLatF"
-      max_lat_str = "mpMaxLatF"
-    else
-      if(lower_case(limit_mode).eq."corners")
-        min_lon_str = "mpLeftCornerLonF"
-        max_lon_str = "mpRightCornerLonF"
-        min_lat_str = "mpLeftCornerLatF"
-        max_lat_str = "mpRightCornerLatF"
-      end if
-    end if
-    if(res2.and.isatt(res2,"mpCenterLonF").and.\
-           .not.isatt(res2,min_lon_str).and.\
-           .not.isatt(res2,max_lon_str))
-      res2@$min_lon_str$ = res2@mpCenterLonF - 180
-      res2@$max_lon_str$ = res2@mpCenterLonF + 180
-    end if
-  
-    if(res2.and.isatt(res2,"mpCenterLonF").and..not.isatt(res2,min_lon_str))
-      res2@$min_lon_str$ = res2@mpCenterLonF -  \
-                           (res2@$max_lon_str$-res2@mpCenterLonF)
-    end if
-  
-    if(res2.and.isatt(res2,"mpCenterLonF").and..not.isatt(res2,max_lon_str))
-      res2@$max_lon_str$ = res2@mpCenterLonF + \
-                         (res2@mpCenterLonF-res2@$min_lon_str$)
-    end if
-  
-    min_lon    = get_res_value(res2,min_lon_str,-180)
-    max_lon    = get_res_value(res2,max_lon_str, 180)
-    min_lat    = get_res_value(res2,min_lat_str, -90)
-    max_lat    = get_res_value(res2,max_lat_str,  90)
-
-    if(min_lon.ge.max_lon)
-      print("gsn_csm_map_ce: Fatal: The resources mpMinLonF/mpLeftCornerLonF must be less than the resources mpMaxLonF/mpRightCornerLonF.")
-      print("Execution halted.")
-      exit
-    end if
-
-    if(min_lat.ge.max_lat)
-      print("gsn_csm_map_ce: Fatal: The resources mpMinLatF/mpLeftCornerLatF must be less than the resources mpMaxLatF/mpRightCornerF.")
-      print("Execution halted.")
-      exit
-    end if
-; 
-; Determine what the default width and height should be depending
-; on shape of plot.
-;
-    lat_range = tofloat(max_lat - min_lat)
-    lon_range = tofloat(max_lon - min_lon)
-
-    ratio1 = lat_range/lon_range
-    ratio2 = lon_range/lat_range
-    ratio = min((/ratio1,ratio2/))
-
-    ratios  = (/0.50, 0.75, 1.00/)  ; lat/lon ratios
-    wharray = (/0.80, 0.70, 0.52/)  ; default widths/heights
-
-    wh_ind    = ind(ratio.le.ratios)
-    def_vpwf  = wharray(wh_ind(0))    ; default width for plot
-    def_vphf  = def_vpwf              ; default height for plot
-
-    set_attr(res2,"vpWidthF",min((/lon_range/lat_range,1./)) * def_vpwf)
-
-    set_attr(res2,"vpHeightF",min((/lat_range/lon_range,1./)) * def_vphf)
-    set_attr(res2,"vpXF",(1. - res2@vpWidthF)/2.)
-    set_attr(res2,"vpYF",1. - (1. - res2@vpHeightF)/2.)
     set_attr(res2,"mpGridAndLimbOn", False)
     set_attr(res2,"mpFillOn", True)
     set_attr(res2,"mpFillColors",(/"background","transparent","LightGray",\
@@ -5773,13 +5756,110 @@ begin
 ; then it is set back to True.
 ;
     set_attr(res2,"mpOutlineOn",.not.res2@mpFillOn)
+
+;---Convert limit_mode to string, if necessary.
+    if(typeof(limit_mode).eq."integer") then
+      limit_modes = (/"MaximalArea","LatLon","Angles","NPC","NDC",\
+                      "Corners","Points","Window"/)
+      limit_mode := lower_case(limit_modes(limit_mode))
+    else
+      limit_mode = lower_case(limit_mode)
+    end if
+;
+; If automatic tick marks are turned on, or if mpCenterLatF != 0,
+; or if mpCenterRotF != 0 (rotated map), or if limit_mode is not 
+; latlon or corners, then turn off gsn_csm generated tickmarks.
+; 
+    display_mode = get_display_mode(res2,"pmTickMarkDisplayMode","nocreate")
+    if(display_mode.eq.1.or.display_mode.eq.2.or.\
+        center_lat.ne.0.or.center_rot.ne.0.or.\
+       (limit_mode.ne."latlon".and.limit_mode.ne."corners")) then
+      ticks_on = get_res_value(res2,"gsnTickMarksOn",False)   ; Do this to remove
+      ticks_on = False                                        ; gsnTickMarksOn as an attribute
+    else
+      ticks_on = get_res_value(res2,"gsnTickMarksOn",True)
+    end if
+
+    if(limit_mode.eq."latlon".or.limit_mode.eq."corners") then
+;
+; If mpCenterLonF is set, but mpMinLonF/mpLeftCornerLonF and/or 
+; mpMaxLonF/mpRightCornerLonF are not, then we need to set them.
+;
+      if(limit_mode.eq."latlon") then
+        min_lon_str = "mpMinLonF"
+        max_lon_str = "mpMaxLonF"
+        min_lat_str = "mpMinLatF"
+        max_lat_str = "mpMaxLatF"
+      else
+        min_lon_str = "mpLeftCornerLonF"
+        max_lon_str = "mpRightCornerLonF"
+        min_lat_str = "mpLeftCornerLatF"
+        max_lat_str = "mpRightCornerLatF"
+      end if
+      if(res2.and.isatt(res2,"mpCenterLonF").and.\
+             .not.isatt(res2,min_lon_str).and.\
+             .not.isatt(res2,max_lon_str))
+        res2@$min_lon_str$ = res2@mpCenterLonF - 180
+        res2@$max_lon_str$ = res2@mpCenterLonF + 180
+      end if
+  
+      if(res2.and.isatt(res2,"mpCenterLonF").and..not.isatt(res2,min_lon_str))
+        res2@$min_lon_str$ = res2@mpCenterLonF -  \
+                             (res2@$max_lon_str$-res2@mpCenterLonF)
+      end if
+  
+      if(res2.and.isatt(res2,"mpCenterLonF").and..not.isatt(res2,max_lon_str))
+        res2@$max_lon_str$ = res2@mpCenterLonF + \
+                           (res2@mpCenterLonF-res2@$min_lon_str$)
+      end if
+  
+      min_lon    = get_res_value(res2,min_lon_str,-180)
+      max_lon    = get_res_value(res2,max_lon_str, 180)
+      min_lat    = get_res_value(res2,min_lat_str, -90)
+      max_lat    = get_res_value(res2,max_lat_str,  90)
+
+      if(min_lon.ge.max_lon)
+        print("gsn_csm_map_ce: Fatal: The resources mpMinLonF/mpLeftCornerLonF must be less than the resources mpMaxLonF/mpRightCornerLonF.")
+        print("Execution halted.")
+        exit
+      end if
+
+      if(min_lat.ge.max_lat)
+        print("gsn_csm_map_ce: Fatal: The resources mpMinLatF/mpLeftCornerLatF must be less than the resources mpMaxLatF/mpRightCornerF.")
+        print("Execution halted.")
+        exit
+      end if
+; 
+; Determine what the default width and height should be depending
+; on shape of plot.
+;
+      lat_range = tofloat(max_lat - min_lat)
+      lon_range = tofloat(max_lon - min_lon)
+
+      ratio1 = lat_range/lon_range
+      ratio2 = lon_range/lat_range
+      ratio = min((/ratio1,ratio2/))
+
+      ratios  = (/0.50, 0.75, 1.00/)  ; lat/lon ratios
+      wharray = (/0.80, 0.70, 0.52/)  ; default widths/heights
+
+      wh_ind    = ind(ratio.le.ratios)
+      def_vpwf  = wharray(wh_ind(0))    ; default width for plot
+      def_vphf  = def_vpwf              ; default height for plot
+
+      set_attr(res2,"vpWidthF",min((/lon_range/lat_range,1./)) * def_vpwf)
+
+      set_attr(res2,"vpHeightF",min((/lat_range/lon_range,1./)) * def_vphf)
+      set_attr(res2,"vpXF",(1. - res2@vpWidthF)/2.)
+      set_attr(res2,"vpYF",1. - (1. - res2@vpHeightF)/2.)
+    end if
 ;    
 ; Create the map object. We have to use this code instead of gsn_map
 ; because we want to set the size of the map.  If we set the size of the
 ; map later with setvalues, as gsn_map would do, then the size wouldn't
 ; be correct.
 ;
-    if(lower_case(limit_mode).eq."latlon")
+    if(limit_mode.eq."latlon") then
       map_object = create "map" mapPlotClass wks
         "vpXF"               : res2@vpXF
         "vpYF"               : res2@vpYF
@@ -5798,35 +5878,34 @@ begin
         "pmTitleDisplayMode" : "Always"
         "pmTitleZone"        : main_zone    ; Zone for main title
       end create
+    else if(limit_mode.eq."corners") then
+      map_object = create "map" mapPlotClass wks
+        "vpXF"                : res2@vpXF
+        "vpYF"                : res2@vpYF
+        "vpWidthF"            : res2@vpWidthF
+        "vpHeightF"           : res2@vpHeightF
+        "mpShapeMode"         : shape_mode
+        "mpLimitMode"         : limit_mode
+        "mpLeftCornerLonF"    : min_lon
+        "mpRightCornerLonF"   : max_lon
+        "mpLeftCornerLatF"    : min_lat
+        "mpRightCornerLatF"   : max_lat
+        "mpCenterLonF"        : center_lon
+        "mpCenterLatF"        : center_lat
+        "mpRelativeCenterLat" : rel_c_lat
+        "mpRelativeCenterLon" : rel_c_lon
+        "pmTitleDisplayMode"  : "Always"
+        "pmTitleZone"         : main_zone    ; Zone for main title
+      end create
     else
-      if(lower_case(limit_mode).eq."corners")
-        map_object = create "map" mapPlotClass wks
-          "vpXF"                : res2@vpXF
-          "vpYF"                : res2@vpYF
-          "vpWidthF"            : res2@vpWidthF
-          "vpHeightF"           : res2@vpHeightF
-          "mpShapeMode"         : shape_mode
-          "mpLimitMode"         : limit_mode
-          "mpLeftCornerLonF"    : min_lon
-          "mpRightCornerLonF"   : max_lon
-          "mpLeftCornerLatF"    : min_lat
-          "mpRightCornerLatF"   : max_lat
-          "mpCenterLonF"        : center_lon
-          "mpCenterLatF"        : center_lat
-          "mpRelativeCenterLat" : rel_c_lat
-          "mpRelativeCenterLon" : rel_c_lon
-          "pmTitleDisplayMode"  : "Always"
-          "pmTitleZone"         : main_zone    ; Zone for main title
-        end create
-      end if
+      map_object = create "map" mapPlotClass wks
+        "pmTickMarkDisplayMode" : display_mode
+        "pmTitleDisplayMode"    : "Always"
+        "pmTitleZone"           : main_zone    ; Zone for main title
+        "mpLimitMode"           : limit_mode
+      end create
     end if
-    delete(min_lon)
-    delete(max_lon)
-    delete(min_lat)
-    delete(max_lat)
-    delete(lon_range)
-    delete(lat_range)
-
+    end if
 ; This section tests for regular resources.
 
     tmres = get_res_eq(res2,"tm")  ; Get tickmark resources
@@ -5856,30 +5935,34 @@ begin
 
 ; Make sure axes labels (if any) are the same size.
 
-    getvalues map_object@tickmarks
-      "tmYLLabelFontHeightF"   : yfontf
-      "tmXBLabelFontHeightF"   : xfontf
-    end getvalues
+    if(isatt(map_object,"tickmarks")) then
+      getvalues map_object@tickmarks
+        "tmYLLabelFontHeightF"   : yfontf
+        "tmXBLabelFontHeightF"   : xfontf
+      end getvalues
 
-    font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
+      font_height = min((/xfontf,yfontf/))  ; Make label sizes a function of
                                           ; the size of the tickmark labels.
-    font_height = 1.25 * font_height      ; Make fonts 25% bigger.
+      font_height = 1.25 * font_height      ; Make fonts 25% bigger.
 ;
 ; Check if user setting own font heights.
 ;
-    main_font_height = get_res_value_keep(res2,"tiMainFontHeightF", \
-                                          1.3*font_height)
-    main_font = get_res_value_keep(res2,"tiMainFont","helvetica-bold")
+      main_font_height = get_res_value_keep(res2,"tiMainFontHeightF", \
+                                            1.3*font_height)
+      main_font = get_res_value_keep(res2,"tiMainFont","helvetica-bold")
 
-    setvalues map_object
-      "tiMainFontHeightF"  : main_font_height ; main title size
-      "tiMainFont"         : main_font        ; main title font
-    end setvalues
+      setvalues map_object
+        "tiMainFontHeightF"  : main_font_height ; main title size
+        "tiMainFont"         : main_font        ; main title font
+      end setvalues
+    end if
 
 ; Set up three subtitles at top, if they exist.
     subres = get_res_eq(res2,(/"tx","am"/))  ; Get textitem resources
     subres                  = True
-    set_attr(subres,"txFontHeightF",font_height)
+    if(isvar("font_height"))
+      set_attr(subres,"txFontHeightF",font_height)
+    end if
     set_attr(subres,"amOrthogonalPosF",0.05)
     add_subtitles(wks,map_object,left_string,center_string,right_string, \
                   subres)
@@ -7027,10 +7110,11 @@ begin
 ; Retrieve some font heights and make the X/Y axis labels the same
 ; size, and the info label size the same as the tick mark label size.
 
-    getvalues map_object@tickmarks
-      "tmXBLabelFontHeightF" : xbfontf
-    end getvalues
-
+    if(isatt(map_object,"tickmarks")) then
+      getvalues map_object@tickmarks
+        "tmXBLabelFontHeightF" : xbfontf
+      end getvalues
+   end if
     getvalues map_object
       "tiXAxisFontHeightF"   : xfontf
       "tiYAxisFontHeightF"   : yfontf
@@ -7051,16 +7135,18 @@ begin
 
     contour_plot = check_class_name(contour_object,"contour")
 
-    if(.not.isatt(cnres,"cnLineLabelFontHeightF"))
-      setvalues contour_plot
-        "cnLineLabelFontHeightF"    : xbfontf
-      end setvalues
-    end if
+    if(isvar("xbfontf")) then
+      if(.not.isatt(cnres,"cnLineLabelFontHeightF"))
+        setvalues contour_plot
+          "cnLineLabelFontHeightF"    : xbfontf
+        end setvalues
+      end if
 
-    if(.not.isatt(cnres,"cnInfoLabelFontHeightF"))
-      setvalues contour_plot
-        "cnInfoLabelFontHeightF"    : xbfontf
-      end setvalues
+      if(.not.isatt(cnres,"cnInfoLabelFontHeightF"))
+        setvalues contour_plot
+          "cnInfoLabelFontHeightF"    : xbfontf
+        end setvalues
+      end if
     end if
 
 ;---Create a labelbar, or fix an existing one.
@@ -11243,7 +11329,7 @@ begin
 ; of the previous  plot, outside of the tickmarks and labels.
 ;
   if(res3) then
-    res3_new = get_res_ne(res3,(/"am","xy"/))
+    res3_new = get_res_ne(res3,(/"am","xy","gsnXY"/))
   end if
   res3_new = True      ; Make sure this is True.
 
@@ -12121,6 +12207,7 @@ begin
       "trYMaxF"              : ymax
       "tiYAxisFontHeightF"   : yaxis_font_height
       "tmYLLabelFontHeightF" : yaxis_label_height
+      "tiYAxisFontColor"     : yaxis_font_color
       "tiXAxisFontHeightF"   : xfontf
       "tiYAxisFontHeightF"   : yfontf
     end getvalues
@@ -12146,6 +12233,7 @@ begin
       rightaxis_string = create "right_axis" textItemClass wks
         "txString"      : "Height (km)"
         "txFontHeightF" : yaxis_font_height
+        "txFontColor"   : yaxis_font_color
         "txAngleF"      : 90.
       end create
 
@@ -12419,6 +12507,10 @@ end
 ;                                                                       ;
 ; This function behaves like gsn_csm_pres_hgt, only it overlays a       ;
 ; vector plot as well.                                                  ;
+;                                                                       ;
+; As of NCL V6.2.0, vcMapDirection is set to False by default.          ;
+; It was discussed that this is the only vector plotting script that    ;
+; should really have the default changed.                               ;
 ;***********************************************************************;
 undef("gsn_csm_pres_hgt_vector")
 function gsn_csm_pres_hgt_vector(wks:graphic,data[*][*]:numeric, \
@@ -12444,6 +12536,7 @@ begin
   info_para = get_res_value(res2,"cnInfoLabelParallelPosF",0.)
   info_just = get_res_value(res2,"cnInfoLabelJust","TopLeft")
   refanno_on= get_res_value_keep(res2,"vcRefAnnoOn",True)
+  map_dir   = get_res_value_keep(res2,"vcMapDirection",False)
 
   if(refanno_on)
     lbar_zone = get_res_value(res2,"pmLabelBarZone",4)
@@ -12482,6 +12575,7 @@ begin
   vcres@gsnFrame        = False
   vcres@gsnRightString  = ""  ; Use gsnRightString and gsnLeftString
   vcres@gsnLeftString   = ""  ; from contour plot.
+  vcres@vcMapDirection  = map_dir
 
 ;---If pressure values are Pascals, convert them to millibars.
   if(is_valid_coord(u,"y").and.isatt(u&$u!0$,"units").and.\

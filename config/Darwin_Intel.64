@@ -15,7 +15,7 @@
  *                       You'll need to change "/usr/local/lib" to
  *                       whatever directory contains "libgfortran.so".
  */
-#define HdfDefines  -DDARWIN
+#define HdfDefines  -DDARWIN -framework OpenCL
 
 /*
  * The -D_DARWIN_C_SOURCE is to fix a bug with signal.h that affects the
@@ -29,15 +29,20 @@
 #define CppCommand '/usr/bin/cpp -traditional'
 #define CCompiler   gcc
 #define FCompiler   gfortran
-#define CcOptions      -ansi -fPIC -m64
-#define FcOptions      -fPIC  -fno-range-check  -m64
+#define CcOptions      -ansi -fPIC -m64 -fopenmp
+#define FcOptions      -fPIC  -fno-range-check  -m64 -fopenmp -framework OpenCL 
 /*
 #define CtoFLibraries  -L/sw/lib/gcc4.4/lib/x86_64 -lgfortran
+#define CtoFLibrariesUser  -L/sw/lib/gcc4.4/lib/x86_64 -lgfortran
 */
 #define CtoFLibraries -lgfortran
+#define CtoFLibrariesUser -lgfortran
 #define XToolLibrary    -lXt -lSM -lICE
 #define BuildShared NO
 #define XLibrary -lXpm -lX11 -lXext
+
+#define LibSearchUser    -L/usr/X11R6/lib
+#define IncSearchUser    -I/usr/X11R6/include
 
 #define ArchRecLibSearch    -L/usr/X11R6/lib
 #define ArchRecIncSearch    -I/usr/X11R6/include

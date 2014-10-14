@@ -1,6 +1,6 @@
 
 /*
- *      $Id: FileSupport.c 14145 2013-02-06 22:03:17Z huangwei $
+ *      $Id: FileSupport.c 15121 2014-03-12 17:49:11Z huangwei $
  */
 /************************************************************************
 *									*
@@ -38,7 +38,8 @@
 #endif
 
 #ifdef BuildHDF4
-#include <hdf/mfhdf.h>
+#include <dfi.h>
+#include <mfhdf.h>
 #endif
 
 #ifdef BuildHDFEOS5
@@ -71,7 +72,7 @@
 NclQuark _NclVerifyFile(NclQuark the_path, NclQuark pre_file_ext_q, short *use_advanced_file_structure);
 void _printNclFileVarNode(FILE *fp, NclAdvancedFile thefile, NclFileVarNode *varnode);
 
-NhlErrorTypes _NclBuildFileCoordRSelection
+NhlErrorTypes _NclBuildOriginalFileCoordRSelection
 #if	NhlNeedProto
 (struct _NclFileRec *file,NclQuark var,struct _NclRangeRec * range, struct _NclSelection* sel,int  dim_num, char * dim_name)
 #else
@@ -114,7 +115,7 @@ NhlErrorTypes _NclBuildFileCoordRSelection
 			name_md = _NclFileVarReadDim(file,var,-1,(long)dim_num);
 			if(name_md != NULL) {
 				if(name_md->multidval.type->type_class.type & Ncl_Typestring) {
-					cname = *(string*)name_md->multidval.val;
+					cname = *(NclQuark *)name_md->multidval.val;
 					_NclDestroyObj((NclObj)name_md);
 				} else {
 					return(NhlFATAL);
@@ -127,7 +128,9 @@ NhlErrorTypes _NclBuildFileCoordRSelection
 			sel->dim_num = dim_num;
 		}
 		if(_NclFileVarIsCoord(file,cname) == -1) {
-			NhlPError(NhlFATAL,NhlEUNKNOWN,"Dimension (%s) of file (%s) does not have an associated coordinate variable",NrmQuarkToString(cname),f_name);
+			NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+				"Dimension (%s) of file (%s) does not have an associated coordinate variable",
+				NrmQuarkToString(cname),f_name));
                         return(NhlFATAL);
 
 		}
@@ -310,6 +313,334 @@ NhlErrorTypes _NclBuildFileCoordRSelection
 	return(NhlNOERROR);
 }
 
+#ifdef USE_NETCDF4_FEATURES
+NhlErrorTypes _NclBuildAdvancedFileCoordRSelection(struct _NclFileRec* file,
+                                                   NclQuark var, struct _NclRangeRec* range,
+                                                   struct _NclSelection* sel,
+                                                   int dim_num, char* dim_name)
+{
+    NclAdvancedFile advfile = (NclAdvancedFile) file;
+    NclQuark cname;
+    NclMultiDValData tmp_md = NULL;
+    NclMultiDValData coord_md = NULL;
+    NclObjTypes the_type;
+
+    NclFileGrpNode *grpnode = advfile->advancedfile.grpnode;
+    NclFileVarNode *varnode;
+    NclFileDimNode *dimnode;
+
+    char* v_name;
+    char* f_name;
+    
+    int i;
+
+    NclCoordVar cvar = NULL;
+
+/*
+* Preconditions: subscripts are SCALAR and integer guarenteed!!!!
+*/
+    v_name = NrmQuarkToString(var);
+    f_name = NrmQuarkToString(advfile->advancedfile.fname);
+
+  /*
+   *fprintf(stderr, "\nEnter _NclBuildAdvancedFileCoordRSelection, file: %s, line: %d\n", __FILE__, __LINE__);
+   *fprintf(stderr, "\tf_name: <%s>, var: <%s>, dim_name: <%s>, dim_num = %d\n", 
+   *                   f_name, v_name, dim_name, dim_num);
+   */
+
+    if(range != NULL)
+    {
+        varnode = _getVarNodeFromNclFileGrpNode(grpnode, var);
+        if(dim_name != NULL)
+        {
+            cname = NrmStringToQuark(dim_name);
+
+            if(NULL != varnode)
+            {
+                for(i = 0 ; i < varnode->dim_rec->n_dims; ++i)
+                {
+                    dimnode = &(varnode->dim_rec->dim_node[i]);
+
+                    if(cname == dimnode->name)
+                    {
+                      /*
+                       *fprintf(stderr, "\tfile: %s, line: %d\n", __FILE__, __LINE__);
+                       *fprintf(stderr, "\tfound dim_name: <%s>, at i = %d\n", dim_name, i);
+                       */
+                        sel->dim_num = i;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                NhlPError(NhlFATAL,NhlEUNKNOWN,
+                         "(%s) is not a dimension name in variable (%s->%s), could not determine dimension number",
+                         dim_name,f_name,v_name);
+                return(NhlFATAL);
+            }
+        }
+        else
+        {
+            dimnode = &(varnode->dim_rec->dim_node[dim_num]);
+            cname = dimnode->name;
+            sel->dim_num = dim_num;
+        }
+
+        dimnode = _getDimNodeFromNclFileGrpNode(grpnode, cname);
+        if(NULL == dimnode)
+        {
+            NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+                      "Dimension (%s) of file (%s) does not have an associated coordinate variable",
+                       NrmQuarkToString(cname),f_name));
+            return(NhlFATAL);
+        }
+
+        sel->u.sub.is_single = range->is_single;
+        if((range->start == NULL)&&(range->finish == NULL))
+        {
+            sel->sel_type = Ncl_SUB_ALL;
+            sel->u.sub.start = 0;
+            sel->u.sub.finish = 0;
+            sel->u.sub.stride = 1;
+
+        }
+        else if(range->start == NULL)
+        {
+            sel->sel_type = Ncl_SUB_DEF_VAL;
+            sel->u.sub.start = 0;
+            sel->u.sub.stride = 1;
+        
+            cvar = (NclCoordVar)_NclFileReadCoord(file,cname,NULL);
+            coord_md = _NclVarValueRead((NclVar)cvar,NULL,NULL);
+            the_type = _NclGetVarRepValue((NclVar)cvar);
+            if(!(the_type & range->finish->multidval.type->type_class.type))
+            {
+                tmp_md = _NclCoerceData(range->finish,the_type,NULL);
+                if(tmp_md == NULL)
+                {
+                    NhlPError(NhlFATAL,NhlEUNKNOWN,
+                              "Coordinate subscript type mismatch. Subscript (%d) can not be coerced to type of coordinate variable, subscript (%d)",
+                              dim_num);
+                    return(NhlFATAL);
+                }
+                else
+                {
+                    if(range->finish->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)range->finish);
+
+                    range->finish = tmp_md;
+                }
+            }
+
+            if(_NclGetCoordRange(coord_md,NULL,range->finish->multidval.val,&sel->u.sub.start,&sel->u.sub.finish) == NhlFATAL)
+            {
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not obtain coordinate indexes, unable to perform subscript");
+                return(NhlFATAL);
+            }
+        }
+        else if(range->finish == NULL)
+        {
+            sel->sel_type = Ncl_SUB_VAL_DEF;
+            sel->u.sub.finish = 0;
+            sel->u.sub.stride = 1;
+
+            cvar = (NclCoordVar)_NclFileReadCoord(file,cname,NULL);
+            coord_md = _NclVarValueRead((NclVar)cvar,NULL,NULL);
+            the_type = _NclGetVarRepValue((NclVar)cvar);
+
+            if(!(the_type & range->start->multidval.type->type_class.type))
+            {
+                tmp_md = _NclCoerceData(range->start,the_type,NULL);
+                if(tmp_md == NULL)
+                {
+                    if(cvar->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)cvar);
+
+                    if(coord_md->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)coord_md);
+
+                    NhlPError(NhlFATAL,NhlEUNKNOWN,
+                              "Coordinate subscript type mismatch. Subscript (%d) can not be coerced to type of coordinate variable, subscript (%d)",
+                              dim_num);
+                    return(NhlFATAL);
+
+                }
+                else
+                {
+                    if(range->start->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)range->start);
+
+                    range->start= tmp_md;
+                }
+            }
+
+            if(_NclGetCoordRange(coord_md,range->start->multidval.val,NULL,&sel->u.sub.start,&sel->u.sub.finish) == NhlFATAL)
+            {
+                if(cvar->obj.status != PERMANENT)
+                    _NclDestroyObj((NclObj)cvar);
+
+                if(coord_md->obj.status != PERMANENT)
+                    _NclDestroyObj((NclObj)coord_md);
+
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not obtain coordinate indexes, unable to perform subscript (%d)",dim_num);
+                return(NhlFATAL);
+            }
+        }
+        else if(range->start == range->finish)
+        {
+            sel->sel_type = Ncl_SUBSCR;
+            cvar = (NclCoordVar)_NclFileReadCoord(file,cname,NULL);
+            coord_md = _NclVarValueRead((NclVar)cvar,NULL,NULL);
+            the_type = _NclGetVarRepValue((NclVar)cvar);
+
+            if(!(the_type & range->start->multidval.type->type_class.type))
+            {
+                tmp_md = _NclCoerceData(range->start,the_type,NULL);
+                if(tmp_md == NULL)
+                {
+                    if(cvar->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)cvar);
+
+                    if(coord_md->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)coord_md);
+
+                    NhlPError(NhlFATAL,NhlEUNKNOWN,
+                              "Coordinate subscript type mismatch. Subscript (%d) can not be coerced to type of coordinate variable, subscript (%d)",
+                               dim_num);
+                    return(NhlFATAL);
+                }
+                else
+                {
+                    if(range->start->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)range->start);
+
+                    range->finish = range->start= tmp_md;
+                }
+            }
+
+            if(_NclGetCoordRange(coord_md,range->start->multidval.val,range->finish->multidval.val,&sel->u.sub.start,&sel->u.sub.finish) == NhlFATAL)
+            {
+                if(cvar->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)cvar);
+
+                if(coord_md->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)coord_md);
+
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not obtain coordinate indexes, unable to perform subscript");
+                return(NhlFATAL);
+            }
+
+            sel->u.sub.stride = 1;
+        }
+        else
+        {
+            sel->sel_type = Ncl_SUBSCR;
+            cvar = (NclCoordVar)_NclFileReadCoord(file,cname,NULL);
+            coord_md = _NclVarValueRead((NclVar)cvar,NULL,NULL);
+            the_type = _NclGetVarRepValue((NclVar)cvar);
+
+            if(!(the_type & range->start->multidval.type->type_class.type))
+            {
+                tmp_md = _NclCoerceData(range->start,the_type,NULL);
+                if(tmp_md == NULL)
+                {
+                    if(cvar->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)cvar);
+
+                    NhlPError(NhlFATAL,NhlEUNKNOWN,
+                              "Coordinate subscript type mismatch. Subscript (%d) can not be coerced to type of coordinate variable, subscript (%d)",
+                              dim_num);
+                    return(NhlFATAL);
+                }
+                else
+                {
+                    if(range->start->obj.status != PERMANENT) {
+                        _NclDestroyObj((NclObj)range->start);
+                    }
+                    range->start= tmp_md;
+                }
+            }
+
+            tmp_md = NULL;
+            if(!(the_type & range->finish->multidval.type->type_class.type))
+            {
+                tmp_md = _NclCoerceData(range->finish,the_type,NULL);
+                if(tmp_md == NULL)
+                {
+                    if(cvar->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)cvar);
+
+                    NhlPError(NhlFATAL,NhlEUNKNOWN,
+                              "Coordinate subscript type mismatch. Subscript (%d) can not be coerced to type of coordinate variable, subscript (%d)",
+                              dim_num);
+                    return(NhlFATAL);
+                }
+                else
+                {
+                    if(range->finish->obj.status != PERMANENT)
+                        _NclDestroyObj((NclObj)range->finish);
+
+                    range->finish = tmp_md;
+                }
+            }
+
+            if(_NclGetCoordRange(coord_md,range->start->multidval.val,range->finish->multidval.val,&sel->u.sub.start,&sel->u.sub.finish) == NhlFATAL)
+            {
+                if(cvar->obj.status != PERMANENT)
+                    _NclDestroyObj((NclObj)cvar);
+
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not obtain coordinate indexes, unable to perform subscript");
+                return(NhlFATAL);
+            }
+
+            sel->u.sub.stride = 1;
+        }
+
+        if(range->stride != NULL)
+        {
+            if(!_NclScalarCoerce(range->stride->multidval.val,
+                                 range->stride->multidval.data_type,
+                                 &(sel->u.sub.stride),NCL_long))
+            {
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not coerce subscript value to long data type");
+                return(NhlFATAL);
+            }
+
+        } 
+    } 
+
+    if(cvar->obj.status != PERMANENT)
+        _NclDestroyObj((NclObj)cvar);
+
+  /*
+   *fprintf(stderr, "Leave _NclBuildAdvancedFileCoordRSelection, file: %s, line: %d\n\n", __FILE__, __LINE__);
+   */
+
+    return(NhlNOERROR);
+}
+#endif
+
+NhlErrorTypes _NclBuildFileCoordRSelection
+#if	NhlNeedProto
+(struct _NclFileRec *file,NclQuark var,struct _NclRangeRec * range, struct _NclSelection* sel,int  dim_num, char * dim_name)
+#else
+(file,var,range,sel,dim_num,dim_name)
+	struct _NclFileRec *file;
+	NclQuark var;
+	struct _NclRangeRec* range;
+	struct _NclSelection* sel;
+	int dim_num;
+	char * dim_name;
+#endif
+{
+#ifdef USE_NETCDF4_FEATURES
+    if(file->file.advanced_file_structure)
+        return _NclBuildAdvancedFileCoordRSelection(file,var,range,sel,dim_num,dim_name);
+    else
+#endif
+        return _NclBuildOriginalFileCoordRSelection(file,var,range,sel,dim_num,dim_name);
+}
 
 NhlErrorTypes  _NclBuildFileCoordVSelection
 #if	NhlNeedProto
@@ -340,15 +671,55 @@ NhlErrorTypes  _NclBuildFileCoordVSelection
 * Preconditions: subscripts are SCALAR and integer guarenteed!!!!
 */
 	v_name = NrmQuarkToString(var);
-	f_name = NrmQuarkToString(file->file.fname);
-	vindex = _NclFileIsVar(file,var);
-
 /*
 * vec is guarenteed to be one dimensional, and of an integer type
 */
 	vect_md = vec->vec;
 
 	if(vect_md != NULL) {
+#ifdef USE_NETCDF4_FEATURES
+		if(file->file.advanced_file_structure)
+		{
+			NclAdvancedFile advancedfile = (NclAdvancedFile) file;
+			NclFileVarNode *varnode;
+			int n, ndims;
+			varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
+			ndims = varnode->dim_rec->n_dims;
+			sel->dim_num = -1;
+			if(dim_name != NULL)
+			{
+				cname = NrmStringToQuark(dim_name);
+				for(n = 0; n < ndims; ++n)
+				{
+					if(cname == varnode->dim_rec->dim_node[n].name)
+					{
+						sel->dim_num = n;
+						break;
+					}
+				}
+			}
+			else
+			{
+				if((0 <= dim_num) && (dim_num < ndims))
+				{
+					sel->dim_num = dim_num;
+					cname = varnode->dim_rec->dim_node[dim_num].name;
+				}
+			}
+
+			if(0 > sel->dim_num)
+			{
+				NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+					"(%s) is not a dimension name in variable (%s->%s), could not determine dimension number",
+					dim_name,NrmQuarkToString(advancedfile->advancedfile.grpnode->path),v_name));
+				return(NhlFATAL);
+			}
+		}
+		else
+#endif
+		{
+		f_name = NrmQuarkToString(file->file.fname);
+		vindex = _NclFileIsVar(file,var);
 		if(dim_name != NULL) {
 			cname = NrmStringToQuark(dim_name);
 			index = _NclFileVarIsDim(file,var,cname);
@@ -362,7 +733,7 @@ NhlErrorTypes  _NclBuildFileCoordVSelection
 			name_md = _NclFileVarReadDim(file,var,-1,(long)dim_num);
 			if(name_md != NULL) {
 				if(name_md->multidval.type->type_class.type & Ncl_Typestring) {
-					cname = *(string*)name_md->multidval.val;
+					cname = *(NclQuark *)name_md->multidval.val;
 					_NclDestroyObj((NclObj)name_md);
 				} else {
 					return(NhlFATAL);
@@ -373,6 +744,7 @@ NhlErrorTypes  _NclBuildFileCoordVSelection
 			}
 			sel->dim_num = dim_num;
 		}
+		}
 /*
 * I don;t think there is anyway to get arround having to allocate the 
 * vector again. Since I don't want to make any assumptions about how
@@ -380,7 +752,9 @@ NhlErrorTypes  _NclBuildFileCoordVSelection
 * arround untill the actual ValueRead happens
 */
 		if(_NclFileVarIsCoord(file,cname) == -1) {
-                        NhlPError(NhlFATAL,NhlEUNKNOWN,"Dimension (%s) of file (%s) does not have an associated coordinate variable",NrmQuarkToString(cname),f_name);
+                        NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+				"Dimension (%s) of file (%s) does not have an associated coordinate variable",
+				NrmQuarkToString(cname),f_name));
                         return(NhlFATAL);
 
                 }
@@ -447,18 +821,156 @@ NhlErrorTypes  _NclBuildFileCoordVSelection
 		return(NhlFATAL);
 	}
 }
-NhlErrorTypes _NclBuildFileRSelection
-#if	NhlNeedProto
-(struct _NclFileRec *file,NclQuark var,struct _NclRangeRec * range, struct _NclSelection* sel,int  dim_num, char * dim_name)
-#else
-(file,var,range,sel,dim_num,dim_name)
-	struct _NclFileRec *file;
-	NclQuark var;
-	struct _NclRangeRec* range;
-	struct _NclSelection* sel;
-	int dim_num;
-	char * dim_name;
-#endif
+
+NhlErrorTypes _NclBuildAdvancedFileRSelection(struct _NclFileRec *file,
+                                              NclQuark var,
+                                              struct _NclRangeRec* range,
+                                              struct _NclSelection* sel,
+                                              int dim_num, char* dim_name)
+{
+    NclAdvancedFile advfile = (NclAdvancedFile) file;
+    NclFileGrpNode *grpnode = advfile->advancedfile.grpnode;
+    NclFileVarNode *varnode;
+    NclFileDimNode *dimnode;
+
+    char* v_name;
+    char* f_name;
+
+    int i;
+    
+/*
+* Preconditions: subscripts are SCALAR and integer guarenteed!!!!
+*/
+    v_name = NrmQuarkToString(var);
+    f_name = NrmQuarkToString(advfile->advancedfile.fname);
+
+  /*
+   *fprintf(stderr, "\nEnter _NclBuildAdvancedFileRSelection, file: %s, line: %d\n", __FILE__, __LINE__);
+   *fprintf(stderr, "\tf_name: <%s>, var: <%s>, dim_name: <%s>, dim_num = %d\n",
+   *                   f_name, v_name, dim_name, dim_num);
+   */
+
+    if(range != NULL)
+    {
+        if(dim_name != NULL)
+        {
+            NclQuark cname = NrmStringToQuark(dim_name);
+            varnode = _getVarNodeFromNclFileGrpNode(grpnode, var);
+
+            if(NULL != varnode)
+            {
+                for(i = 0 ; i < varnode->dim_rec->n_dims; ++i)
+                {
+                    dimnode = &(varnode->dim_rec->dim_node[i]);
+
+                    if(cname == dimnode->name)
+                    {
+                      /*
+                       *fprintf(stderr, "\tfile: %s, line: %d\n", __FILE__, __LINE__);
+                       *fprintf(stderr, "\tfound dim_name: <%s>, at i = %d\n", dim_name, i);
+                       */
+                        sel->dim_num = i;
+                        break;
+                    }
+                }
+            }
+        }
+        else
+        {
+            sel->dim_num = dim_num;
+        }
+
+        sel->u.sub.is_single = range->is_single;
+        if((range->start == NULL)&&(range->finish == NULL))
+        {
+            sel->sel_type = Ncl_SUB_ALL;
+            sel->u.sub.start = 0;
+            sel->u.sub.finish = 0;
+            sel->u.sub.stride = 1;
+
+        }
+        else if(range->start == NULL)
+        {
+            sel->sel_type = Ncl_SUB_DEF_VAL;
+            sel->u.sub.start = 0;
+
+            if(!_NclScalarCoerce(range->finish->multidval.val,
+                                 range->finish->multidval.data_type,
+                                 &(sel->u.sub.finish),NCL_long))
+            {
+/*
+* This shouldn't happen but it can't hurt to have an extra check here
+*/
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not coerce subscript value to long data type");
+                return(NhlFATAL);
+            }
+
+            sel->u.sub.stride = 1;
+
+        }
+        else if(range->finish == NULL)
+        {
+            sel->sel_type = Ncl_SUB_VAL_DEF;
+
+            if(!_NclScalarCoerce(range->start->multidval.val,
+                                 range->start->multidval.data_type,
+                                 &(sel->u.sub.start),NCL_long))
+            {
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not coerce subscript value to long data type");
+                return(NhlFATAL);
+            }
+
+            sel->u.sub.finish = 0;
+            sel->u.sub.stride = 1;
+        }
+        else
+        {
+            sel->sel_type = Ncl_SUBSCR;
+
+            if(!_NclScalarCoerce(range->start->multidval.val,
+                                 range->start->multidval.data_type,
+                                 &(sel->u.sub.start),NCL_long))
+            {
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not coerce subscript value to long data type");
+                return(NhlFATAL);
+            }
+
+            if(!_NclScalarCoerce(range->finish->multidval.val,
+                                 range->finish->multidval.data_type,
+                                 &(sel->u.sub.finish),NCL_long))
+            {
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not coerce subscript value to long data type");
+                return(NhlFATAL);
+            }
+
+            sel->u.sub.stride = 1;
+
+        }
+
+        if(range->stride != NULL)
+        {
+            if(!_NclScalarCoerce(range->stride->multidval.val,
+                                 range->stride->multidval.data_type,
+                                 &(sel->u.sub.stride),NCL_long))
+            {
+                NhlPError(NhlFATAL,NhlEUNKNOWN,"Could not coerce subscript value to long data type");
+                return(NhlFATAL);
+            }
+        } 
+    } 
+
+  /*
+   *fprintf(stderr, "Leave _NclBuildAdvancedFileRSelection, file: %s, line: %d\n\n", __FILE__, __LINE__);
+   */
+
+    return(NhlNOERROR);
+}
+
+NhlErrorTypes _NclBuildOriginalFileRSelection(struct _NclFileRec *file,
+                                              NclQuark var,
+                                              struct _NclRangeRec* range,
+                                              struct _NclSelection* sel,
+                                              int dim_num, char* dim_name)
 {
 	char * v_name;
 	char * f_name;
@@ -563,6 +1075,26 @@ NhlErrorTypes _NclBuildFileRSelection
 	return(NhlNOERROR);
 }
 
+NhlErrorTypes _NclBuildFileRSelection
+#if	NhlNeedProto
+(struct _NclFileRec *file,NclQuark var,struct _NclRangeRec * range, struct _NclSelection* sel,int  dim_num, char * dim_name)
+#else
+(file,var,range,sel,dim_num,dim_name)
+	struct _NclFileRec *file;
+	NclQuark var;
+	struct _NclRangeRec* range;
+	struct _NclSelection* sel;
+	int dim_num;
+	char * dim_name;
+#endif
+{
+#ifdef USE_NETCDF4_FEATURES
+    if(file->file.advanced_file_structure)
+        return _NclBuildAdvancedFileRSelection(file,var,range,sel,dim_num,dim_name);
+    else
+#endif
+        return _NclBuildOriginalFileRSelection(file,var,range,sel,dim_num,dim_name);
+}
 
 NhlErrorTypes  _NclBuildFileVSelection
 #if	NhlNeedProto
@@ -1826,8 +2358,8 @@ NhlErrorTypes _NclPrintAdvancedFileVarSummary(NclFile thefile, NclQuark varname)
 
 	if(NULL == varnode)
 	{
-		NHLPERROR((NhlWARNING,NhlEUNKNOWN,"%s: (%s) is not a variable in the file (%s)",
-			__PRETTY_FUNCTION__, NrmQuarkToString(varname),
+		NHLPERROR((NhlWARNING,NhlEUNKNOWN,"(%s) is not a variable in the file (%s)",
+			NrmQuarkToString(varname),
 			NrmQuarkToString(advfile->advancedfile.fname)));
 		return(NhlWARNING);	
 	}
@@ -2094,16 +2626,7 @@ int *n_lvls;
 	return (splited_group_names);
 }
 
-NclQuark *_NclGetFileGroupsList
-#if NhlNeedProto
-(NclFile thefile, NclQuark base_group_name, int depth, int *n_grps)
-#else
-(thefile, base_group_name, depth, n_grps)
-NclFile thefile; 
-NclQuark base_group_name; 
-int depth; 
-int *n_grps; 
-#endif
+NclQuark *_getFileGroupsList(NclFile thefile, NclQuark base_group_name, int depth, int *n_grps)
 {
 	int i, j;
 	NclQuark *selected_group_names = NULL;
@@ -2117,15 +2640,15 @@ int *n_grps;
 	int dif_depth = 0;
 
       /*
-       *fprintf(stdout, "\n\n\nhit _NclGetFileGroupsList. file: %s, line: %d\n", __FILE__, __LINE__);
-       *fprintf(stdout, "\tbase_group_name: <%s>\n", NrmQuarkToString(base_group_name));
-       *fprintf(stdout, "\tdepth: %d\n", depth);
-       *fprintf(stdout, "\tthefile->file.n_grps: %d\n", thefile->file.n_grps);
+       *fprintf(stderr, "\n\n\nhit _getFileGroupsList. file: %s, line: %d\n", __FILE__, __LINE__);
+       *fprintf(stderr, "\tbase_group_name: <%s>\n", NrmQuarkToString(base_group_name));
+       *fprintf(stderr, "\tdepth: %d\n", depth);
+       *fprintf(stderr, "\tthefile->file.n_grps: %d\n", thefile->file.n_grps);
        */
 
 	if(thefile->file.n_grps < 1)
 	{
-		NHLPERROR((NhlFATAL,NhlEUNKNOWN,"in _NclGetFileGroupsList"));
+		NHLPERROR((NhlFATAL,NhlEUNKNOWN,"in _getFileGroupsList"));
 		NhlPError(NhlFATAL,NhlEUNKNOWN,"getfilegroups: no groups under (%s)",
 			NrmQuarkToString(base_group_name));
 		*n_grps = 0;
@@ -2138,17 +2661,17 @@ int *n_grps;
 		max_depth = depth;
 
       /*
-       *fprintf(stdout, "\tmax_depth = %d\n", max_depth);
-       *fprintf(stdout, "\tbas_depth = %d\n", bas_depth);
+       *fprintf(stderr, "\tmax_depth = %d\n", max_depth);
+       *fprintf(stderr, "\tbas_depth = %d\n", bas_depth);
        */
 
 	selected_group_names = (NclQuark *) NclMalloc(sizeof(NclQuark) * thefile->file.n_grps);
 
       /*
-       *fprintf(stdout, "\n\n\nhit _NclGetFileGroupsList. file: %s, line: %d\n", __FILE__, __LINE__);
+       *fprintf(stderr, "\n\n\nhit _getFileGroupsList. file: %s, line: %d\n", __FILE__, __LINE__);
        *for(i = 0; i < thefile->file.n_grps; i++)
        *{
-       *	fprintf(stdout, "\tthefile->file.grp_info[%d]->grp_name_quark = <%s>\n",
+       *	fprintf(stderr, "\tthefile->file.grp_info[%d]->grp_name_quark = <%s>\n",
        *		i, NrmQuarkToString(thefile->file.grp_info[i]->grp_name_quark));
        *}
        */
@@ -2158,17 +2681,17 @@ int *n_grps;
 		need_save = 1;
 
 	      /*
-	       *fprintf(stdout, "\tthefile->file.grp_info[%d]->grp_name_quark = <%s>\n",
+	       *fprintf(stderr, "\tthefile->file.grp_info[%d]->grp_name_quark = <%s>\n",
 	       *	i, NrmQuarkToString(thefile->file.grp_info[i]->grp_name_quark));
 	       */
 
 		splited_name = _NclSplitGroupPath(thefile->file.grp_info[i]->grp_name_quark, &cur_depth);
 		dif_depth = cur_depth - bas_depth;
 	      /*
-	       *fprintf(stdout, "\tbas_depth = %d\n", bas_depth);
-	       *fprintf(stdout, "\tcur_depth = %d\n", cur_depth);
-	       *fprintf(stdout, "\tdif_depth = %d\n", dif_depth);
-	       *fprintf(stdout, "\tmax_depth = %d\n", max_depth);
+	       *fprintf(stderr, "\tbas_depth = %d\n", bas_depth);
+	       *fprintf(stderr, "\tcur_depth = %d\n", cur_depth);
+	       *fprintf(stderr, "\tdif_depth = %d\n", dif_depth);
+	       *fprintf(stderr, "\tmax_depth = %d\n", max_depth);
 	       */
 
 		if(dif_depth < 1)
@@ -2179,8 +2702,8 @@ int *n_grps;
 		for(j = 0; j < bas_depth; j++)
 		{
 	              /*
-		       *fprintf(stdout, "\tsplited_base[%d] = <%s>\n", j, NrmQuarkToString(splited_base[j]));
-		       *fprintf(stdout, "\tsplited_name[%d] = <%s>\n", j, NrmQuarkToString(splited_name[j]));
+		       *fprintf(stderr, "\tsplited_base[%d] = <%s>\n", j, NrmQuarkToString(splited_base[j]));
+		       *fprintf(stderr, "\tsplited_name[%d] = <%s>\n", j, NrmQuarkToString(splited_name[j]));
 	               */
 			if(splited_base[j] != splited_name[j])
 			{
@@ -2193,7 +2716,7 @@ int *n_grps;
 		{
 			selected_group_names[num_grps] = thefile->file.grp_info[i]->grp_name_quark;
 	              /*
-		       *fprintf(stdout, "\tselected_group_names[%d]: <%s>\n",
+		       *fprintf(stderr, "\tselected_group_names[%d]: <%s>\n",
 		       *	num_grps, NrmQuarkToString(selected_group_names[num_grps]));
 	               */
 		    num_grps++;
@@ -2202,7 +2725,7 @@ int *n_grps;
 
 	if(num_grps < 1)
 	{
-		NHLPERROR((NhlFATAL,NhlEUNKNOWN,"in _NclGetFileGroupsList"));
+		NHLPERROR((NhlFATAL,NhlEUNKNOWN,"in _getFileGroupsList"));
 		NhlPError(NhlFATAL,NhlEUNKNOWN,"getfilegroups: can not find any group under (%s)",
 			NrmQuarkToString(base_group_name));
 		NclFree(selected_group_names);
@@ -2214,28 +2737,108 @@ int *n_grps;
 		selected_group_names = (NclQuark *) NclRealloc(selected_group_names, sizeof(NclQuark) * num_grps);
 	}
       /*
-       *fprintf(stdout, "\tnum_grps = %d\n", num_grps);
+       *fprintf(stderr, "\tnum_grps = %d\n", num_grps);
        */
 	*n_grps = num_grps;
 	return (selected_group_names);	
 }
 
-NclQuark *_NclGetGroupVarsList
-#if NhlNeedProto
-(NclFile thefile, NclQuark base_group_name, int depth, int *n_vars)
-#else
-(thefile, base_group_name, depth, n_vars)
-NclFile thefile; 
-NclQuark base_group_name; 
-int depth; 
-int *n_vars; 
-#endif
+NclQuark *_getNewFileGroupsListFromGroup(NclFileGrpNode *grpnode, NclQuark base_group_name, int depth, int *n_grps)
+{
+	int i;
+	NclQuark *selected_group_names = NULL;
+	*n_grps = 0;
+
+	if((base_group_name == grpnode->name) ||
+	   (base_group_name == grpnode->real_name))
+        {
+		if(NULL == grpnode->grp_rec)
+		{
+			return (NULL);
+		}
+
+		*n_grps = grpnode->grp_rec->n_grps;
+
+		selected_group_names = (NclQuark *) NclMalloc(sizeof(NclQuark) * (*n_grps));
+
+		for(i = 0; i < (*n_grps); ++i)
+		{
+			selected_group_names[i] = grpnode->grp_rec->grp_node[i]->name;
+		}
+		return (selected_group_names);	
+	}
+	else if(NULL != grpnode->grp_rec)
+	{
+                for(i = 0; i < grpnode->grp_rec->n_grps; ++i)
+                {
+                        selected_group_names = _getNewFileGroupsListFromGroup(grpnode->grp_rec->grp_node[i],
+										base_group_name, depth, n_grps);
+			if(NULL != selected_group_names)
+				return (selected_group_names);
+                }
+	}
+	return (selected_group_names);
+}
+
+NclQuark *_getNewFileGroupsList(NclAdvancedFile thefile, NclQuark base_group_name, int depth, int *n_grps)
+{
+	int i;
+	NclQuark *selected_group_names = NULL;
+	*n_grps = 0;
+
+      /*
+       *fprintf(stderr, "\n\n\nhit _getNewFileGroupsList. file: %s, line: %d\n", __FILE__, __LINE__);
+       *fprintf(stderr, "\tbase_group_name: <%s>\n", NrmQuarkToString(base_group_name));
+       *fprintf(stderr, "\tdepth: %d\n", depth);
+       */
+
+	if((base_group_name == thefile->advancedfile.grpnode->name) ||
+	   (base_group_name == thefile->advancedfile.grpnode->real_name))
+        {
+		if(NULL == thefile->advancedfile.grpnode->grp_rec)
+		{
+			return (NULL);
+		}
+
+		*n_grps = thefile->advancedfile.grpnode->grp_rec->n_grps;
+
+		selected_group_names = (NclQuark *) NclMalloc(sizeof(NclQuark) * (*n_grps));
+
+		for(i = 0; i < (*n_grps); ++i)
+		{
+			selected_group_names[i] = thefile->advancedfile.grpnode->grp_rec->grp_node[i]->name;
+		}
+	}
+	else if(NULL != thefile->advancedfile.grpnode->grp_rec)
+	{
+                for(i = 0; i < thefile->advancedfile.grpnode->grp_rec->n_grps; ++i)
+                {
+                        selected_group_names = _getNewFileGroupsListFromGroup(thefile->advancedfile.grpnode->grp_rec->grp_node[i],
+										base_group_name, depth, n_grps);
+			if(NULL != selected_group_names)
+				return (selected_group_names);
+                }
+	}
+
+	return (selected_group_names);	
+}
+
+NclQuark *_NclGetFileGroupsList(NclFile thefile, NclQuark base_group_name, int depth, int *n_grps)
+{
+        NclAdvancedFile advancedfile = (NclAdvancedFile) thefile;
+
+	if(thefile->file.advanced_file_structure)
+                return _getNewFileGroupsList(advancedfile, base_group_name, depth, n_grps);
+        else
+                return _getFileGroupsList(thefile, base_group_name, depth, n_grps);
+}
+
+NclQuark *_getFileVarsList(NclFile thefile, NclQuark base_group_name, int depth, int *n_vars)
 {
 	int i, j;
 	NclQuark *selected_var_names = NULL;
 	NclQuark *splited_base = NULL;
 	NclQuark *splited_name = NULL;
-	NclQuark *final_names = NULL;
 	int need_save = 0;
 	int num_vars = 0;
 	int max_depth = INT_MAX;
@@ -2270,7 +2873,6 @@ int *n_vars;
        */
 
 	selected_var_names = (NclQuark *) NclMalloc(sizeof(NclQuark) * thefile->file.n_vars);
-	final_names = (NclQuark *) NclMalloc(sizeof(NclQuark) * thefile->file.n_vars);
 
       /*
        *fprintf(stdout, "\n\n\nhit _NclGetGroupVarsList. file: %s, line: %d\n", __FILE__, __LINE__);
@@ -2361,6 +2963,91 @@ int *n_vars;
 	return (selected_var_names);	
 }
 
+NclQuark *_getVarListFromGroup(NclFileGrpNode *grpnode, NclQuark base_group_name, int depth, int *n_vars)
+{
+	int i;
+	NclQuark *selected_var_names = NULL;
+	*n_vars = 0;
+
+	if((base_group_name == grpnode->name) ||
+	   (base_group_name == grpnode->real_name))
+        {
+		if(NULL == grpnode->var_rec)
+		{
+			return (NULL);
+		}
+
+		*n_vars = grpnode->var_rec->n_vars;
+
+		selected_var_names = (NclQuark *) NclMalloc(sizeof(NclQuark) * (*n_vars));
+
+		for(i = 0; i < (*n_vars); ++i)
+		{
+			selected_var_names[i] = grpnode->var_rec->var_node[i].name;
+		}
+	}
+	else if(NULL != grpnode->grp_rec)
+	{
+                for(i = 0; i < grpnode->grp_rec->n_grps; ++i)
+                {
+                        selected_var_names = _getVarListFromGroup(grpnode->grp_rec->grp_node[i],
+								base_group_name, depth, n_vars);
+			if(NULL != selected_var_names)
+				return (selected_var_names);
+                }
+	}
+
+	return (selected_var_names);
+}
+
+NclQuark *_getVarListFromFile(NclAdvancedFile thefile, NclQuark base_group_name, int depth, int *n_vars)
+{
+	int i;
+	NclQuark *selected_var_names = NULL;
+	*n_vars = 0;
+
+	if((base_group_name == thefile->advancedfile.grpnode->name) ||
+	   (base_group_name == thefile->advancedfile.grpnode->real_name))
+        {
+		if(NULL == thefile->advancedfile.grpnode->var_rec)
+		{
+			return (NULL);
+		}
+
+		*n_vars = thefile->advancedfile.grpnode->var_rec->n_vars;
+
+		selected_var_names = (NclQuark *) NclMalloc(sizeof(NclQuark) * (*n_vars));
+
+		for(i = 0; i < (*n_vars); ++i)
+		{
+			selected_var_names[i] = thefile->advancedfile.grpnode->var_rec->var_node[i].name;
+		}
+	}
+	else if(NULL != thefile->advancedfile.grpnode->grp_rec)
+	{
+                for(i = 0; i < thefile->advancedfile.grpnode->grp_rec->n_grps; ++i)
+                {
+                        selected_var_names = _getVarListFromGroup(thefile->advancedfile.grpnode->grp_rec->grp_node[i],
+									base_group_name, depth, n_vars);
+			if(NULL != selected_var_names)
+				return (selected_var_names);
+                }
+	}
+
+	return (selected_var_names);	
+}
+
+NclQuark *_NclGetGroupVarsList(NclFile thefile, NclQuark base_group_name, int depth, int *n_vars)
+{
+	if(thefile->file.advanced_file_structure)
+        {
+        	NclAdvancedFile advancedfile = (NclAdvancedFile) thefile;
+                return _getVarListFromFile(advancedfile, base_group_name, depth, n_vars);
+	}
+        else
+                return _getFileVarsList(thefile, base_group_name, depth, n_vars);
+}
+
 NclApiDataList *_NclGetFileVarInfoList2
 #if	NhlNeedProto
 (struct _NclFileRec *thefile)
@@ -2424,6 +3111,79 @@ NclApiDataList *_NclGetFileVarInfoList2
 	return thelist;
 }
 
+NclApiDataList *_NclGetFileVarInfo1(struct _NclFileRec *thefile, NclQuark file_var_name)
+{
+    NclAdvancedFile advfile = (NclAdvancedFile) thefile;
+    NclFileGrpNode *grpnode = advfile->advancedfile.grpnode;
+    NclFileVarNode *varnode;
+    NclFileDimNode *dimnode;
+    NclFileDimNode *grpdimnode;
+
+    int i,j;
+    NclApiDataList *tmp = NULL;
+
+    if(NULL == thefile)
+        return(NULL);
+
+    if(0 == thefile->file.advanced_file_structure)
+        return(NULL);
+
+    varnode = _getVarNodeFromNclFileGrpNode(grpnode, file_var_name);
+    if(NULL == varnode)
+        return(NULL);
+
+    tmp = (NclApiDataList*)NclMalloc(sizeof(NclApiDataList));
+    tmp->kind = VARIABLE_LIST;
+    tmp->u.var = (NclApiVarInfoRec*)NclMalloc(sizeof(NclApiVarInfoRec));
+    tmp->u.var->name = varnode->name;
+    tmp->u.var->data_type= varnode->type;
+    tmp->u.var->type = FILEVAR;
+
+    if(NULL != varnode->dim_rec)
+    {
+        tmp->u.var->n_dims = varnode->dim_rec->n_dims;
+        tmp->u.var->dim_info = (NclDimRec*)NclMalloc(sizeof(NclDimRec)*tmp->u.var->n_dims);
+        for(i = 0 ; i < varnode->dim_rec->n_dims; ++i)
+        {
+            dimnode = &(varnode->dim_rec->dim_node[i]);
+            tmp->u.var->dim_info[i].dim_quark = dimnode->name;
+            tmp->u.var->dim_info[i].dim_num =  dimnode->id;
+            tmp->u.var->dim_info[i].dim_size =  dimnode->size;
+
+            if(NULL != grpnode->dim_rec)
+            {
+                tmp->u.var->coordnames[i] = -1;
+                for(j = 0 ; j < grpnode->dim_rec->n_dims; ++j)
+                {
+                    grpdimnode = &(grpnode->dim_rec->dim_node[j]);
+                    if(dimnode->name == grpdimnode->name)
+                    {
+                        tmp->u.var->coordnames[j] = grpdimnode->name;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if(NULL == varnode->att_rec)
+    {
+        tmp->u.var->n_atts = 0;
+        tmp->u.var->attnames = NULL;
+    }
+    else
+    {
+        tmp->u.var->n_atts = varnode->att_rec->n_atts;
+        tmp->u.var->attnames = (NclQuark*)NclMalloc(sizeof(NclQuark)*varnode->att_rec->n_atts);
+        for(j = 0 ; j < varnode->att_rec->n_atts; ++j)
+        {
+            tmp->u.var->attnames[j]= varnode->att_rec->att_node[j].name;
+        }
+    }
+
+    tmp->next = NULL;
+    return(tmp);
+}
 
 NclApiDataList *_NclGetFileVarInfo2
 #if	NhlNeedProto
@@ -2485,6 +3245,79 @@ NclQuark file_var_name;
 		}
 	}
 	return(NULL);
+}
+
+NclApiDataList *_NclGetFileInfo1(NclFile thefile)
+{
+    NclAdvancedFile advfile = (NclAdvancedFile) thefile;
+    NclFileGrpNode *grpnode = advfile->advancedfile.grpnode;
+    NclFileVarNode *varnode;
+    NclFileDimNode *dimnode;
+    NclFileDimNode *grpdimnode;
+
+    NclApiDataList *tmp = NULL;
+    int j;
+
+    if(NULL == thefile)
+        return NULL;
+
+    tmp = (NclApiDataList*)NclMalloc(sizeof(NclApiDataList));
+    tmp->kind = FILE_LIST;
+    tmp->u.file = (NclApiFileInfoRec*)NclMalloc(sizeof(NclApiFileInfoRec));
+    tmp->u.file->name = grpnode->name;
+    tmp->u.file->path = grpnode->path;
+    tmp->u.file->wr_status = grpnode->status;
+    tmp->u.file->file_format = (int)grpnode->format;
+
+    if(NULL == grpnode->dim_rec)
+    {
+        tmp->u.file->n_dims = 0;
+        tmp->u.file->dim_info = NULL;
+    }
+    else
+    {
+        tmp->u.file->n_dims = grpnode->dim_rec->n_dims;
+        tmp->u.file->dim_info = (NclDimRec*)NclMalloc(sizeof(NclDimRec)*tmp->u.file->n_dims);
+
+        for(j = 0; j < grpnode->dim_rec->n_dims; ++j)
+        {
+            grpdimnode = &(grpnode->dim_rec->dim_node[j]);
+            tmp->u.file->dim_info[j].dim_num = j;
+            tmp->u.file->dim_info[j].dim_quark = grpdimnode->name;
+            tmp->u.file->dim_info[j].dim_size = grpdimnode->size;
+        }
+    }
+
+    tmp->u.file->n_vars = 0;
+    tmp->u.file->var_names = NULL;
+
+    if(NULL != grpnode->var_rec)
+    {
+        if(grpnode->var_rec->n_vars)
+        {
+            tmp->u.file->n_vars = grpnode->var_rec->n_vars;
+            tmp->u.file->var_names = (NclQuark*)NclMalloc(sizeof(NclQuark)*thefile->file.n_vars);
+            for(j = 0; j < grpnode->var_rec->n_vars; ++j)
+                tmp->u.file->var_names[j] = grpnode->var_rec->var_node[j].name;
+        }
+    }
+
+    tmp->u.file->n_atts = 0;
+    tmp->u.file->attnames = NULL;
+
+    if(NULL != grpnode->att_rec)
+    {
+        if(grpnode->att_rec->n_atts)
+        {
+            tmp->u.file->n_atts = grpnode->att_rec->n_atts;
+            tmp->u.file->attnames = (NclQuark*)NclMalloc(sizeof(NclQuark)*grpnode->att_rec->n_atts);
+            for(j = 0; j < grpnode->att_rec->n_atts; ++j)
+                tmp->u.file->attnames[j] = grpnode->att_rec->att_node[j].name;
+        }
+    }
+
+    tmp->next = NULL;
+    return(tmp);
 }
 
 NclApiDataList *_NclGetFileInfo2
@@ -2559,7 +3392,12 @@ struct _NclMultiDValDataRec *value;
 	NclFileClass fc = NULL;
 
 #ifdef USE_NETCDF4_FEATURES
-	if(NCLadvancedFileStructure[0] || NCLadvancedFileStructure[_NclNETCDF] || NCLadvancedFileStructure[_NclNETCDF4])
+	if(NCLadvancedFileStructure[0] ||
+	   NCLadvancedFileStructure[_NclNewHDF5] ||
+	   NCLadvancedFileStructure[_NclNewHE5] ||
+	   NCLadvancedFileStructure[_NclAdvancedOGR] ||
+	   NCLadvancedFileStructure[_NclNETCDF] ||
+	   NCLadvancedFileStructure[_NclNETCDF4])
 		fc = (NclFileClass) &nclAdvancedFileClassRec;
 	else
 #endif
@@ -2625,7 +3463,12 @@ NclQuark option;
 	int i = 5;
 
 #ifdef USE_NETCDF4_FEATURES
-	if(NCLadvancedFileStructure[0] || NCLadvancedFileStructure[_NclNETCDF] || NCLadvancedFileStructure[_NclNETCDF4])
+	if(NCLadvancedFileStructure[0] ||
+	   NCLadvancedFileStructure[_NclNewHDF5] ||
+	   NCLadvancedFileStructure[_NclNewHE5] ||
+	   NCLadvancedFileStructure[_NclAdvancedOGR] ||
+	   NCLadvancedFileStructure[_NclNETCDF] ||
+	   NCLadvancedFileStructure[_NclNETCDF4])
 		fc = (NclFileClass) &nclAdvancedFileClassRec;
 	else
 #endif
@@ -2730,7 +3573,8 @@ NclQuark _NclFindFileExt(NclQuark path, NclQuark *fname_q, NhlBoolean *is_http,
 		*fname_q = NrmStringToQuark(buffer);
 		(*end_of_name)++;
 
-	        file_ext_q = NrmStringToQuark("nc");
+        	file_ext_q = NrmStringToQuark("nc");
+
 		return file_ext_q;
 	}
 	else if(*end_of_name == NULL) {
@@ -2793,18 +3637,20 @@ NclQuark _NclVerifyFile(NclQuark the_path, NclQuark pre_file_ext_q, short *use_a
 
 	char *fext = NrmQuarkToString(pre_file_ext_q);
 
-	char *ext_list[] = {"nc"
 #ifdef BuildHDF5
-			   , "h5"
+        char *ext_list[] = {"h5"
+                          , "nc"
+#else
+        char *ext_list[] = {"nc"
 #endif
 #ifdef BuildHDFEOS5
 			   , "he5"
 #endif
-#ifdef BuildHDFEOS
-			   , "he2"
-#endif
 #ifdef BuildHDF4
 			   , "hdf"
+#endif
+#ifdef BuildHDFEOS
+			   , "he2"
 #endif
 			   };
 
@@ -2823,19 +3669,30 @@ NclQuark _NclVerifyFile(NclQuark the_path, NclQuark pre_file_ext_q, short *use_a
 #ifdef BuildGDAL
 	else if(0 == strncmp(fext, "shp", 3))
 	{
+		*use_advanced_file_structure = NCLadvancedFileStructure[_NclAdvancedOGR]
+					     + NCLadvancedFileStructure[0];
        		return file_ext_q;
 	}
 #endif
 	else if((0 == strcmp(fext, "cdf")) || (0 == strcmp(fext, "nc3")) ||
            (0 == strcmp(fext, "nc4")) || (0 == strcmp(fext, "netcdf")))
+	{
 		ori_file_ext_q = NrmStringToQuark("nc");
+		*use_advanced_file_structure = NCLadvancedFileStructure[_NclNETCDF]
+					     + NCLadvancedFileStructure[0];
+	}
 #ifdef BuildHDF4
 	else if((0 == strcmp(fext, "hd")) || (0 == strcmp(fext, "h4")))
 		ori_file_ext_q = NrmStringToQuark("hdf");
 #endif
 #ifdef BuildHDF5
 	else if(0 == strcmp(fext, "hdf5"))
+	{
+		*use_advanced_file_structure = NCLadvancedFileStructure[_NclHDF5]
+                                             + NCLadvancedFileStructure[_NclNewHDF5]
+                                             + NCLadvancedFileStructure[0];
 		ori_file_ext_q = NrmStringToQuark("h5");
+	}
 #endif
 #ifdef BuildHDFEOS
 	else if((0 == strcmp(fext, "hdfeos")) || (0 == strcmp(fext, "he")) || (0 == strcmp(fext, "he4")))
@@ -2843,7 +3700,12 @@ NclQuark _NclVerifyFile(NclQuark the_path, NclQuark pre_file_ext_q, short *use_a
 #endif
 #ifdef BuildHDFEOS5
 	else if(0 == strcmp(fext, "hdfeos5"))
+	{
 		ori_file_ext_q = NrmStringToQuark("he5");
+		*use_advanced_file_structure = NCLadvancedFileStructure[_NclHDFEOS5]
+					     + NCLadvancedFileStructure[_NclNewHE5]
+					     + NCLadvancedFileStructure[0];
+	}
 #endif
 
 	strcpy(filename, NrmQuarkToString(the_path));
@@ -2933,6 +3795,9 @@ NclQuark _NclVerifyFile(NclQuark the_path, NclQuark pre_file_ext_q, short *use_a
 			{
         			file_ext_q = cur_ext_q;
 				found = 1;
+				*use_advanced_file_structure = NCLadvancedFileStructure[_NclHDF5]
+                                             		     + NCLadvancedFileStructure[_NclNewHDF5]
+                                             		     + NCLadvancedFileStructure[0];
 				break;
 			}
 			else
@@ -2950,6 +3815,9 @@ NclQuark _NclVerifyFile(NclQuark the_path, NclQuark pre_file_ext_q, short *use_a
 
 			/*HDFEOS5 file should be first a HDF5 file.*/
 			htri_t status = H5Fis_hdf5(filename);
+
+			*use_advanced_file_structure = NCLadvancedFileStructure[_NclHDFEOS5]
+						     + NCLadvancedFileStructure[0];
 
 			if(! status)
 			{
@@ -3029,7 +3897,6 @@ NclQuark _NclVerifyFile(NclQuark the_path, NclQuark pre_file_ext_q, short *use_a
 
 	return file_ext_q;
 }
-
 
 NclFile _NclCreateFile(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
 			unsigned int obj_type_mask, NclStatus status,
@@ -3153,7 +4020,15 @@ NclFile _NclCreateFile(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
 		}
 	}
 
-#ifdef USE_NETCDF4_FEATURES
+#ifndef NIO_LIB_ONLY
+
+      /*Make h5 works for two file strucuture.
+
+       *if(NrmStringToQuark("h5") == file_ext_q)
+       *	use_advanced_file_structure = 1;
+       *Wei 06/10/2013
+       */
+
 	/*Use Advanced File Strucuture, when:
 	*1. The local use_advanced_file_structure is true.
 	*2. If run with "ncl -f flnm", or setfileoption("nc", "FileStructure", "Advanced"),
@@ -3161,20 +4036,67 @@ NclFile _NclCreateFile(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
 	*Wei 01/17/2013
 	*/
 	if(use_advanced_file_structure ||
-		((NCLadvancedFileStructure[0] || NCLadvancedFileStructure[_NclNETCDF] || NCLadvancedFileStructure[_NclNETCDF4]) &&
+		((NCLadvancedFileStructure[0] ||
+		  NCLadvancedFileStructure[_NclNETCDF] ||
+		  NCLadvancedFileStructure[_NclOGR] ||
+		  NCLadvancedFileStructure[_NclAdvancedOGR] ||
+		  NCLadvancedFileStructure[_NclHDFEOS5] ||
+		  NCLadvancedFileStructure[_NclNewHE5] ||
+		  NCLadvancedFileStructure[_NclNewHDF5] ||
+		  NCLadvancedFileStructure[_NclNETCDF4]) &&
 		((NrmStringToQuark("nc") == file_ext_q) ||
-		 (NrmStringToQuark("nc4") == file_ext_q) ||
 		 (NrmStringToQuark("nc3") == file_ext_q) ||
+		 (NrmStringToQuark("nc4") == file_ext_q) ||
 		 (NrmStringToQuark("cdf") == file_ext_q) ||
+		 (NrmStringToQuark("shp") == file_ext_q) ||
+		 (NrmStringToQuark("h5") == file_ext_q) ||
+		 (NrmStringToQuark("hdf5") == file_ext_q) ||
+		 (NrmStringToQuark("he5") == file_ext_q) ||
+		 (NrmStringToQuark("hdfeos5") == file_ext_q) ||
 		 (NrmStringToQuark("netcdf") == file_ext_q))))
 	{
 		file_out = _NclAdvancedFileCreate(inst, theclass, obj_type, obj_type_mask, status,
 				path, rw_status, file_ext_q, fname_q, is_http, end_of_name, len_path);
 	}					
 	else
-#endif
 	{
+#endif
 		file_out = _NclFileCreate(inst, theclass, obj_type, obj_type_mask, status,
+				path, rw_status, file_ext_q, fname_q, is_http, end_of_name, len_path);
+#ifndef NIO_LIB_ONLY
+	}		
+#endif			
+
+	return file_out;
+}
+
+NclAdvancedFile _NclCreateAdvancedFile(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
+			unsigned int obj_type_mask, NclStatus status,
+			NclQuark path, int rw_status)
+{
+	NclAdvancedFile file_out = NULL;
+
+	NclQuark file_ext_q = -1;
+	NclQuark fname_q;
+	NhlBoolean is_http;
+	char *end_of_name = NULL;
+	int len_path;
+
+        struct stat file_stat;
+	short use_advanced_file_structure = 0;
+
+	file_ext_q = _NclFindFileExt(path, &fname_q, &is_http, &end_of_name, &len_path, rw_status, &use_advanced_file_structure);
+
+	if((NrmStringToQuark("nc") == file_ext_q) ||
+	   (NrmStringToQuark("nc4") == file_ext_q) ||
+	   (NrmStringToQuark("nc3") == file_ext_q) ||
+	   (NrmStringToQuark("cdf") == file_ext_q) ||
+	   (NrmStringToQuark("shp") == file_ext_q) ||
+	   (NrmStringToQuark("he5") == file_ext_q) ||
+	   (NrmStringToQuark("hdfeos5") == file_ext_q) ||
+	   (NrmStringToQuark("netcdf") == file_ext_q))
+	{
+		file_out = (NclAdvancedFile) _NclAdvancedFileCreate(inst, theclass, obj_type, obj_type_mask, status,
 				path, rw_status, file_ext_q, fname_q, is_http, end_of_name, len_path);
 	}					
 
@@ -3184,16 +4106,11 @@ NclFile _NclCreateFile(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
 NhlErrorTypes _NclPrintFileSummary(NclObj self, FILE *fp)
 {
 	NclFile file = (NclFile) self;
-#ifdef USE_NETCDF4_FEATURES
+
 	if(file->file.advanced_file_structure)
-	{
 		return (_NclAdvancedFilePrintSummary(self, fp));
-	}
 	else
-#endif
-	{
 		return (_NclFilePrintSummary(self, fp));
-	}
 }
 
 NclGroup *_NclCreateGroup(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
@@ -3206,18 +4123,12 @@ NclGroup *_NclCreateGroup(NclObj inst, NclObjClass theclass, NclObjTypes obj_typ
    *fprintf(stderr, "\nEnter _NclCreateGroup, file: %s, line: %d\n", __FILE__, __LINE__);
    */
 
-#ifdef USE_NETCDF4_FEATURES
     if(file_in->file.advanced_file_structure)
-    {
         group_out = _NclAdvancedGroupCreate(inst, theclass, obj_type, obj_type_mask,
                                             status, file_in, group_name);
-    }                    
     else
-#endif
-    {
         group_out = _NclGroupCreate(inst, theclass, obj_type, obj_type_mask,
                                     status, file_in, group_name);
-    }                    
 
   /*
    *fprintf(stderr, "Leave _NclCreateGroup, file: %s, line: %d\n\n", __FILE__, __LINE__);
@@ -3332,5 +4243,568 @@ NclQuark _NclFileReadVersion(NclFile thefile)
 	}
 
 	return version;
+}
+
+void _NclInitFileClasses()
+{
+    NhlErrorTypes retcode = NhlNOERROR;
+
+    retcode = _NclInitClass(nclFileClass);
+    if(NhlNOERROR !=  retcode)
+    {
+        NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+                   "Can not initialize nclFileClass.\n"));
+        return;
+    }
+
+    retcode = _NclInitClass(nclAdvancedFileClass);
+    if(NhlNOERROR !=  retcode)
+    {
+        NHLPERROR((NhlFATAL,NhlEUNKNOWN,
+                   "Can not initialize nclAdvancedFileClass.\n"));
+        return;
+    }
+}
+
+NhlErrorTypes UpdateGridTypeAtt(NclFile thefile)
+{
+	NclQuark *vnames;
+	int n_vnames;
+	int i;
+	int vindex,att_id;
+	NrmQuark grid_type_att_name;
+	void *val;
+	NclMultiDValData tmp_md;
+
+	if (thefile->file.file_format != _NclGRIB2)
+		return NhlNOERROR;
+
+	grid_type_att_name = NrmStringToQuark("grid_type");
+	vnames = (*thefile->file.format_funcs->get_var_names)(thefile->file.private_rec,&n_vnames);
+	for(i = 0; i < n_vnames; i++){
+		vindex = _NclFileIsVar(thefile,vnames[i]);
+		if(thefile->file.var_att_ids[vindex] == -1) {
+			LoadVarAtts(thefile,vnames[i]);
+			continue;
+		}
+		att_id = thefile->file.var_att_ids[vindex];
+		if (! _NclIsAtt(att_id,NrmQuarkToString(grid_type_att_name)))
+			continue;
+
+		tmp_md = _NclGetAtt(att_id,NrmQuarkToString(grid_type_att_name),NULL);
+		(*thefile->file.format_funcs->read_var_att)(thefile->file.private_rec,vnames[i],grid_type_att_name,&val);
+
+		*((NrmQuark*)tmp_md->multidval.val) = (NrmQuark)val;
+		_NclAddAtt(att_id,NrmQuarkToString(grid_type_att_name),tmp_md,NULL);
+	}
+	NclFree((void*)vnames);
+	return NhlNOERROR;
+}
+
+/*
+ * Updates the dimension info
+ */
+
+NhlErrorTypes UpdateDims(NclFile thefile)
+{
+	NclQuark *name_list;
+	int n_names;
+	int i;
+	int index;
+
+	name_list = (*thefile->file.format_funcs->get_dim_names)(thefile->file.private_rec,&n_names);
+	thefile->file.n_file_dims = n_names;
+	for(i = 0; i < n_names; i++){
+		if (thefile->file.file_dim_info[i])
+			NclFree(thefile->file.file_dim_info[i]);
+		thefile->file.file_dim_info[i] = (thefile->file.format_funcs->get_dim_info)
+			(thefile->file.private_rec,name_list[i]);
+		index = _NclFileIsVar(thefile,name_list[i]);
+		if(index > -1 && thefile->file.var_info[index]->num_dimensions == 1) {
+			thefile->file.coord_vars[i] = thefile->file.var_info[index];
+		}
+	}
+	NclFree((void*)name_list);
+	return NhlNOERROR;
+}
+
+NclFileOption file_options[] = {
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 2, NULL },  /* NetCDF PreFill */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 2, NULL },  /* NetCDF define mode */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, UpdateGridTypeAtt },  /* GRIB thinned grid interpolation method */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 2, NULL },  /* NetCDF header reserve space */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* NetCDF suppress close option */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 3, NULL },  /* NetCDF file format option */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* Binary file read byte order */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* Binary file write byte order */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, UpdateDims },   /* GRIB initial time coordinate type */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* NetCDF missing to fill value option */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 2, NULL },         /* NetCDF 4 shuffle */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 2, NULL },         /* NetCDF 4 compression option level */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },         /* NetCDF 4 cache switch */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 3200000, NULL },   /* NetCDF 4 cache size */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 1009, NULL },      /* NetCDF 4 cache nelems */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0.50, NULL },      /* NetCDF 4 cache preemption */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB default NCEP parameter table */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB print record info */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB single element dimensions */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },  /* GRIB time period suffix */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },   /* advanced file-structure */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 4, NULL },  /* Fortran binary file record marker size */
+	{ NrmNULLQUARK, NrmNULLQUARK, NULL, NULL, NULL, 0, NULL },   /* GRIB cache size */
+};
+
+NhlErrorTypes InitializeFileOptions(NclFileOption *options)
+{
+	logical *lval;
+	NclQuark *sval;
+	float *fval;
+	int *ival;
+	ng_size_t len_dims;
+	NhlErrorTypes ret = NhlNOERROR;
+	
+	
+	/* option names are case insensitive and so are string-type 
+	 * option values
+	 */
+
+	/* NetCDF option PreFill */
+	options[Ncl_PREFILL].format = NrmStringToQuark("nc");
+	options[Ncl_PREFILL].name = NrmStringToQuark("prefill");
+	len_dims = 1;
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_PREFILL].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_PREFILL].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	options[Ncl_PREFILL].valid_values = NULL;
+
+	/* NetCDF option DefineMode */
+	options[Ncl_DEFINE_MODE].format = NrmStringToQuark("nc");
+	options[Ncl_DEFINE_MODE].name = NrmStringToQuark("definemode");
+	len_dims = 1;
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_DEFINE_MODE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_DEFINE_MODE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	options[Ncl_DEFINE_MODE].valid_values = NULL;
+	
+	/* GRIB option ThinnedGridInterpolation */
+
+	options[Ncl_THINNED_GRID_INTERPOLATION].format = NrmStringToQuark("grb");
+	options[Ncl_THINNED_GRID_INTERPOLATION].name = NrmStringToQuark("thinnedgridinterpolation");
+	len_dims = 1;
+	sval = (NclQuark *) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("cubic");
+	options[Ncl_THINNED_GRID_INTERPOLATION].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark *) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("cubic");
+	options[Ncl_THINNED_GRID_INTERPOLATION].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(2 * sizeof(NclQuark));
+	sval[0] = NrmStringToQuark("linear");
+	sval[1] = NrmStringToQuark("cubic");
+	len_dims = 2;
+	options[Ncl_THINNED_GRID_INTERPOLATION].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+
+	/* NetCDF option HeaderReserveSpace */
+	options[Ncl_HEADER_RESERVE_SPACE].format = NrmStringToQuark("nc");
+	options[Ncl_HEADER_RESERVE_SPACE].name = NrmStringToQuark("headerreservespace");
+	len_dims = 1;
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 0;
+	options[Ncl_HEADER_RESERVE_SPACE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 0;
+	options[Ncl_HEADER_RESERVE_SPACE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	options[Ncl_HEADER_RESERVE_SPACE].valid_values = NULL;
+
+	/* NetCDF option SuppressClose */
+	options[Ncl_SUPPRESS_CLOSE].format = NrmStringToQuark("nc");
+	options[Ncl_SUPPRESS_CLOSE].name = NrmStringToQuark("suppressclose");
+	len_dims = 1;
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_SUPPRESS_CLOSE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_SUPPRESS_CLOSE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	options[Ncl_SUPPRESS_CLOSE].valid_values = NULL;
+
+
+	/* NetCDF option Format */
+
+	options[Ncl_FORMAT].format = NrmStringToQuark("nc");
+	options[Ncl_FORMAT].name = NrmStringToQuark("format");
+	len_dims = 1;
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("classic");
+	options[Ncl_FORMAT].value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("classic");
+	options[Ncl_FORMAT].def_value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	len_dims = 5;
+	sval = (NclQuark*) NclMalloc(len_dims * sizeof(NclQuark));
+	sval[0] = NrmStringToQuark("classic");
+	sval[1] = NrmStringToQuark("64bitoffset");
+	sval[2] = NrmStringToQuark("largefile");
+	sval[3] = NrmStringToQuark("netcdf4classic");
+	sval[4] = NrmStringToQuark("netcdf4");
+
+	options[Ncl_FORMAT].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+
+	/* Binary option ReadByteOrder */
+
+	options[Ncl_READ_BYTE_ORDER].format = NrmStringToQuark("bin");
+	options[Ncl_READ_BYTE_ORDER].name = NrmStringToQuark("readbyteorder");
+	len_dims = 1;
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("native");
+	options[Ncl_READ_BYTE_ORDER].value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("native");
+	options[Ncl_READ_BYTE_ORDER].def_value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(3 * sizeof(NclQuark));
+	sval[0] = NrmStringToQuark("native");
+	sval[1] = NrmStringToQuark("bigendian");
+	sval[2] = NrmStringToQuark("littleendian");
+	len_dims = 3;
+	options[Ncl_READ_BYTE_ORDER].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+
+	/* Binary option WriteByteOrder */
+
+	options[Ncl_WRITE_BYTE_ORDER].format = NrmStringToQuark("bin");
+	options[Ncl_WRITE_BYTE_ORDER].name = NrmStringToQuark("writebyteorder");
+	len_dims = 1;
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("native");
+	options[Ncl_WRITE_BYTE_ORDER].value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("native");
+	options[Ncl_WRITE_BYTE_ORDER].def_value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(3 * sizeof(NclQuark));
+	sval[0] = NrmStringToQuark("native");
+	sval[1] = NrmStringToQuark("bigendian");
+	sval[2] = NrmStringToQuark("littleendian");
+	len_dims = 3;
+	options[Ncl_WRITE_BYTE_ORDER].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+
+
+	/* Grib option NumericIniitialTimeCoordinates */
+	options[Ncl_INITIAL_TIME_COORDINATE_TYPE].format = NrmStringToQuark("grb");
+	options[Ncl_INITIAL_TIME_COORDINATE_TYPE].name = NrmStringToQuark("initialtimecoordinatetype");
+	len_dims = 1;
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("numeric");
+	options[Ncl_INITIAL_TIME_COORDINATE_TYPE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("numeric");
+	options[Ncl_INITIAL_TIME_COORDINATE_TYPE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(2 * sizeof(NclQuark));
+	sval[0] = NrmStringToQuark("string");
+	sval[1] = NrmStringToQuark("numeric");
+	len_dims = 2;
+	options[Ncl_INITIAL_TIME_COORDINATE_TYPE].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+
+	/* NetCDF option MissingToFillValue */
+	options[Ncl_MISSING_TO_FILL_VALUE].format = NrmStringToQuark("nc");
+	options[Ncl_MISSING_TO_FILL_VALUE].name = NrmStringToQuark("missingtofillvalue");
+	len_dims = 1;
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_MISSING_TO_FILL_VALUE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_MISSING_TO_FILL_VALUE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	options[Ncl_MISSING_TO_FILL_VALUE].valid_values = NULL;
+
+	/*suffle*/
+	options[Ncl_SHUFFLE].format = NrmStringToQuark("nc");
+	options[Ncl_SHUFFLE].name = NrmStringToQuark("shuffle");
+	len_dims = 1;
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 1;
+	options[Ncl_SHUFFLE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 1;
+	options[Ncl_SHUFFLE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	options[Ncl_SHUFFLE].valid_values = NULL;
+
+	/*compression level */
+	options[Ncl_COMPRESSION_LEVEL].format = NrmStringToQuark("nc");
+	options[Ncl_COMPRESSION_LEVEL].name = NrmStringToQuark("compressionlevel");
+	len_dims = 1;
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 0;
+	options[Ncl_COMPRESSION_LEVEL].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 0;
+	options[Ncl_COMPRESSION_LEVEL].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	options[Ncl_COMPRESSION_LEVEL].valid_values = NULL;
+
+	/*use cache */
+	options[Ncl_USE_CACHE].format = NrmStringToQuark("nc");
+	options[Ncl_USE_CACHE].name = NrmStringToQuark("cachepreemption");
+	len_dims = 1;
+	fval = (float *) NclMalloc(sizeof(float));
+	*fval = 0.50;
+	options[Ncl_USE_CACHE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0.50,(void *)fval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypefloatClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 0;
+	options[Ncl_USE_CACHE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	options[Ncl_USE_CACHE].valid_values = NULL;
+
+	/*cache size */
+	options[Ncl_CACHE_SIZE].format = NrmStringToQuark("nc");
+	options[Ncl_CACHE_SIZE].name = NrmStringToQuark("cachesize");
+	len_dims = 1;
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 3*1024*1025;
+	options[Ncl_CACHE_SIZE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 3*1024*1025;
+	options[Ncl_CACHE_SIZE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	options[Ncl_CACHE_SIZE].valid_values = NULL;
+
+	/*cache nelems */
+	options[Ncl_CACHE_NELEMS].format = NrmStringToQuark("nc");
+	options[Ncl_CACHE_NELEMS].name = NrmStringToQuark("cachenelems");
+	len_dims = 1;
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 1009;
+	options[Ncl_CACHE_NELEMS].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 1009;
+	options[Ncl_CACHE_NELEMS].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	options[Ncl_CACHE_NELEMS].valid_values = NULL;
+
+	/*cache preemption */
+	options[Ncl_CACHE_PREEMPTION].format = NrmStringToQuark("nc");
+	options[Ncl_CACHE_PREEMPTION].name = NrmStringToQuark("cachepreemption");
+	len_dims = 1;
+	fval = (float *) NclMalloc(sizeof(float));
+	*fval = 0.50;
+	options[Ncl_CACHE_PREEMPTION].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0.50,(void *)fval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypefloatClass);
+	fval = (float*) NclMalloc(sizeof(float));
+	*fval = 0.50;
+	options[Ncl_CACHE_PREEMPTION].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0.50,(void *)fval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypefloatClass);
+	options[Ncl_CACHE_PREEMPTION].valid_values = NULL;
+
+	/* Grib option Default_NCEP_Ptable */
+	options[Ncl_DEFAULT_NCEP_PTABLE].format = NrmStringToQuark("grb");
+	options[Ncl_DEFAULT_NCEP_PTABLE].name = NrmStringToQuark("defaultncepptable");
+	len_dims = 1;
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("operational");
+	options[Ncl_DEFAULT_NCEP_PTABLE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("operational");
+	options[Ncl_DEFAULT_NCEP_PTABLE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(2 * sizeof(NclQuark));
+	sval[0] = NrmStringToQuark("operational");
+	sval[1] = NrmStringToQuark("reanalysis");
+	len_dims = 2;
+	options[Ncl_DEFAULT_NCEP_PTABLE].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+
+
+	/* GRIB (2) option PrintRecordInfo */
+	options[Ncl_PRINT_RECORD_INFO].format = NrmStringToQuark("grb");
+	options[Ncl_PRINT_RECORD_INFO].name = NrmStringToQuark("printrecordinfo");
+	len_dims = 1;
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = False;
+	options[Ncl_PRINT_RECORD_INFO].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = False;
+	options[Ncl_PRINT_RECORD_INFO].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	options[Ncl_PRINT_RECORD_INFO].valid_values = NULL;
+
+	/* Grib option Single element dimensions */
+	options[Ncl_SINGLE_ELEMENT_DIMENSIONS].format = NrmStringToQuark("grb");
+	options[Ncl_SINGLE_ELEMENT_DIMENSIONS].name = NrmStringToQuark("singleelementdimensions");
+	len_dims = 1;
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("none");
+	options[Ncl_SINGLE_ELEMENT_DIMENSIONS].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(sizeof(NclQuark));
+	*sval = NrmStringToQuark("none");
+	options[Ncl_SINGLE_ELEMENT_DIMENSIONS].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	sval = (NclQuark*) NclMalloc(7 * sizeof(NclQuark));
+	sval[0] = NrmStringToQuark("none");
+	sval[1] = NrmStringToQuark("all");
+	sval[2] = NrmStringToQuark("ensemble");
+	sval[3] = NrmStringToQuark("initial_time");
+	sval[4] = NrmStringToQuark("forecast_time");
+	sval[5] = NrmStringToQuark("level");
+	sval[6] = NrmStringToQuark("probability");
+	len_dims = 7;
+	options[Ncl_SINGLE_ELEMENT_DIMENSIONS].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+
+	/* GRIB option TimePeriodSuffix */
+
+	options[Ncl_TIME_PERIOD_SUFFIX].format = NrmStringToQuark("grb");
+	options[Ncl_TIME_PERIOD_SUFFIX].name = NrmStringToQuark("timeperiodsuffix");
+	len_dims = 1;
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_TIME_PERIOD_SUFFIX].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	lval = (logical*) NclMalloc(sizeof(logical));
+	*lval = True;
+	options[Ncl_TIME_PERIOD_SUFFIX].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)lval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypelogicalClass);
+	options[Ncl_TIME_PERIOD_SUFFIX].valid_values = NULL;
+
+	/* advanced file-structure */
+
+	options[Ncl_ADVANCED_FILE_STRUCTURE].format = NrmStringToQuark("all");
+	options[Ncl_ADVANCED_FILE_STRUCTURE].name = NrmStringToQuark("filestructure");
+        len_dims = 1;
+        sval = (NrmQuark*) NclMalloc(sizeof(NrmQuark));
+	if(NCLadvancedFileStructure[0])
+        	*sval = NrmStringToQuark("advanced");
+	else
+        	*sval = NrmStringToQuark("standard");
+	options[Ncl_ADVANCED_FILE_STRUCTURE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+        sval = (NrmQuark*) NclMalloc(sizeof(NrmQuark));
+	if(NCLadvancedFileStructure[0])
+        	*sval = NrmStringToQuark("advanced");
+	else
+        	*sval = NrmStringToQuark("standard");
+	options[Ncl_ADVANCED_FILE_STRUCTURE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)sval,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypestringClass);
+	options[Ncl_ADVANCED_FILE_STRUCTURE].valid_values = NULL;
+
+	/* Binary option RecordMarkerSize */
+
+	options[Ncl_RECORD_MARKER_SIZE].format = NrmStringToQuark("bin");
+	options[Ncl_RECORD_MARKER_SIZE].name = NrmStringToQuark("recordmarkersize");
+
+	len_dims = 1;
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 4;
+	options[Ncl_RECORD_MARKER_SIZE].value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 4;
+	options[Ncl_RECORD_MARKER_SIZE].def_value = _NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+						    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(2 * sizeof(int));
+	ival[0] = 4;
+	ival[1] = 8;
+	len_dims = 2;
+	options[Ncl_RECORD_MARKER_SIZE].valid_values = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+
+	/*cache size */
+	options[Ncl_GRIB_CACHE_SIZE].format = NrmStringToQuark("grb");
+	options[Ncl_GRIB_CACHE_SIZE].name = NrmStringToQuark("cachesize");
+	len_dims = 1;
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 0;
+	options[Ncl_GRIB_CACHE_SIZE].value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	ival = (int*) NclMalloc(sizeof(int));
+	*ival = 0;
+	options[Ncl_GRIB_CACHE_SIZE].def_value = 
+		_NclCreateMultiDVal(NULL,NULL,Ncl_MultiDValData,0,(void *)ival,
+				    NULL,1,&len_dims,PERMANENT,NULL,(NclTypeClass)nclTypeintClass);
+	options[Ncl_GRIB_CACHE_SIZE].valid_values = NULL;
+	/* End of options */
+
+	return ret;
 }
 

@@ -1,5 +1,5 @@
 /*
- *      $Id: NclType.h 12092 2011-02-09 22:36:30Z haley $
+ *      $Id: NclType.h 14204 2013-03-14 14:18:36Z huangwei $
  */
 /************************************************************************
 *									*
@@ -144,7 +144,7 @@ typedef struct _NclTypeClassPart {
 	NclTypeOutType		sel_lt_type;
 	NclTypeOp		sel_gt;
 	NclTypeOutType		sel_gt_type;
-	NclTypeOp		not;
+	NclTypeOp		ncl_not;
 	NclTypeOutType		not_type;
 	NclTypeOp		neg;
 	NclTypeOutType		neg_type;
@@ -160,11 +160,11 @@ typedef struct _NclTypeClassPart {
 	NclTypeOutType		ne_type;
 	NclTypeOp		eq;
 	NclTypeOutType		eq_type;
-	NclTypeOp		and;
+	NclTypeOp		ncl_and;
 	NclTypeOutType		and_type;
-	NclTypeOp		or;
+	NclTypeOp		ncl_or;
 	NclTypeOutType		or_type;
-	NclTypeOp		xor;
+	NclTypeOp		ncl_xor;
 	NclTypeOutType		xor_type;
 	NclNumScalarCompareFunc	cmpf;
 	NclTypeMonotonicTestFunction	is_mono;

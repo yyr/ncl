@@ -266,6 +266,24 @@ NhlErrorTypes _NhlCtmesh(
 #endif
 );
 
+/* modified version used to improve threading performance */
+NhlErrorTypes _NhlHLUCtmesh(
+#if	NhlNeedProto
+	float		*rpnt,
+	int		npnt,
+	int		lopn,
+	int             *iedg,
+	int             nedg,
+	int             loen,
+	int             *itri,
+	int             ntri,
+	int             lotn,
+	NhlWorkspace	*flt_ws,
+	NhlWorkspace	*int_ws,
+	char		*entry_name
+#endif
+);
+
 NhlErrorTypes _NhlCtcldr(
 #if	NhlNeedProto
 	float		*rpnt,
@@ -305,6 +323,10 @@ NhlErrorTypes _NhlCtlbdr(
 #endif
 );
 
+/* 
+  fill_op: 0 : RasterFill,  1 : MeshFill,  2 : RasterFill - no GCA, 3 GCA only
+*/
+
 NhlErrorTypes _NhlCtcica(
 #if	NhlNeedProto
 	float		*rpnt,
@@ -322,7 +344,8 @@ NhlErrorTypes _NhlCtcica(
 	float		ycqf,
 	float		min_cell_size,
 	NhlBoolean	smooth,
-	NhlBoolean      use_mesh_fill,
+	int             fill_op,
+	void            *info,
 	char		*entry_name
 #endif
 );

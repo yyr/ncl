@@ -24,8 +24,8 @@
  *			etc are in the Template file.
  */
 
-#define NcargVersion 6.1.2
-#define NclVersion 6.1.2
+#define NcargVersion 6.2.0
+#define NclVersion 6.2.0
 
 #ifndef	BuildNCL
 #define	BuildNCL
@@ -61,19 +61,12 @@
 
 #ifndef	BuildHDFEOS
 #define	BuildHDFEOS
+#define	BuildHDF	/* If defined HDFEOS, then we need HDF4 as well */
 #else
 #if	!BuildHDFEOS
 #undef	BuildHDFEOS
 #endif
 #endif	/* BuildHDFEOS */
-
-#ifndef	BuildHDFEOS5
-#define	BuildHDFEOS5
-#else
-#if	!BuildHDFEOS5
-#undef	BuildHDFEOS5
-#endif
-#endif	/* BuildHDFEOS5 */
 
 #ifndef BuildHDF5
 #define BuildHDF5
@@ -82,6 +75,15 @@
 #undef  BuildHDF5
 #endif
 #endif  /* BuildHDF5 */
+
+#ifndef	BuildHDFEOS5
+#define	BuildHDFEOS5
+#define BuildHDF5	/* If defined HDFEOS5, then we need HDF5 as well */
+#else
+#if	!BuildHDFEOS5
+#undef	BuildHDFEOS5
+#endif
+#endif	/* BuildHDFEOS5 */
 
 #ifndef	BuildGRIB2
 #define	BuildGRIB2
@@ -109,7 +111,27 @@
 
 #ifndef    BuildV5D
 #undef BuildV5D
+#else
+#if     !BuildV5D
+#undef  BuildV5D
+#endif
 #endif /* BuildV5D */
+
+#ifndef BuildOpenCL
+#undef BuildOpenCL
+#else
+#if     !BuildOpenCL
+#undef  BuildOpenCL
+#endif
+#endif  /* BuildOpenCL */
+
+#ifndef BuildQtEnabled
+#undef BuildQtEnabled
+#else
+#if     !BuildQtEnabled
+#undef  BuildQtEnabled
+#endif
+#endif  /* BuildQtEnabled */
 
 /* No longer build the old PNG driver since we have the new cairo one. */
 #if !BuildPNG
@@ -211,10 +233,6 @@
 #endif
 #endif	/* BuildSunViewctrans */
 
-#ifndef	HDFlib
-#define	HDFlib	-lmfhdf -ldf -ljpeg -lz
-#endif	/* HDFlib */
-
 #ifndef	PNGlib
 #define	PNGlib	-lpng -lz
 #endif	/* PNGlib */
@@ -223,21 +241,46 @@
 #define CAIROlib -lcairo -lfontconfig -lpixman-1 -lfreetype -lexpat -lpng -lz -lpthread -lbz2 -lXrender
 #endif
 
+/* This should be same as CAIROlib except with no explicit paths */
+#ifndef CAIROlibuser
+#define CAIROlibuser  -lcairo -lfontconfig -lpixman-1 -lfreetype -lexpat -lpng -lz -liconv -lXrender -lbz2
+#endif
+
+#ifdef	BuildHDFEOS
 #ifndef	HDFEOSlib
 #define	HDFEOSlib   -lhdfeos -lGctp
 #endif	/* HDFEOSlib */
+#else
+#define	HDFEOSlib
+#endif
 
+#ifdef	BuildHDFEOS5
 #ifndef	HDFEOS5lib
 #define	HDFEOS5lib   -lhe5_hdfeos -lGctp
 #endif	/* HDFEOS5lib */
+#else
+#define	HDFEOS5lib
+#endif
 
+#ifdef	BuildHDF4
+#ifndef	HDFlib
+#define	HDFlib	-lmfhdf -ldf -ljpeg -lz
+#endif	/* HDFlib */
+#else
+#define	HDFlib
+#endif
+
+#ifdef BuildHDF5
 #ifndef	HDF5lib
 #define	HDF5lib	-lhdf5_hl -lhdf5 -lsz -lz
 #endif	/* HDF5lib */
+#else
+#define	HDF5lib
+#endif
 
 #ifdef BuildGDAL
 #ifndef	GDALlib
-#define	GDALlib   -lgdal -lproj
+#define	GDALlib   -lgdal -lproj -ljpeg
 #endif
 #else
 #define GDALlib
@@ -252,7 +295,7 @@
 #endif
 
 #ifndef	GRIB2lib
-#define       GRIB2lib   -lgrib2c -ljasper -lpng -lz
+#define       GRIB2lib   -lgrib2c -ljasper -lpng -lz -ljpeg
 #endif	/* GRIB2lib */
 
 #ifndef	NetCDFlib
@@ -268,9 +311,17 @@
 #define	UdUnitslib	-ludunits2 -lexpat
 #endif	/* UdUnitslib */
 
+#ifdef BuildV5D
 #ifndef    V5Dlib
 #define    V5Dlib  -lv5d
 #endif /* V5Dlib */
+#endif
+
+#ifdef BuildOpenCL
+#ifndef	OpenCLlib
+#define	OpenCLlib -framework OpenCL
+#endif	/* OpenCLlib */
+#endif
 
 #ifndef	XdrLibrary
 #define	XdrLibrary	/**/
@@ -606,6 +657,7 @@ NETCDFLIB	=
 NCDFLIBS	= NetCDFlib
 PNGLIB		= PNGlib
 CAIROLIB	= CAIROlib
+CAIROLIBUSER	= CAIROlibuser
 HDFLIB		= HDFlib
 NETCDF4LIB      = NetCDF4lib
 HDFEOSLIB	= HDFEOSlib
@@ -615,6 +667,7 @@ GDALLIB		= GDALlib
 GRIB2LIB	= GRIB2lib
 UDUNITSLIB	= UdUnitslib
 V5DLIB      	= V5Dlib
+OpenCLLIB	= OpenCLlib
 GRIDSPECLIB     = GRIDSPEClib
 XDRLIB		= XdrLibrary
 HDFDEFINES	= HdfDefines

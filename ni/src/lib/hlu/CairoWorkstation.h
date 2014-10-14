@@ -1,5 +1,5 @@
 /*
- *      $Id: CairoWorkstation.h,v 1.6 2010-03-16 20:31:29 brownrig Exp $
+ *      $Id: CairoWorkstation.h 15126 2014-03-14 20:41:42Z brownrig $
  */
 
 #ifndef    _NCarioWorkstation_h
@@ -39,6 +39,8 @@
 #define    NhlNwkIconTitle  "wkIconTitle"
 #define    NhlCwkIconTitle  "WkIconTitle"
 
+#define    NhlNwkCairoFillWorkaround "wkCairoFillWorkaround"
+#define    NhlCwkCairoFillWorkaround "WKCairoFillWorkaround"
 /*
  * See: Workstation.h for common, shared resources for visual type,
  * orientation, background, device upper/lower coordinates, and
@@ -53,16 +55,19 @@
 #define    NhlTCairoFormat   "CairoFormat"
 
 typedef enum _NhlCairoFormat {
-    NhlCPS = 0,
-    NhlCPNG = 1,
-    NhlCPDF = 2,
+    NhlCPS   = 0,
+    NhlCPNG  = 1,
+    NhlCPDF  = 2,
     NhlCTIFF = 3,
-    NhlCX11 = 4,
-    NhlCEPS = 5        
+    NhlCX11  = 4,
+    NhlCEPS  = 5,
+    NhlCQT   = 6,
+    NhlCSVG  = 7        
 } NhlCairoFormat;
 
 extern NhlClass NhlcairoDocumentWorkstationClass;
 extern NhlClass NhlcairoImageWorkstationClass;
 extern NhlClass NhlcairoWindowWorkstationClass;
+extern NhlClass NhlcairoQtWorkstationClass;
 
 #endif /* _NCairoWorkstation_h */

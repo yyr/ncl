@@ -133,7 +133,7 @@ struct  _NclSelectionRecord * /*sel_ptr*/
 extern struct _NclMultiDValDataRec *_NclReadAtt(
 #if     NhlNeedProto
 struct _NclVarRec * /*self*/,
-char    *       /*attname*/,
+const char *        /*attname*/,
 struct  _NclSelectionRecord * /*sel_ptr*/
 #endif
 );
@@ -259,6 +259,10 @@ extern NhlErrorTypes _PrintListVarSummary(
 NclObj self, FILE *fp
 #endif
 );
+
+NhlErrorTypes _NclReplaceAtt(struct _NclVarRec *self, char* attname,
+                             struct _NclMultiDValDataRec *value,
+                             struct _NclSelectionRecord *sel_ptr);
 
 #endif /* _VarSupport_h */
 

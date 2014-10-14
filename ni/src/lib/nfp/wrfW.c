@@ -101,10 +101,41 @@ extern void NGCALLF(dcalcuh,DCALCUH)(int *, int *, int *, int *, double *,
                                      double *, double *, double *, double *,
                                      double *, double *, double *);
 
-extern void NGCALLF(plotgrids_var,PLOTGRIDS_VAR)(char *fname, float *plotvar,
-                                                 float *pmsg, int);
+extern void NGCALLF(plotgrids_var,PLOTGRIDS_VAR)(char *fname, float *plotvar, int);
+
+extern void NGCALLF(plotfmt_open,PLOTFMT_OPEN)(char *cfilename, int *istatus,
+                                               int);
+
+extern void NGCALLF(plotfmt_close,PLOTFMT_CLOSE)();
+
+extern void NGCALLF(plotfmt_rdhead,PLOTFMT_RDHEAD)(int *istatus,
+                                                   float *rhead,
+                                                   char *cfield, 
+                                                   char *chdate,
+                                                   char *cunits,
+                                                   char *cmapsc,
+                                                   char *cdesc,
+                                                   int,int,int,int,int);
+
+extern void NGCALLF(plotfmt_rddata,PLOTFMT_RDDATA)(int *istatus,
+                                                   int *nx, int *ny,
+                                                   float *slab);
+
+extern void NGCALLF(wetbulbcalc,WETBULBCALC)(double *prs,double *tmk, 
+                                             double *qvp, double *twb,
+                                             int *nx, int *ny,int *nz,
+					     char *,int);
+
+extern void NGCALLF(omgcalc,OMGCALC)(double *qvp, double *tmk, double *www,
+                                     double *prs, double *omg, 
+                                     int *mx,int *my, int *mz);
+
+extern void NGCALLF(virtual_temp,VIRTUAL_TEMP)(double *temp,double *ratmix,
+                                               double *tv,int *,int *,int *);
 
 extern NclDimRec *get_wrf_dim_info(int,int,int,ng_size_t*);
+
+extern char *get_psa_file();
 
 extern void var_zero(double *, ng_size_t);
 
@@ -1592,7 +1623,7 @@ NhlErrorTypes wrf_interp_3d_z_W( void )
   NclAttList  *attr_list;
   NclAtt  attr_obj;
   NclStackEntry   stack_entry;
-  string *description, *units;
+  NrmQuark *description, *units;
   char *cdesc = NULL;
   char *cunits = NULL;
   logical found_desc = False, found_units = False;
@@ -1717,12 +1748,12 @@ NhlErrorTypes wrf_interp_3d_z_W( void )
  */
       while (attr_list != NULL) {
         if ((strcmp(attr_list->attname, "description")) == 0) {
-          description = (string *) attr_list->attvalue->multidval.val;
+          description = (NrmQuark *) attr_list->attvalue->multidval.val;
           cdesc       = NrmQuarkToString(*description);
           found_desc  = True;
         }
         if ((strcmp(attr_list->attname, "units")) == 0) {
-          units  = (string *) attr_list->attvalue->multidval.val;
+          units  = (NrmQuark *) attr_list->attvalue->multidval.val;
           cunits = NrmQuarkToString(*units);
           found_units  = True;
         }
@@ -2039,7 +2070,7 @@ NhlErrorTypes wrf_interp_2d_xy_W( void )
   NclAttList  *attr_list;
   NclAtt  attr_obj;
   NclStackEntry   stack_entry;
-  string *description, *units;
+  NrmQuark *description, *units;
   char *cdesc = NULL;
   char *cunits = NULL;
   logical found_desc = False, found_units = False;
@@ -2191,12 +2222,12 @@ NhlErrorTypes wrf_interp_2d_xy_W( void )
  */
       while (attr_list != NULL) {
         if ((strcmp(attr_list->attname, "description")) == 0) {
-          description = (string *) attr_list->attvalue->multidval.val;
+          description = (NrmQuark *) attr_list->attvalue->multidval.val;
           cdesc       = NrmQuarkToString(*description);
           found_desc  = True;
         }
         if ((strcmp(attr_list->attname, "units")) == 0) {
-          units  = (string *) attr_list->attvalue->multidval.val;
+          units  = (NrmQuark *) attr_list->attvalue->multidval.val;
           cunits = NrmQuarkToString(*units);
           found_units  = True;
         }
@@ -2450,7 +2481,7 @@ NhlErrorTypes wrf_interp_1d_W( void )
   NclAttList  *attr_list;
   NclAtt  attr_obj;
   NclStackEntry   stack_entry;
-  string *description, *units;
+  NrmQuark *description, *units;
   char *cdesc = NULL;
   char *cunits = NULL;
   logical found_desc = False, found_units = False;
@@ -2584,12 +2615,12 @@ NhlErrorTypes wrf_interp_1d_W( void )
  */
       while (attr_list != NULL) {
         if ((strcmp(attr_list->attname, "description")) == 0) {
-          description = (string *) attr_list->attvalue->multidval.val;
+          description = (NrmQuark *) attr_list->attvalue->multidval.val;
           cdesc       = NrmQuarkToString(*description);
           found_desc  = True;
         }
         if ((strcmp(attr_list->attname, "units")) == 0) {
-          units  = (string *) attr_list->attvalue->multidval.val;
+          units  = (NrmQuark *) attr_list->attvalue->multidval.val;
           cunits = NrmQuarkToString(*units);
           found_units  = True;
         }
@@ -6853,7 +6884,6 @@ NhlErrorTypes wrf_updraft_helicity_W( void )
   NclQuark *description, *units;
   char *cdescription, *cunits;
 
-
 /*
  * Various
  */
@@ -8807,11 +8837,6 @@ NhlErrorTypes wrf_cape_3d_W( void )
   int ndims_cape;
   NclScalar missing_cape;
   ng_size_t *dsizes_cape;
-/*
- * File input variables.
- */
-  const char *path = NULL;
-  char psa_file[_NhlMAXFNAMELEN];
 
 /*
  * Variable for getting/setting dimension name info.
@@ -8841,28 +8866,7 @@ NhlErrorTypes wrf_cape_3d_W( void )
   int iter;
   logical flip;
   int imiy, imjx, imkzh;
-
-/*
- * The default is to use $NCARG_ROOT/lib/ncarg/data/asc/psadilookup.dat
- * for the input data file, unless PSADILOOKUP_PATH is set by the
- * user, then it will try to use this path. 
- */
-  path = getenv("PSADILOOKUP_PATH");
-  if ((void *)path == (void *)NULL) {
-    path = _NGGetNCARGEnv("data");
-    if ((void *)path != (void *)NULL) {
-      strcpy(psa_file,path);
-      strcat(psa_file,_NhlPATHDELIMITER);
-      strcat(psa_file,"asc");
-      strcat(psa_file,_NhlPATHDELIMITER);
-      strcat(psa_file,"psadilookup.dat");
-    }
-  }
-  else {
-    strcpy(psa_file,path);
-    strcat(psa_file,_NhlPATHDELIMITER);
-    strcat(psa_file,"psadilookup.dat");
-  }
+  char *psa_file;
 
 /*
  * Retrieve parameters
@@ -9199,6 +9203,11 @@ NhlErrorTypes wrf_cape_3d_W( void )
   }
 
 /*
+ * Get path to psadilookup.dat file required by this routine. 
+ */
+  psa_file = get_psa_file();
+
+/*
  * Loop through time,nz and call the Fortran routine.
  */ 
   index_cape = index_zsfc = 0;
@@ -9339,6 +9348,7 @@ NhlErrorTypes wrf_cape_3d_W( void )
     NclFree(tmp_cape);
     NclFree(tmp_cin);
   }
+  NclFree(psa_file);
 
 /*
  * Get dimension info to see if we have named dimensions.
@@ -9457,11 +9467,6 @@ NhlErrorTypes wrf_cape_2d_W( void )
   int ndims_cape = 0;
   NclScalar missing_cape;
   ng_size_t *dsizes_cape;
-/*
- * File input variables.
- */
-  const char *path = NULL;
-  char psa_file[_NhlMAXFNAMELEN];
 
 /*
  * Variable for getting/setting dimension name info.
@@ -9490,33 +9495,9 @@ NhlErrorTypes wrf_cape_2d_W( void )
   ng_size_t index_cape, index_zsfc;
   ng_size_t index_output_cape, index_output_cin, index_output_lcl;
   ng_size_t index_output_lfc, mkzh0_index, mkzh1_index, mkzh2_index;
-  int imiy, imjx, imkzh;
-
-  int i3dflag=0;
-  int iter;
+  int imiy, imjx, imkzh, iter, i3dflag=0;
+  char *psa_file;
   logical flip;
-
-/*
- * The default is to use $NCARG_ROOT/lib/ncarg/data/asc/psadilookup.dat
- * for the input data file, unless PSADILOOKUP_PATH is set by the
- * user, then it will try to use this path. 
- */
-  path = getenv("PSADILOOKUP_PATH");
-  if ((void *)path == (void *)NULL) {
-    path = _NGGetNCARGEnv("data");
-    if ((void *)path != (void *)NULL) {
-      strcpy(psa_file,path);
-      strcat(psa_file,_NhlPATHDELIMITER);
-      strcat(psa_file,"asc");
-      strcat(psa_file,_NhlPATHDELIMITER);
-      strcat(psa_file,"psadilookup.dat");
-    }
-  }
-  else {
-    strcpy(psa_file,path);
-    strcat(psa_file,_NhlPATHDELIMITER);
-    strcat(psa_file,"psadilookup.dat");
-  }
 
 /*
  * Retrieve parameters
@@ -9866,6 +9847,11 @@ NhlErrorTypes wrf_cape_2d_W( void )
     tmp_z = tmp_z_orig;
   }
 /*
+ * Get path to psadilookup.dat file required by this routine. 
+ */
+  psa_file = get_psa_file();
+
+/*
  * Loop through time,nz and call the Fortran routine.
  */ 
   index_cape        = index_zsfc = 0;
@@ -10013,6 +9999,7 @@ NhlErrorTypes wrf_cape_2d_W( void )
     NclFree(tmp_q);
     NclFree(tmp_z);
   }
+  NclFree(psa_file);
 
 /*
  * Get dimension info to see if we have named dimensions.
@@ -10539,6 +10526,768 @@ NhlErrorTypes wrf_eth_W( void )
 }
 
 /*
+ * The wrf_wps_xxx_int functions that follow are for reading
+ * WRF WPS intermediate files.  You can use wrf_wps_read_int
+ * as an "all-in-one" function that creates one 3D variable
+ * with all the data and attributes attached, or you can 
+ * use the three individual functions, wrf_wps_open_int, 
+ * wrf_wps_rdhead_int, and wrf_wps_rddata_int that allows you
+ * to read the data in one 2D slab at a time.
+ */
+
+/*
+ * This function simply opens the WRF/WPS intermediate file
+ * and returns a status.
+ */
+NhlErrorTypes wrf_wps_open_int_W( void )
+{
+
+/*
+ * Argument # 0
+ */
+  NrmQuark *filename;
+  char *cfilename;
+/*
+ * Return variable
+ */
+  int *istatus;
+
+/*
+ * Various
+ */
+  int ret, ndims;
+  ng_size_t dsizes[1];
+
+/*
+ * Get argument # 0
+ */
+  filename = (NrmQuark *)NclGetArgValue(
+           0,
+           1,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+/*
+ * Convert to character string.
+ */
+  cfilename = NrmQuarkToString(*filename);
+
+/* 
+ * Allocate space for output array.
+ */
+  ndims     = 1;
+  dsizes[0] = 1;
+
+
+/*  
+ * Allocate return integer
+ */
+  istatus = (int*)calloc(1, sizeof(int));
+/*
+ * Call the Fortran routine.
+ */
+  NGCALLF(plotfmt_open,PLOTFMT_open)(cfilename, istatus,
+                                     strlen(cfilename));
+  if(*istatus != 0) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_open_int: The input file '%s' could not be opened.\nCheck that it exists and is spelled correctly",cfilename);
+    return(NhlFATAL);
+  }
+/*
+ * Return value back to NCL script.
+ */
+  ret = NclReturnValue(istatus,ndims,dsizes,NULL,NCL_int,0);
+  return(ret);
+}
+
+
+/*
+ * This function takes an open WRF/WPS intermediate file,
+ * and reads header information. This header information
+ * then gives you the info needed to read the slab via
+ * wrf_wps_rddata_int.
+ */
+NhlErrorTypes wrf_wps_rdhead_int_W( void )
+{
+
+/*
+ * Argument # 0
+ */
+  int *istatus;
+
+/*
+ * Argument # 1
+ */
+  void *head;
+  float *rhead;
+  NclBasicDataTypes type_head;
+  ng_size_t dsizes_head[1];
+
+/*
+ * Argument # 2
+ */
+  NrmQuark *field;
+  char *cfield;
+  int FIELD_LEN=9;
+/*
+ * Argument # 3
+ */
+  NrmQuark *hdate;
+  char *chdate;
+  int HDATE_LEN=24;
+
+/*
+ * Argument # 4
+ */
+  NrmQuark *units;
+  char *cunits;
+  int UNITS_LEN=25;
+
+/*
+ * Argument # 5
+ */
+  NrmQuark *mapsc;
+  char *cmapsc;
+  int MAPSC_LEN=32;
+
+/*
+ * Argument # 6
+ */
+  NrmQuark *desc;
+  char *cdesc;
+  int DESC_LEN=46;
+
+/*
+ * Various
+ */
+  int i;
+
+/*
+ * Get argument #0
+ */
+  istatus = (int *)NclGetArgValue(
+           0,
+           7,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+
+/*
+ * Get arguments # 1-6
+ */
+  head = (void *)NclGetArgValue(
+           1,
+           7,
+           NULL,
+           dsizes_head,
+           NULL,
+           NULL,
+           &type_head,
+           DONT_CARE);
+
+  rhead = coerce_input_float(head, type_head, dsizes_head[0], 0, 
+                             NULL, NULL);
+
+  field = (NrmQuark *)NclGetArgValue(
+           2,
+           7,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+  hdate = (NrmQuark *)NclGetArgValue(
+           3,
+           7,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+  units = (NrmQuark *)NclGetArgValue(
+           4,
+           7,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+  mapsc = (NrmQuark *)NclGetArgValue(
+           5,
+           7,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+  desc = (NrmQuark *)NclGetArgValue(
+           6,
+           7,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+
+/*
+ * Allocate space needed for each string
+ */
+  cfield = (char *)malloc((FIELD_LEN+1)*sizeof(char));
+  chdate = (char *)malloc((HDATE_LEN+1)*sizeof(char));
+  cunits = (char *)malloc((UNITS_LEN+1)*sizeof(char));
+  cmapsc = (char *)malloc((MAPSC_LEN+1)*sizeof(char));
+  cdesc  = (char *)malloc((DESC_LEN+1)*sizeof(char));
+/*
+ * Call the Fortran routine.
+ */
+  NGCALLF(plotfmt_rdhead,PLOTFMT_RDHEAD)(istatus,rhead,cfield,chdate,
+                                         cunits,cmapsc,cdesc,
+                                         FIELD_LEN,HDATE_LEN,
+                                         UNITS_LEN,MAPSC_LEN,
+                                         DESC_LEN);
+
+/*
+ * Strip off potential white space at end of each string.
+ */
+  i = FIELD_LEN-1;
+  while(i >=0 && (cfield[i] == ' ' || cfield[i] == '\t')) i--;
+  cfield[i+1] = '\0';
+
+  i = HDATE_LEN-1;
+  while(i >= 0 && (chdate[i] == ' ' || chdate[i] == '\t')) i--;
+  chdate[i+1] = '\0';
+
+  i = UNITS_LEN-1;
+  while( i >= 0 && (cunits[i] == ' ' || cunits[i] == '\t')) i--;
+  cunits[i+1] = '\0';
+
+  i = MAPSC_LEN-1;
+  while( i >= 0 && (cmapsc[i] == ' ' || cmapsc[i] == '\t')) i--;
+  cmapsc[i+1] = '\0';
+
+  i = DESC_LEN-1;
+  while( i >= 0 && (cdesc[i] == ' ' || cdesc[i] == '\t')) i--;
+  cdesc[i+1] = '\0';
+
+  *field = NrmStringToQuark(cfield);
+  *hdate = NrmStringToQuark(chdate);
+  *units = NrmStringToQuark(cunits);
+  *mapsc = NrmStringToQuark(cmapsc);
+  *desc  = NrmStringToQuark(cdesc);
+
+  return(NhlNOERROR);
+}
+
+/*
+ * This function takes an open WRF/WPS intermediate file,
+ * and reads a 2D slab. 
+ */
+NhlErrorTypes wrf_wps_rddata_int_W( void )
+{
+
+/*
+ * Argument # 0
+ */
+  int *istatus;
+
+/*
+ * Arguments #1-2
+ */
+  void *tmp_nx, *tmp_ny;
+  ng_size_t *nx, *ny;
+  NclBasicDataTypes type_nx, type_ny;
+  int inx, iny;
+
+/*
+ * Return
+ */
+  float *slab;
+  ng_size_t dsizes[2];
+  int ret;
+
+/*
+ * Get argument #0
+ */
+  istatus = (int *)NclGetArgValue(
+           0,
+           3,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+
+/*
+ * Get arguments #1-2
+ */
+  tmp_nx = (void *)NclGetArgValue(
+           1,
+           3,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           &type_nx,
+           DONT_CARE);
+
+  tmp_ny = (void *)NclGetArgValue(
+           2,
+           3,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           &type_ny,
+           DONT_CARE);
+
+/*
+ * Convert the input dimensions to ng_size_t.
+ */
+  nx = get_dimensions(tmp_nx,1,type_nx,"wrf_wps_rddata_int");
+  ny = get_dimensions(tmp_ny,1,type_ny,"wrf_wps_rddata_int");
+  if(nx == NULL || ny == NULL) 
+    return(NhlFATAL);
+
+  if((*nx > INT_MAX) || (*ny > INT_MAX)) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_rddata_int: nx and/or ny is greater than INT_MAX");
+    return(NhlFATAL);
+  }
+  inx = (int) *nx;
+  iny = (int) *ny;
+
+  slab = (float*)calloc(inx*iny,sizeof(float));
+  if(slab == NULL) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_rddata_int: Unable to allocate memory for output array");
+    return(NhlFATAL);
+  }
+
+/*
+ * Call the Fortran routine.
+ */
+  NGCALLF(plotfmt_rddata,PLOTFMT_RDDATA)(istatus,&inx,&iny,slab);
+
+/*
+ * Return value back to NCL script.
+ */
+  dsizes[0] = *ny;
+  dsizes[1] = *nx;
+  ret = NclReturnValue(slab,2,dsizes,NULL,NCL_float,0);
+  return(ret);
+}
+
+
+/*
+ * This function is a "3-in-1" function that does the
+ * work of wrf_wps_open_int, wrf_wps_rdhead_int, and 
+ * wrf_wps_rddata_int. It returns a 3D float array 
+ * that contains all the necessary data and attributes.
+ * 
+ */
+NhlErrorTypes wrf_wps_read_int_W( void )
+{
+
+/*
+ * Argument # 0
+ */
+  NrmQuark *filename;
+  char *cfilename;
+
+/*
+ * Return values.  The slab will be returned, along with a bunch
+ * of attributes depending on the projection.
+ */
+  int NHEAD=14, FIELD_LEN=9, HDATE_LEN=24, UNITS_LEN=25;
+  int MAPSC_LEN=32, DESCR_LEN=46;
+  float *slab, *rhead, *slab_s;
+  float rhead_s[NHEAD];
+  ng_size_t dsizes_slab[3], dsizes_rhead[2], dsizes_field[1], dsizes_hdate[1];
+  ng_size_t dsizes_units[1], dsizes_mapsc[1], dsizes_descr[1];
+  NrmQuark *field, *hdate, *units, *mapsc, *descr;
+  char *cfield, *chdate, *cunits, *cmapsc, *cdescr;
+  NclScalar missing_slab;
+/*
+ * Various 
+ */
+  int i, j, n, istatus, nx, ny, nxny, max_nx, max_ny, nfields;
+  int index_slab, index_rhead; 
+
+/*
+ * Attribute variables
+ */
+  int att_id;
+  NclMultiDValData att_md, return_md;
+  NclVar tmp_var;
+  NclStackEntry return_data;
+
+
+/*
+ * Get argument #0
+ */
+  filename = (NrmQuark *)NclGetArgValue(
+           0,
+           1,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           NULL,
+           DONT_CARE);
+
+/*
+ * Convert to character string.
+ */
+  cfilename = NrmQuarkToString(*filename);
+
+/*
+ * Call the Fortran routine to open the file
+ */
+  NGCALLF(plotfmt_open,PLOTFMT_open)(cfilename, &istatus,
+                                     strlen(cfilename));
+  if(istatus != 0) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_read_int: The input file '%s' could not be opened.\nCheck that it exists and is spelled correctly",cfilename);
+    return(NhlFATAL);
+  }
+
+  cfield = (char *)malloc((FIELD_LEN+1)*sizeof(char));
+  chdate = (char *)malloc((HDATE_LEN+1)*sizeof(char));
+  cunits = (char *)malloc((UNITS_LEN+1)*sizeof(char));
+  cmapsc = (char *)malloc((MAPSC_LEN+1)*sizeof(char));
+  cdescr = (char *)malloc((DESCR_LEN+1)*sizeof(char));
+
+/*
+ *  Read each field so we can count how many there are.
+ */
+  nfields = 0;
+  while (istatus == 0) {
+    /* Read the header */
+
+    NGCALLF(plotfmt_rdhead,PLOTFMT_RDHEAD)(&istatus,&rhead_s[0],cfield,
+                                           chdate,cunits,cmapsc,cdescr,
+                                           FIELD_LEN,HDATE_LEN,
+                                           UNITS_LEN,MAPSC_LEN,
+                                           DESCR_LEN);
+
+    if(istatus == 0) {
+      nx = (int)rhead_s[3];
+      ny = (int)rhead_s[4];
+      slab_s = (float*)calloc(nx*ny,sizeof(float));
+      if(slab_s == NULL) {
+        NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_read_int: Unable to allocate memory for output array");
+        return(NhlFATAL);
+      }
+      if(nfields == 0) {
+        max_nx = nx;
+        max_ny = ny;
+      }
+      else {
+        max_nx = max(max_nx,nx);
+        max_ny = max(max_ny,ny);
+      }
+    /* Read the data */
+      NGCALLF(plotfmt_rddata,PLOTFMT_RDDATA)(&istatus,&nx,&ny,slab_s);
+      NclFree(slab_s);
+      if(istatus == 0) nfields++; 
+    }
+  }
+  nxny = max_nx * max_ny;
+
+  /* Allocate the return arrays */
+  rhead  = (float*)calloc(nfields*NHEAD,sizeof(float));
+  slab   = (float*)calloc(nfields*nxny,sizeof(float));
+  field  = (NclQuark*)NclMalloc(nfields*sizeof(NclQuark));
+  hdate  = (NclQuark*)NclMalloc(nfields*sizeof(NclQuark));
+  units  = (NclQuark*)NclMalloc(nfields*sizeof(NclQuark));
+  mapsc  = (NclQuark*)NclMalloc(nfields*sizeof(NclQuark));
+  descr  = (NclQuark*)NclMalloc(nfields*sizeof(NclQuark));
+
+  if(rhead == NULL || slab == NULL || field == NULL || hdate == NULL ||
+     units == NULL || mapsc == NULL || descr == NULL) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_read_int: Unable to allocate memory for output array and attributes");
+    return(NhlFATAL);
+  }
+
+  /* Close and reopen file. */
+  NGCALLF(plotfmt_close,PLOTFMT_CLOSE)();
+  NGCALLF(plotfmt_open,PLOTFMT_open)(cfilename, &istatus,
+                                     strlen(cfilename));
+
+  missing_slab.floatval = -1e30;
+  index_slab = index_rhead = 0;
+
+  /* Now loop through again and fill up the output arrays */
+
+  for(n = 0; n < nfields; n++) {
+
+    /* Read the header into allocated arrays */
+    NGCALLF(plotfmt_rdhead,PLOTFMT_RDHEAD)(&istatus,&rhead[index_rhead],
+                                           cfield,chdate,cunits,
+                                           cmapsc,cdescr,
+                                           FIELD_LEN,HDATE_LEN,
+                                           UNITS_LEN,MAPSC_LEN,
+                                           DESCR_LEN);
+/*
+ * Strip off potential white space at end of each string.
+ */
+    i = FIELD_LEN-1;
+    while(i >=0 && (cfield[i] == ' ' || 
+                    cfield[i] == '\t')) i--;
+    cfield[i+1] = '\0';
+    
+    i = HDATE_LEN-1;
+    while(i >= 0 && (chdate[i] == ' ' || 
+                     chdate[i] == '\t')) i--;
+    chdate[i+1] = '\0';
+    
+    i = UNITS_LEN-1;
+    while( i >= 0 && (cunits[i] == ' ' || 
+                      cunits[i] == '\t')) i--;
+    cunits[i+1] = '\0';
+    
+    i = MAPSC_LEN-1;
+    while( i >= 0 && (cmapsc[i] == ' ' || 
+                      cmapsc[i] == '\t')) i--;
+    cmapsc[i+1] = '\0';
+    
+    i = DESCR_LEN-1;
+    while( i >= 0 && (cdescr[i] == ' ' || 
+                      cdescr[i] == '\t')) i--;
+    cdescr[i+1] = '\0';
+    
+    field[n] = NrmStringToQuark(cfield);
+    hdate[n] = NrmStringToQuark(chdate);
+    units[n] = NrmStringToQuark(cunits);
+    mapsc[n] = NrmStringToQuark(cmapsc);
+    descr[n] = NrmStringToQuark(cdescr);
+
+/*
+ * We have to get nx and ny every time in the loop, because they 
+ * can be different sizes.
+ */
+    nx = (int)rhead[index_rhead+3];
+    ny = (int)rhead[index_rhead+4];
+    slab_s = (float*)calloc(nx*ny,sizeof(float));
+    if(slab_s == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_read_int: Unable to allocate memory for output array");
+      return(NhlFATAL);
+    }
+    /* Read data into temporary array */
+    NGCALLF(plotfmt_rddata,PLOTFMT_RDDATA)(&istatus,&nx,&ny,&slab_s[0]);
+
+    /* Copy slab subset back out to big slab array */
+    for(i = 0; i < ny; i++) {
+      for(j = 0; j < nx; j++) {
+        slab[index_slab+(i*max_nx)+j] = slab_s[(i*nx)+j];
+      }
+    /* Fill rest with missing values */
+      for(j = nx; j < max_nx; j++) {
+        slab[index_slab+(i*max_nx)+j] = missing_slab.floatval;
+      }
+    }
+
+    /* For next time through loop */
+    index_slab  += nxny;
+    index_rhead += NHEAD;
+  }
+
+  free(slab_s);
+  free(cfield);
+  free(chdate);
+  free(cunits);
+  free(cmapsc);
+  free(cdescr);
+
+/*
+ * Return slab and attributes back to NCL script.
+ */
+  dsizes_slab[0]  = nfields;
+  dsizes_slab[1]  = max_ny;
+  dsizes_slab[2]  = max_nx;
+  dsizes_rhead[0] = nfields;
+  dsizes_rhead[1] = NHEAD;
+  dsizes_field[0] = nfields;
+  dsizes_hdate[0] = nfields;
+  dsizes_units[0] = nfields;
+  dsizes_mapsc[0] = nfields;
+  dsizes_descr[0] = nfields;
+
+  return_md = _NclCreateVal(
+                            NULL,
+                            NULL,
+                            Ncl_MultiDValData,
+                            0,
+                            (void*)slab,
+                            &missing_slab,
+                            3,
+                            dsizes_slab,
+                            TEMPORARY,
+                            NULL,
+                            nclTypefloatClass
+                            );
+/*
+ * Set up attributes to return.
+ */
+  att_id = _NclAttCreate(NULL,NULL,Ncl_Att,0,NULL);
+
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)field,
+                         NULL,
+                         1,
+                         dsizes_field,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "field",
+             att_md,
+             NULL
+             );
+    
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)hdate,
+                         NULL,
+                         1,
+                         dsizes_hdate,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "hdate",
+             att_md,
+             NULL
+             );
+    
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)units,
+                         NULL,
+                         1,
+                         dsizes_units,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "units",
+             att_md,
+             NULL
+             );
+    
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)mapsc,
+                         NULL,
+                         1,
+                         dsizes_mapsc,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "map_source",
+             att_md,
+             NULL
+             );
+    
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)descr,
+                         NULL,
+                         1,
+                         dsizes_descr,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "description",
+             att_md,
+             NULL
+             );
+    
+
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)rhead,
+                         NULL,
+                         2,
+                         dsizes_rhead,
+                         TEMPORARY,
+                         NULL,
+                         nclTypefloatClass
+                         );
+
+  _NclAddAtt(
+             att_id,
+             "rhead",
+             att_md,
+             NULL
+             );
+
+  tmp_var = _NclVarCreate(
+                          NULL,
+                          NULL,
+                          Ncl_Var,
+                          0,
+                          NULL,
+                          return_md,
+                          NULL,
+                          att_id,
+                          NULL,
+                          RETURNVAR,
+                          NULL,
+                          TEMPORARY
+                          );
+
+/*
+ * Return output grid and attributes to NCL.
+ */
+  return_data.kind = NclStk_VAR;
+  return_data.u.data_var = tmp_var;
+  _NclPlaceReturn(return_data);
+
+  return(NhlNOERROR);
+}
+
+
+/*
  * This next section contains wrappers for wrf_bint and wrf_iclw.
  * These wrappers have never been tested or documented, and are
  * not registered in wrapper.c. I've let them here in case we need
@@ -10552,7 +11301,7 @@ NhlErrorTypes wrf_wps_read_nml_W( void )
 /*
  * Argument # 0
  */
-  string *namelist;
+  NrmQuark *namelist;
   char *cnamelist;
 /*
  * Return variable
@@ -10565,12 +11314,12 @@ NhlErrorTypes wrf_wps_read_nml_W( void )
 /*
  * Various
  */
-  int NVAR=17, MAX_DOMAINS=21;
+  int NVAR=19, MAX_DOMAINS=21;
   int ret;
 /*
  * Get argument # 0
  */
-  namelist = (string*)NclGetArgValue(
+  namelist = (NrmQuark *)NclGetArgValue(
            0,
            1,
            NULL,
@@ -10596,13 +11345,12 @@ NhlErrorTypes wrf_wps_read_nml_W( void )
     NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wps_read_nml: Unable to allocate memory for output array");
     return(NhlFATAL);
   }
-  missing_output.floatval = ((NclTypeClass)nclTypefloatClass)->type_class.default_mis.floatval;
+  missing_output.floatval = -999.;
 
 /*
  * Call the Fortran routine.
  */
   NGCALLF(plotgrids_var,PLOTGRIDS_VAR)(cnamelist, pgrids_var, 
-                                       &missing_output.floatval, 
                                        strlen(cnamelist));
 /*
  * Return value back to NCL script.
@@ -11290,6 +12038,1142 @@ NhlErrorTypes wrf_iclw_W( void )
   _NclPlaceReturn(return_data);
   return(NhlNOERROR);
 
+}
+
+NhlErrorTypes wrf_wetbulb_W( void )
+{
+/*
+ * Input array variables
+ */
+  void *prs, *tmk, *qvp;
+  double *tmp_prs = NULL;
+  double *tmp_tmk = NULL;
+  double *tmp_qvp = NULL;
+  int ndims_prs, ndims_tmk, ndims_qvp;
+  ng_size_t dsizes_prs[NCL_MAX_DIMENSIONS];
+  ng_size_t dsizes_tmk[NCL_MAX_DIMENSIONS];
+  ng_size_t dsizes_qvp[NCL_MAX_DIMENSIONS];
+  NclBasicDataTypes type_prs, type_tmk, type_qvp;
+/*
+ * Variable for getting/setting dimension name info.
+ */
+  NclDimRec *dim_info;
+
+/*
+ * Output variable and attributes.
+ */
+  void *twb;
+  NclQuark *description, *units;
+  char *cdescription, *cunits;
+  double *tmp_twb = NULL;
+  NclBasicDataTypes type_twb;
+  NclObjClass type_obj_twb;
+/*
+ * Various
+ */
+  ng_size_t i, nx, ny, nz, nxyz, size_leftmost, index_prs, size_twb;
+  int inx, iny, inz;
+  char *psa_file;
+
+/*
+ * Variables for returning the output array with attributes attached.
+ */
+  int att_id;
+  ng_size_t dsizes[1];
+  NclMultiDValData att_md, return_md;
+  NclVar tmp_var;
+  NclStackEntry return_data;
+
+/*
+ * Retrieve parameters.
+ *
+ * Note any of the pointer parameters can be set to NULL, which
+ * implies you don't care about its value.
+ */
+  prs = (void*)NclGetArgValue(
+           0,
+           3,
+           &ndims_prs,
+           dsizes_prs,
+           NULL,
+           NULL,
+           &type_prs,
+           DONT_CARE);
+
+  tmk = (void*)NclGetArgValue(
+           1,
+           3,
+           &ndims_tmk,
+           dsizes_tmk,
+           NULL,
+           NULL,
+           &type_tmk,
+           DONT_CARE);
+
+  qvp = (void*)NclGetArgValue(
+           2,
+           3,
+           &ndims_qvp,
+           dsizes_qvp,
+           NULL,
+           NULL,
+           &type_qvp,
+           DONT_CARE);
+/*
+ * Error checking. Input variables must be same size.
+ */
+  if(ndims_prs < 3 || ndims_prs != ndims_tmk || ndims_prs != ndims_qvp ) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: The prs, tmk, and qvp arrays must have at least 3 dimensions and have the same number of dimensions as each other");
+    return(NhlFATAL);
+  }
+  for(i = 0; i < ndims_prs; i++) {
+    if(dsizes_prs[i] != dsizes_tmk[i] || dsizes_prs[i] != dsizes_qvp[i]) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: prs, tmk, and qvp must be the same dimensionality");
+      return(NhlFATAL);
+    }
+  }
+
+/*
+ * Test dimension sizes.
+ */
+  nz = dsizes_prs[ndims_prs-1];
+  ny = dsizes_prs[ndims_prs-2];
+  nx = dsizes_prs[ndims_prs-3];
+
+  if(nx > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: nx = %ld is greater than INT_MAX", nx);
+    return(NhlFATAL);
+  }
+  if(ny > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: ny = %ld is greater than INT_MAX", ny);
+    return(NhlFATAL);
+  }
+  if(nz > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: nz = %ld is greater than INT_MAX", nz);
+    return(NhlFATAL);
+  }
+  inx = (int) nx;
+  iny = (int) ny;
+  inz = (int) nz;
+
+/*
+ * Retrieve dimension names from the "tmk" variable, if any.
+ * These dimension names will later be attached to the output variable.
+ */
+  dim_info = get_wrf_dim_info(1,3,ndims_tmk,dsizes_tmk);
+
+/*
+ * Calculate size of leftmost dimensions.
+ */
+  size_leftmost = 1;
+  for(i = 0; i < ndims_prs-3; i++) size_leftmost *= dsizes_prs[i];
+  nxyz = nx * ny * nz;
+  size_twb = size_leftmost * nxyz;
+
+/* 
+ * Allocate space for coercing input arrays.  If the input prs, tmk,
+ * or qvp are already double, then we don't need to allocate space
+ * for temporary arrays, because we'll just change the pointer into
+ * the void array appropriately.
+ *
+ * The output type defaults to float, unless any of the input arrays
+ * are double.
+ */
+  type_twb     = NCL_float;
+  type_obj_twb = nclTypefloatClass;
+  if(type_prs != NCL_double) {
+    tmp_prs = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_prs == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: Unable to allocate memory for coercing 'prs' array to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_twb     = NCL_double;
+    type_obj_twb = nclTypedoubleClass;
+  }
+
+  if(type_tmk != NCL_double) {
+    tmp_tmk = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_tmk == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: Unable to allocate memory for coercing 'tmk' to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_twb     = NCL_double;
+    type_obj_twb = nclTypedoubleClass;
+  }
+
+  if(type_qvp != NCL_double) {
+    tmp_qvp = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_qvp == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: Unable to allocate memory for coercing 'qvp' to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_twb     = NCL_double;
+    type_obj_twb = nclTypedoubleClass;
+  }
+
+/*
+ * Allocate space for output array.
+ */ 
+  if(type_twb == NCL_double) {
+    twb = (double *)calloc(size_twb,sizeof(double));
+    if(twb == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: Unable to allocate memory for output array");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    twb     = (float *)calloc(size_twb,sizeof(float));
+    tmp_twb = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_twb == NULL || twb == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_wetbulb: Unable to allocate memory for output array");
+      return(NhlFATAL);
+    }
+  }
+/*
+ * Get path to psadilookup.dat file required by this routine. 
+ */
+  psa_file = get_psa_file();
+
+/*
+ * Loop across leftmost dimensions and call the Fortran routine for each
+ * three-dimensional subsection.
+ */
+  index_prs = 0;
+  for(i = 0; i < size_leftmost; i++) {
+/*
+ * Coerce subsection of p (tmp_prs) to double if necessary.
+ */
+    if(type_prs != NCL_double) {
+      coerce_subset_input_double(prs,tmp_prs,index_prs,type_prs,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_prs = &((double*)prs)[index_prs];
+    }
+/*
+ * Coerce subsection of tmk (tmp_tmk) to double if ncessary.
+ */
+    if(type_tmk != NCL_double) {
+      coerce_subset_input_double(tmk,tmp_tmk,index_prs,type_tmk,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_tmk = &((double*)tmk)[index_prs];
+    }
+
+/*
+ * Coerce subsection of qvp (tmp_qvp) to double if ncessary.
+ */
+    if(type_qvp != NCL_double) {
+      coerce_subset_input_double(qvp,tmp_qvp,index_prs,type_qvp,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_qvp = &((double*)qvp)[index_prs];
+    }
+
+/*
+ * Point temporary output array to void output array if appropriate.
+ */
+    if(type_twb == NCL_double) tmp_twb = &((double*)twb)[index_prs];
+/*
+ * Call Fortran routine.
+ */
+    NGCALLF(wetbulbcalc,WETBULBCALC)(tmp_prs,tmp_tmk,tmp_qvp,tmp_twb,
+				     &inx,&iny,&inz,psa_file,
+				     strlen(psa_file));
+
+/*
+ * Coerce output back to float if necessary.
+ */
+    if(type_twb == NCL_float) {
+      coerce_output_float_only(twb,tmp_twb,nxyz,index_prs);
+    }
+
+    index_prs += nxyz;    /* Increment index */
+  }
+/*
+ * Free up memory.
+ */
+  if(type_prs != NCL_double) NclFree(tmp_prs);
+  if(type_tmk != NCL_double) NclFree(tmp_tmk);
+  if(type_qvp != NCL_double) NclFree(tmp_qvp);
+  if(type_twb != NCL_double) NclFree(tmp_twb);
+  NclFree(psa_file);
+
+/*
+ * Set up some attributes ("description" and "units") to return.
+ */
+  cdescription = (char *)calloc(21,sizeof(char));
+  strcpy(cdescription,"Wet Bulb Temperature");
+  cunits       = (char *)calloc(2,sizeof(char));
+  strcpy(cunits,"C");
+  description = (NclQuark*)NclMalloc(sizeof(NclQuark));
+  units       = (NclQuark*)NclMalloc(sizeof(NclQuark));
+  *description = NrmStringToQuark(cdescription);
+  *units       = NrmStringToQuark(cunits);
+  free(cunits);
+  free(cdescription);
+/*
+ * Set up return value.
+ */
+  return_md = _NclCreateVal(
+                            NULL,
+                            NULL,
+                            Ncl_MultiDValData,
+                            0,
+                            (void*)twb,
+                            NULL,
+                            ndims_prs,
+                            dsizes_prs,
+                            TEMPORARY,
+                            NULL,
+                            type_obj_twb
+                            );
+/*
+ * Set up attributes to return.
+ */
+  att_id = _NclAttCreate(NULL,NULL,Ncl_Att,0,NULL);
+
+  dsizes[0] = 1;
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)description,
+                         NULL,
+                         1,
+                         dsizes,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "description",
+             att_md,
+             NULL
+             );
+    
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)units,
+                         NULL,
+                         1,
+                         dsizes,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "units",
+             att_md,
+             NULL
+             );
+    
+  tmp_var = _NclVarCreate(
+                          NULL,
+                          NULL,
+                          Ncl_Var,
+                          0,
+                          NULL,
+                          return_md,
+                          dim_info,
+                          att_id,
+                          NULL,
+                          RETURNVAR,
+                          NULL,
+                          TEMPORARY
+                          );
+
+  NclFree(dim_info);
+/*
+ * Return output grid and attributes to NCL.
+ */
+  return_data.kind = NclStk_VAR;
+  return_data.u.data_var = tmp_var;
+  _NclPlaceReturn(return_data);
+  return(NhlNOERROR);
+}
+
+
+NhlErrorTypes wrf_omega_W( void )
+{
+/*
+ * Input array variables
+ */
+  void *qvp, *tmk, *www, *prs;
+  double *tmp_qvp = NULL;
+  double *tmp_tmk = NULL;
+  double *tmp_www = NULL;
+  double *tmp_prs = NULL;
+  int ndims_qvp, ndims_tmk, ndims_www, ndims_prs; 
+  ng_size_t dsizes_qvp[NCL_MAX_DIMENSIONS];
+  ng_size_t dsizes_tmk[NCL_MAX_DIMENSIONS];
+  ng_size_t dsizes_www[NCL_MAX_DIMENSIONS];
+  ng_size_t dsizes_prs[NCL_MAX_DIMENSIONS];
+  NclBasicDataTypes type_qvp, type_tmk, type_www, type_prs;
+/*
+ * Variable for getting/setting dimension name info.
+ */
+  NclDimRec *dim_info;
+
+/*
+ * Output variable and attributes.
+ */
+  void *omg;
+  NclQuark *description, *units;
+  char *cdescription, *cunits;
+  double *tmp_omg = NULL;
+  NclBasicDataTypes type_omg;
+  NclObjClass type_obj_omg;
+/*
+ * Various
+ */
+  ng_size_t i, nx, ny, nz, nxyz, size_leftmost, index_qvp, size_omg;
+  int inx, iny, inz;
+
+/*
+ * Variables for returning the output array with attributes attached.
+ */
+  int att_id;
+  ng_size_t dsizes[1];
+  NclMultiDValData att_md, return_md;
+  NclVar tmp_var;
+  NclStackEntry return_data;
+
+/*
+ * Retrieve parameters.
+ *
+ * Note any of the pointer parameters can be set to NULL, which
+ * implies you don't care about its value.
+ */
+  qvp = (void*)NclGetArgValue(
+           0,
+           3,
+           &ndims_qvp,
+           dsizes_qvp,
+           NULL,
+           NULL,
+           &type_qvp,
+           DONT_CARE);
+
+  tmk = (void*)NclGetArgValue(
+           1,
+           4,
+           &ndims_tmk,
+           dsizes_tmk,
+           NULL,
+           NULL,
+           &type_tmk,
+           DONT_CARE);
+
+  www = (void*)NclGetArgValue(
+           2,
+           4,
+           &ndims_www,
+           dsizes_www,
+           NULL,
+           NULL,
+           &type_www,
+           DONT_CARE);
+
+  prs = (void*)NclGetArgValue(
+           3,
+           4,
+           &ndims_prs,
+           dsizes_prs,
+           NULL,
+           NULL,
+           &type_prs,
+           DONT_CARE);
+
+/*
+ * Error checking. Input variables must be same size.
+ */
+  if(ndims_qvp < 3 || ndims_qvp != ndims_tmk || ndims_qvp != ndims_www ||
+     ndims_qvp != ndims_prs) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: qvp, tmk, www, and prs must have at least 3 dimensions and have the same number of dimensions as each other");
+    return(NhlFATAL);
+  }
+  for(i = 0; i < ndims_qvp; i++) {
+    if(dsizes_qvp[i] != dsizes_tmk[i] || dsizes_qvp[i] != dsizes_prs[i] || dsizes_qvp[i] != dsizes_www[i]) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: qvp, tmk, www, and prs must be the same dimensionality");
+      return(NhlFATAL);
+    }
+  }
+
+/*
+ * Test dimension sizes.
+ */
+  nz = dsizes_qvp[ndims_qvp-1];
+  ny = dsizes_qvp[ndims_qvp-2];
+  nx = dsizes_qvp[ndims_qvp-3];
+
+  if(nx > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: nx = %ld is greater than INT_MAX", nx);
+    return(NhlFATAL);
+  }
+  if(ny > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: ny = %ld is greater than INT_MAX", ny);
+    return(NhlFATAL);
+  }
+  if(nz > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: nz = %ld is greater than INT_MAX", nz);
+    return(NhlFATAL);
+  }
+  inx = (int) nx;
+  iny = (int) ny;
+  inz = (int) nz;
+
+/*
+ * Retrieve dimension names from the "tmk" variable, if any.
+ * These dimension names will later be attached to the output variable.
+ */
+  dim_info = get_wrf_dim_info(1,3,ndims_tmk,dsizes_tmk);
+
+/*
+ * Calculate size of leftmost dimensions.
+ */
+  size_leftmost = 1;
+  for(i = 0; i < ndims_qvp-3; i++) size_leftmost *= dsizes_qvp[i];
+  nz = dsizes_qvp[ndims_qvp-1];
+  ny = dsizes_qvp[ndims_qvp-2];
+  nx = dsizes_qvp[ndims_qvp-3];
+  nxyz = nx * ny * nz;
+  size_omg = size_leftmost * nxyz;
+
+/* 
+ * Allocate space for coercing input arrays.  If the input qvp, tmk,
+ * www, prs are already double, then we don't need to allocate space
+ * for temporary arrays, because we'll just change the pointer into
+ * the void array appropriately.
+ *
+ * The output type defaults to float, unless any of the input arrays
+ * are double.
+ */
+  type_omg     = NCL_float;
+  type_obj_omg = nclTypefloatClass;
+
+  if(type_qvp != NCL_double) {
+    tmp_qvp = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_qvp == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: Unable to allocate memory for coercing 'qvp' to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_omg     = NCL_double;
+    type_obj_omg = nclTypedoubleClass;
+  }
+
+  if(type_tmk != NCL_double) {
+    tmp_tmk = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_tmk == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: Unable to allocate memory for coercing 'tmk' to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_omg     = NCL_double;
+    type_obj_omg = nclTypedoubleClass;
+  }
+
+  if(type_www != NCL_double) {
+    tmp_www = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_www == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: Unable to allocate memory for coercing 'www' to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_omg     = NCL_double;
+    type_obj_omg = nclTypedoubleClass;
+  }
+
+  if(type_prs != NCL_double) {
+    tmp_prs = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_prs == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: Unable to allocate memory for coercing 'prs' array to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_omg     = NCL_double;
+    type_obj_omg = nclTypedoubleClass;
+  }
+/*
+ * Allocate space for output array.
+ */ 
+  if(type_omg == NCL_double) {
+    omg = (double *)calloc(size_omg,sizeof(double));
+    if(omg == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: Unable to allocate memory for output array");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    omg     = (float *)calloc(size_omg,sizeof(float));
+    tmp_omg = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_omg == NULL || omg == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_omega: Unable to allocate memory for output array");
+      return(NhlFATAL);
+    }
+  }
+
+/*
+ * Loop across leftmost dimensions and call the Fortran routine for each
+ * three-dimensional subsection.
+ */
+  index_qvp = 0;
+  for(i = 0; i < size_leftmost; i++) {
+/*
+ * Coerce subsection of qvp (tmp_qvp) to double if ncessary.
+ */
+    if(type_qvp != NCL_double) {
+      coerce_subset_input_double(qvp,tmp_qvp,index_qvp,type_qvp,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_qvp = &((double*)qvp)[index_qvp];
+    }
+
+/*
+ * Coerce subsection of tmk (tmp_tmk) to double if ncessary.
+ */
+    if(type_tmk != NCL_double) {
+      coerce_subset_input_double(tmk,tmp_tmk,index_qvp,type_tmk,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_tmk = &((double*)tmk)[index_qvp];
+    }
+
+/*
+ * Coerce subsection of www (tmp_www) to double if ncessary.
+ */
+    if(type_www != NCL_double) {
+      coerce_subset_input_double(www,tmp_www,index_qvp,type_www,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_www = &((double*)www)[index_qvp];
+    }
+
+/*
+ * Coerce subsection of p (tmp_prs) to double if necessary.
+ */
+    if(type_prs != NCL_double) {
+      coerce_subset_input_double(prs,tmp_prs,index_qvp,type_prs,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_prs = &((double*)prs)[index_qvp];
+    }
+/*
+ * Point temporary output array to void output array if appropriate.
+ */
+    if(type_omg == NCL_double) tmp_omg = &((double*)omg)[index_qvp];
+/*
+ * Call Fortran routine.
+ */
+    NGCALLF(omgcalc,OMGCALC)(tmp_qvp,tmp_tmk,tmp_www,tmp_prs,tmp_omg,
+                             &inx,&iny,&inz);
+
+/*
+ * Coerce output back to float if necessary.
+ */
+    if(type_omg == NCL_float) {
+      coerce_output_float_only(omg,tmp_omg,nxyz,index_qvp);
+    }
+
+    index_qvp += nxyz;    /* Increment index */
+  }
+
+/*
+ * Free up memory.
+ */
+  if(type_qvp != NCL_double) NclFree(tmp_qvp);
+  if(type_tmk != NCL_double) NclFree(tmp_tmk);
+  if(type_www != NCL_double) NclFree(tmp_www);
+  if(type_prs != NCL_double) NclFree(tmp_prs);
+  if(type_omg != NCL_double) NclFree(tmp_omg);
+
+/*
+ * Set up some attributes ("description" and "units") to return.
+ */
+  cdescription = (char *)calloc(6,sizeof(char));
+  strcpy(cdescription,"Omega");
+  cunits       = (char *)calloc(5,sizeof(char));
+  strcpy(cunits,"Pa/s");
+  description = (NclQuark*)NclMalloc(sizeof(NclQuark));
+  units       = (NclQuark*)NclMalloc(sizeof(NclQuark));
+  *description = NrmStringToQuark(cdescription);
+  *units       = NrmStringToQuark(cunits);
+  free(cunits);
+  free(cdescription);
+
+/*
+ * Set up return value.
+ */
+  return_md = _NclCreateVal(
+                            NULL,
+                            NULL,
+                            Ncl_MultiDValData,
+                            0,
+                            (void*)omg,
+                            NULL,
+                            ndims_qvp,
+                            dsizes_qvp,
+                            TEMPORARY,
+                            NULL,
+                            type_obj_omg
+                            );
+/*
+ * Set up attributes to return.
+ */
+  att_id = _NclAttCreate(NULL,NULL,Ncl_Att,0,NULL);
+
+  dsizes[0] = 1;
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)description,
+                         NULL,
+                         1,
+                         dsizes,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "description",
+             att_md,
+             NULL
+             );
+    
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)units,
+                         NULL,
+                         1,
+                         dsizes,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "units",
+             att_md,
+             NULL
+             );
+    
+  tmp_var = _NclVarCreate(
+                          NULL,
+                          NULL,
+                          Ncl_Var,
+                          0,
+                          NULL,
+                          return_md,
+                          dim_info,
+                          att_id,
+                          NULL,
+                          RETURNVAR,
+                          NULL,
+                          TEMPORARY
+                          );
+
+  NclFree(dim_info);
+/*
+ * Return output grid and attributes to NCL.
+ */
+  return_data.kind = NclStk_VAR;
+  return_data.u.data_var = tmp_var;
+  _NclPlaceReturn(return_data);
+  return(NhlNOERROR);
+         }
+
+
+NhlErrorTypes wrf_virtual_temp_W( void )
+{
+/*
+ * Input array variables
+ */
+  void *temp, *ratmx;
+  double *tmp_temp = NULL;
+  double *tmp_ratmx = NULL;
+  int ndims_temp, ndims_ratmx;
+  ng_size_t dsizes_temp[NCL_MAX_DIMENSIONS];
+  ng_size_t dsizes_ratmx[NCL_MAX_DIMENSIONS];
+  NclBasicDataTypes type_temp, type_ratmx;
+/*
+ * Variable for getting/setting dimension name info.
+ */
+  NclDimRec *dim_info;
+
+/*
+ * Output variable and attributes.
+ */
+  void *tv;
+  NclQuark *description, *units;
+  char *cdescription, *cunits;
+  double *tmp_tv = NULL;
+  NclBasicDataTypes type_tv;
+  NclObjClass type_obj_tv;
+/*
+ * Various
+ */
+  ng_size_t i, nx, ny, nz, nxyz, size_leftmost, index_temp, size_tv;
+  int inx, iny, inz;
+
+/*
+ * Variables for returning the output array with attributes attached.
+ */
+  int att_id;
+  ng_size_t dsizes[1];
+  NclMultiDValData att_md, return_md;
+  NclVar tmp_var;
+  NclStackEntry return_data;
+
+/*
+ * Retrieve parameters.
+ *
+ * Note any of the pointer parameters can be set to NULL, which
+ * implies you don't care about its value.
+ */
+  temp = (void*)NclGetArgValue(
+           0,
+           2,
+           &ndims_temp,
+           dsizes_temp,
+           NULL,
+           NULL,
+           &type_temp,
+           DONT_CARE);
+
+  ratmx = (void*)NclGetArgValue(
+           1,
+           2,
+           &ndims_ratmx,
+           dsizes_ratmx,
+           NULL,
+           NULL,
+           &type_ratmx,
+           DONT_CARE);
+/*
+ * Error checking. Input variables must be same size.
+ */
+  if(ndims_temp < 3 || ndims_temp != ndims_ratmx) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: The temp and ratmx arrays must have at least 3 dimensions and have the same number of dimensions as each other");
+    return(NhlFATAL);
+  }
+  for(i = 0; i < ndims_temp; i++) {
+    if(dsizes_temp[i] != dsizes_ratmx[i]) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: temp and ratmx must be the same dimensionality");
+      return(NhlFATAL);
+    }
+  }
+
+/*
+ * Test dimension sizes.
+ */
+  nx = dsizes_temp[ndims_temp-1];
+  ny = dsizes_temp[ndims_temp-2];
+  nz = dsizes_temp[ndims_temp-3];
+
+  if(nx > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: nx = %ld is greater than INT_MAX", nx);
+    return(NhlFATAL);
+  }
+  if(ny > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: ny = %ld is greater than INT_MAX", ny);
+    return(NhlFATAL);
+  }
+  if(nz > INT_MAX) {
+    NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: nz = %ld is greater than INT_MAX", nz);
+    return(NhlFATAL);
+  }
+  inx = (int) nx;
+  iny = (int) ny;
+  inz = (int) nz;
+
+/*
+ * Retrieve dimension names from the "temp" variable, if any.
+ * These dimension names will later be attached to the output variable.
+ */
+  dim_info = get_wrf_dim_info(1,3,ndims_temp,dsizes_temp);
+
+/*
+ * Calculate size of leftmost dimensions.
+ */
+  size_leftmost = 1;
+  for(i = 0; i < ndims_temp-3; i++) size_leftmost *= dsizes_temp[i];
+  nxyz = nx * ny * nz;
+  size_tv = size_leftmost * nxyz;
+
+/* 
+ * Allocate space for coercing input arrays.  If the input temp
+ * or ratmx are already double, then we don't need to allocate space
+ * for temporary arrays, because we'll just change the pointer into
+ * the void array appropriately.
+ *
+ * The output type defaults to float, unless any of the input arrays
+ * are double.
+ */
+  type_tv     = NCL_float;
+  type_obj_tv = nclTypefloatClass;
+
+  if(type_temp != NCL_double) {
+    tmp_temp = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_temp == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: Unable to allocate memory for coercing 'temp' to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_tv     = NCL_double;
+    type_obj_tv = nclTypedoubleClass;
+  }
+
+  if(type_ratmx != NCL_double) {
+    tmp_ratmx = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_ratmx == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: Unable to allocate memory for coercing 'ratmx' to double");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    type_tv     = NCL_double;
+    type_obj_tv = nclTypedoubleClass;
+  }
+
+/*
+ * Allocate space for output array.
+ */ 
+  if(type_tv == NCL_double) {
+    tv = (double *)calloc(size_tv,sizeof(double));
+    if(tv == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: Unable to allocate memory for output array");
+      return(NhlFATAL);
+    }
+  }
+  else {
+    tv     = (float *)calloc(size_tv,sizeof(float));
+    tmp_tv = (double *)calloc(nxyz,sizeof(double));
+    if(tmp_tv == NULL || tv == NULL) {
+      NhlPError(NhlFATAL,NhlEUNKNOWN,"wrf_virtual_temp: Unable to allocate memory for output array");
+      return(NhlFATAL);
+    }
+  }
+/*
+ * Loop across leftmost dimensions and call the Fortran routine for each
+ * three-dimensional subsection.
+ */
+  index_temp = 0;
+  for(i = 0; i < size_leftmost; i++) {
+/*
+ * Coerce subsection of temp (tmp_temp) to double if ncessary.
+ */
+    if(type_temp != NCL_double) {
+      coerce_subset_input_double(temp,tmp_temp,index_temp,type_temp,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_temp = &((double*)temp)[index_temp];
+    }
+
+/*
+ * Coerce subsection of ratmx (tmp_ratmx) to double if ncessary.
+ */
+    if(type_ratmx != NCL_double) {
+      coerce_subset_input_double(ratmx,tmp_ratmx,index_temp,type_ratmx,
+                                 nxyz,0,NULL,NULL);
+    }
+    else {
+      tmp_ratmx = &((double*)ratmx)[index_temp];
+    }
+
+/*
+ * Point temporary output array to void output array if appropriate.
+ */
+    if(type_tv == NCL_double) tmp_tv = &((double*)tv)[index_temp];
+/*
+ * Call Fortran routine.
+ */
+    NGCALLF(virtual_temp,VIRTUAL_TEMP)(tmp_temp,tmp_ratmx,tmp_tv,
+				       &inx,&iny,&inz);
+
+/*
+ * Coerce output back to float if necessary.
+ */
+    if(type_tv == NCL_float) {
+      coerce_output_float_only(tv,tmp_tv,nxyz,index_temp);
+    }
+
+    index_temp += nxyz;    /* Increment index */
+  }
+/*
+ * Free up memory.
+ */
+  if(type_temp  != NCL_double) NclFree(tmp_temp);
+  if(type_ratmx != NCL_double) NclFree(tmp_ratmx);
+  if(type_tv    != NCL_double) NclFree(tmp_tv);
+
+/*
+ * Set up some attributes ("description" and "units") to return.
+ */
+  cdescription = (char *)calloc(20,sizeof(char));
+  strcpy(cdescription,"Virtual Temperature");
+  cunits       = (char *)calloc(2,sizeof(char));
+  strcpy(cunits,"K");
+  description = (NclQuark*)NclMalloc(sizeof(NclQuark));
+  units       = (NclQuark*)NclMalloc(sizeof(NclQuark));
+  *description = NrmStringToQuark(cdescription);
+  *units       = NrmStringToQuark(cunits);
+  free(cunits);
+  free(cdescription);
+
+/*
+ * Set up return value.
+ */
+  return_md = _NclCreateVal(
+                            NULL,
+                            NULL,
+                            Ncl_MultiDValData,
+                            0,
+                            (void*)tv,
+                            NULL,
+                            ndims_temp,
+                            dsizes_temp,
+                            TEMPORARY,
+                            NULL,
+                            type_obj_tv
+                            );
+/*
+ * Set up attributes to return.
+ */
+  att_id = _NclAttCreate(NULL,NULL,Ncl_Att,0,NULL);
+
+  dsizes[0] = 1;
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)description,
+                         NULL,
+                         1,
+                         dsizes,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "description",
+             att_md,
+             NULL
+             );
+    
+  att_md = _NclCreateVal(
+                         NULL,
+                         NULL,
+                         Ncl_MultiDValData,
+                         0,
+                         (void*)units,
+                         NULL,
+                         1,
+                         dsizes,
+                         TEMPORARY,
+                         NULL,
+                         (NclObjClass)nclTypestringClass
+                         );
+  _NclAddAtt(
+             att_id,
+             "units",
+             att_md,
+             NULL
+             );
+    
+  tmp_var = _NclVarCreate(
+                          NULL,
+                          NULL,
+                          Ncl_Var,
+                          0,
+                          NULL,
+                          return_md,
+                          dim_info,
+                          att_id,
+                          NULL,
+                          RETURNVAR,
+                          NULL,
+                          TEMPORARY
+                          );
+
+  NclFree(dim_info);
+/*
+ * Return output grid and attributes to NCL.
+ */
+  return_data.kind = NclStk_VAR;
+  return_data.u.data_var = tmp_var;
+  _NclPlaceReturn(return_data);
+  return(NhlNOERROR);
+}
+
+
+
+/*
+ * This routine gets the path to the psadilookup.dat file
+ * required by some WRF routines. 
+ *
+ * The default is to use $NCARG_ROOT/lib/ncarg/data/asc/psadilookup.dat
+ * for the input data file, unless PSADILOOKUP_PATH is set by the
+ * user, then it will try to use this path. 
+ */
+char *get_psa_file()
+{
+  const char *path = NULL;
+  char *psa_file;
+  int path_len;
+
+  path = getenv("PSADILOOKUP_PATH");
+  if ((void *)path == (void *)NULL) {
+   path = _NGGetNCARGEnv("data");
+    if ((void *)path != (void *)NULL) {
+      path_len = strlen(path) + 21;   /* 21 = "/asc/psadilookup.dat\0" */
+      psa_file = malloc(path_len*sizeof(char));
+      strcpy(psa_file,path);
+      strcat(psa_file,_NhlPATHDELIMITER);
+      strcat(psa_file,"asc");
+    }
+  }
+  else {
+    strcpy(psa_file,path);
+    path_len = strlen(path) + 17;   /* 17 = "/psadilookup.dat\0" */
+    psa_file = malloc(path_len*sizeof(char));
+  }
+  strcat(psa_file,_NhlPATHDELIMITER);
+  strcat(psa_file,"psadilookup.dat");
+  strcat(psa_file,"\0");
+  return(psa_file);
 }
 
 /*

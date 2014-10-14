@@ -259,8 +259,7 @@ NclSelectionRecord * sel_ptr;
 		if(lhs_type != rhs_type) {
 			tmp_md = _NclCoerceData(value,targetdat->multidval.type->type_class.type ,(targetdat->multidval.missing_value.has_missing?&targetdat->multidval.missing_value.value:NULL));
 			if(tmp_md == NULL) {
-				NHLPERROR((NhlFATAL,NhlEUNKNOWN,"%s: Attribute assignment type mismatch\n",
-								__PRETTY_FUNCTION__));
+				NHLPERROR((NhlFATAL,NhlEUNKNOWN,"Attribute assignment type mismatch.\n"));
 				return(NhlFATAL);
 			} else {
 				if (att_quark == NrmStringToQuark(NCL_MISSING_VALUE_ATT) && targetdat->multidval.type->type_class.data_type == NCL_logical) {
@@ -282,6 +281,8 @@ NclSelectionRecord * sel_ptr;
 	} else {
 			tmp_md = value;
 	}
+	/* attributes cannot themselves have missing values */
+	tmp_md->multidval.missing_value.has_missing = 0;
 	if((att_quark == NrmStringToQuark(NCL_MISSING_VALUE_ATT))&&(theattobj->obj.cblist != NULL)) {
 		selector.lngval = MISSINGNOTIFY;
 		cbdata.ptrval = NULL;
@@ -415,10 +416,14 @@ FILE *fp;
 			for (i = 0; i < tmp->attvalue->multidval.totalelements; i++) {
 				char *val = (char*)tmp->attvalue->multidval.val + 
 					i * tmp->attvalue->multidval.type->type_class.size; 
-				ret1 = _Nclprint(tmp->attvalue->multidval.type,fp,val);
-				if(ret1 < NhlINFO) {
-					return(ret1);
+
+				if(NULL != val)
+				{
+					ret1 = _Nclprint(tmp->attvalue->multidval.type,fp,val);
+					if(ret1 < NhlINFO)
+						return(ret1);
 				}
+
 				if (i < tmp->attvalue->multidval.totalelements - 1) {
 					ret = nclfprintf(fp,", ");
 					if(ret < 0) {
@@ -458,12 +463,13 @@ NclObj parent;
 /* Preconditions: parent better only be add once */
 	NclRefList *tmp;
 	NclAtt theattobj = (NclAtt) theobj;
+#if 0
 	NhlArgVal selector;
         NhlArgVal udata;
 
 	selector.lngval = 0;
 	udata.intval = parent->obj.id;
-
+#endif
 
 	if(theattobj->obj.parents == NULL) {
 		theattobj->obj.parents = (NclRefList*)NclMalloc(sizeof(NclRefList));
@@ -684,13 +690,15 @@ struct _NclObjRec *parent;
 	NclAtt my_inst;
 	NclObjClass class_ptr;
 
+	InitializeAttClass();
 	if(inst == NULL) {
-		my_inst = (NclAtt)NclMalloc((unsigned)sizeof(NclAttRec));
+		my_inst = (NclAtt)NclCalloc(1, (unsigned)sizeof(NclAttRec));
 	} else {
 		my_inst = (NclAtt)inst; 
 	}
 	if(theclass == NULL) {
-		class_ptr = nclAttClass;
+		/*class_ptr = nclAttClass;*/
+		class_ptr = (NclObjClass)&nclAttClassRec;
 	} else {
 		class_ptr = theclass;
 	}

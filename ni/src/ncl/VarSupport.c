@@ -290,7 +290,7 @@ NhlErrorTypes  _NclBuildCoordVSelection
 			name_md = _NclReadDim(var,NULL,dim_num);
                         if(name_md != NULL) {
                                 if(name_md->multidval.type->type_class.type & Ncl_Typestring) {
-                                        cname = *(string*)name_md->multidval.val;
+                                        cname = *(NclQuark*)name_md->multidval.val;
                                         _NclDestroyObj((NclObj)name_md);
                                 } else {
                                         return(NhlFATAL);
@@ -414,7 +414,7 @@ NhlErrorTypes _NclBuildCoordRSelection
 			name_md = _NclReadDim(var,NULL,dim_num);
 			if(name_md != NULL) {
 				if(name_md->multidval.type->type_class.type & Ncl_Typestring) {
-					cname = *(string*)name_md->multidval.val;
+					cname = *(NclQuark*)name_md->multidval.val;
 					_NclDestroyObj((NclObj)name_md);
 				} else {
 					return(NhlFATAL);
@@ -867,11 +867,11 @@ NhlErrorTypes _NclReplaceAtt(struct _NclVarRec *self, char* attname,
 
 struct _NclMultiDValDataRec *_NclReadAtt
 #if	NhlNeedProto
-(struct _NclVarRec *self, char    *attname, struct  _NclSelectionRecord * sel_ptr)
+(struct _NclVarRec *self, const char *attname, struct  _NclSelectionRecord * sel_ptr)
 #else
 (self, attname, sel_ptr)
 struct _NclVarRec *self;
-char    *attname;
+const char *attname;
 struct  _NclSelectionRecord* sel_ptr;
 #endif
 {

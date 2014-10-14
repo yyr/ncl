@@ -6,7 +6,7 @@
 *                                                                       *
 ************************************************************************/
 /*
- *      $Id: NclAdvancedFile.h 14110 2013-01-25 15:20:01Z huangwei $
+ *      $Id: NclAdvancedFile.h 15121 2014-03-12 17:49:11Z huangwei $
  */
 #ifndef NclAdvancedFile_h
 #define NclAdvancedFile_h
@@ -45,13 +45,6 @@
 #include "NclData.h"
 #include "NclAdvancedFileStructure.h"
 
-#define NCLFILE_INC -1
-#define NCLFILE_DEC -2
-#define NCLFILE_VEC 0
-
-char blank_space[MAX_BLANK_SPACE_LENGTH];
-int indentation_level;
-int indentation_length;
 extern int grib_version;
 
 typedef struct _NclAdvancedFileRec NclAdvancedFileRec;
@@ -108,7 +101,6 @@ struct _NclAdvancedFileRec
     NclObjPart      obj;
     NclFilePart     file;
     NclAdvancedFilePart  advancedfile;
-
 };
 
 extern NclObjClass nclAdvancedFileClass;
@@ -141,9 +133,9 @@ void _printNclFileVarNode(FILE *fp, NclAdvancedFile thefile, NclFileVarNode *var
 void _printNclFileVarRecord(FILE *fp, NclAdvancedFile thefile, NclFileVarRecord *var_rec);
 void _printNclFileGrpRecord(FILE *fp, NclAdvancedFile thefile, NclFileGrpRecord *grp_rec);
 
-void AdvancedLoadVarAtts(NclAdvancedFile thefile, NclQuark var);
-
 NhlErrorTypes _NclAdvancedFilePrintSummary(NclObj self, FILE *fp);
+
+extern void AdvancedLoadVarAtts(NclAdvancedFile thefile, NclQuark var);
 
 extern char *_getComponentName(const char *fullname, char **structname);
 extern NclFileCompoundNode *_getComponentNodeFromVarNode(NclFileVarNode *varnode,

@@ -18,15 +18,7 @@ static NhlErrorTypes ListPrintSummary(NclObj theobj, FILE *fp)
 	NclList tmp_list = (NclList) theobj;
 	NhlErrorTypes ret = -1;
 
-        if(NCL_VLEN & tmp_list->list.list_type)
-	{
-		ret = nclfprintf(fp,"Type: list <vlen>\n");
-	}
-        else if(NCL_ITEM & tmp_list->list.list_type)
-	{
-		ret = nclfprintf(fp,"Type: list <item>\n");
-	}
-        else if(NCL_STRUCT & tmp_list->list.list_type)
+        if(NCL_STRUCT & tmp_list->list.list_type)
 	{
 		ret = nclfprintf(fp,"Type: list <struct>\n");
 	}
@@ -48,6 +40,12 @@ static NhlErrorTypes ListPrintSummary(NclObj theobj, FILE *fp)
         	else
 			ret = nclfprintf(fp,"Type: list <join>\n");
 	}
+	else if(NCL_FIFO & tmp_list->list.list_type)
+		ret = nclfprintf(fp,"Type: list <fifo>\n");
+	else if(NCL_LIFO & tmp_list->list.list_type)
+		ret = nclfprintf(fp,"Type: list <lifo>\n");
+	else
+		ret = nclfprintf(fp,"Type: list <unknown: 0%x>\n", tmp_list->list.list_type);
 
 	if(ret < 0)
 	{
@@ -114,6 +112,10 @@ FILE *fp;
 	        case Ncl_FileVar:
 			obj = _NclGetObj(cur_obj->obj.id);
 			_NclPrintVarSummary((NclVar)obj);
+			break;
+	        case Ncl_MultiDVallistData:
+	        case Ncl_List:
+	 		ret = nclfprintf(fp,"\tList\n");
 			break;
 	        default:
 		    fprintf(stderr, "\tin file: %s, line: %d\n", __FILE__, __LINE__);
@@ -302,6 +304,7 @@ NclObj theobj;
 			NclObj tmp_parent_obj;
 			NclRefList *p;
 			if (theobj->obj.parents) {  
+				tmp_obj = theobj;
 				for (p = theobj->obj.parents; p; p = p->next) {
 					tmp_parent_obj = _NclGetObj(p->pid);
 					if (tmp_parent_obj->obj.obj_type_mask & Ncl_Att) {
@@ -318,6 +321,7 @@ NclObj theobj;
 							       (NclMultiDValData)theobj, NULL,-1,NULL,NORMAL,NULL,PERMANENT);
 			}
 		}
+
 		/*
 		 * These lines cause problems when individual files from a list are accessed:
                  * i.e. isfilevar(f[0],var) returns an error rather than True or False
@@ -427,15 +431,20 @@ NclObj list;
 	}
 }
 
-
-NhlErrorTypes Append2List(NclObj list,NclObj theobj)
+NhlErrorTypes ListAppend
+#if     NhlNeedProto
+(NclObj list,NclObj theobj)
+#else
+(list,theobj)
+NclObj list;
+NclObj theobj;
+#endif
 {
 	NclList thelist = (NclList)list;
 	NclListObjList *tmp = (NclListObjList*)NclMalloc(sizeof(NclListObjList));
 	NhlErrorTypes  ret = NhlNOERROR;
 	NclObj tmp_obj;
-	if((thelist!=NULL)&&(theobj != NULL))
-	{
+	if((thelist!=NULL)&&(theobj != NULL)) {
 		tmp->orig_type = theobj->obj.obj_type_mask;
 		if(theobj->obj.obj_type_mask & Ncl_Var)
 		{
@@ -456,6 +465,7 @@ NhlErrorTypes Append2List(NclObj list,NclObj theobj)
 			NclObj tmp_parent_obj;
 			NclRefList *p;
 			if (theobj->obj.parents) {  
+				tmp_obj = theobj;
 				for (p = theobj->obj.parents; p; p = p->next) {
 					tmp_parent_obj = _NclGetObj(p->pid);
 					if (tmp_parent_obj->obj.obj_type_mask & Ncl_Att) {
@@ -472,39 +482,36 @@ NhlErrorTypes Append2List(NclObj list,NclObj theobj)
 							       (NclMultiDValData)theobj, NULL,-1,NULL,NORMAL,NULL,PERMANENT);
 			}
 		}
-			
+
 		ret = _NclAddParent(tmp_obj,list);
 		tmp->cb = _NclAddCallback( tmp_obj, list, ListItemDestroyNotify,DESTROYED,NULL);
 
-		if(tmp_obj->obj.status == TEMPORARY)
-		{
+		if(tmp_obj->obj.status == TEMPORARY) {
 			_NclSetStatus(tmp_obj,PERMANENT);
 		}
-		if(ret != NhlNOERROR)
-		{
+		if(ret != NhlNOERROR) {
 			return(ret);
 		}
 		tmp->obj_id = tmp_obj->obj.id;
 
-		tmp->next = NULL;
-		if(thelist->list.last == NULL)
-		{
+		tmp->prev = thelist->list.last;
+		if(thelist->list.last == NULL) {
+			thelist->list.last = tmp;
+			thelist->list.last->next = NULL;	
 			thelist->list.first = tmp;
-			thelist->list.first->prev = NULL;	
-			thelist->list.last = tmp;
-		}
-		else
-		{
+		} else {
 			thelist->list.last->next = tmp;
-			tmp->prev = thelist->list.last;
 			thelist->list.last = tmp;
+			tmp->next = NULL;
 		}
+
 		thelist->list.nelem++;
 		return(NhlNOERROR);
 	} else {
 		return(NhlFATAL);
 	}
 }
+
 static int ListGetType
 #if     NhlNeedProto
 (NclObj list)
@@ -535,7 +542,6 @@ int new_type;
 
 	int fo_mask =  ~(NCL_LIFO | NCL_FIFO);
 	int jo_mask =  ~(NCL_JOIN | NCL_CONCAT);
-	int so_mask =  ~(NCL_ITEM | NCL_VLEN | NCL_STRUCT);
 
 	if((new_type & NCL_LIFO)||(new_type & NCL_FIFO)) {
 		thelist->list.list_type = (new_type & jo_mask) | (thelist->list.list_type & fo_mask);
@@ -914,6 +920,7 @@ NclListClassRec nclListClassRec = {
 	{
 /* NclListSetTypeFunction  set_type;*/ ListSetType,
 /* NclListGetTypeFunction  get_type;*/ ListGetType,
+/* NclListAppendFunction   append;*/ ListAppend,
 /* NclListPushFunction     push;*/ ListPush,
 /* NclListPopFunction      pop;*/ ListPop,
 /* NclListSelectFunction   select;*/ ListSelect,
@@ -966,5 +973,5 @@ struct _NclObjRec *_NclListCreate(
 	my_inst->list.agg_sel_ptr = NULL;
 
 	return((NclObj)my_inst);
-	
 }
+

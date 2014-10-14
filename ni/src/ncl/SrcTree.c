@@ -1,5 +1,5 @@
 /*
- *      $Id: SrcTree.c 13884 2012-11-01 14:19:15Z huangwei $
+ *      $Id: SrcTree.c 14625 2013-11-07 21:17:25Z huangwei $
  */
 /************************************************************************
 *									*
@@ -1408,7 +1408,7 @@ void *_NclMakeReassignment(void *name_ref, void *expr)
 	tmp->name = src_tree_names[Ncl_REASSIGN];
 	tmp->line = cur_line_number;
 	tmp->file = cur_load_file;
-	tmp->new_left = 1;
+	tmp->new_left = 0;
 	tmp->left_side = name_ref;
 	tmp->destroy_it = (NclSrcTreeDestroyProc)_NclGenericDestroy;
 	tmp->right_side = expr;
@@ -2459,6 +2459,7 @@ void _NclPrintSymbol
 		fprintf(fp,"%s\t","LIST");
 		break;
 	default:
+		return;
 		break;
 	}
 	fprintf(fp,"S: %s\tL: %d\tOf: %d\n",sym->name,sym->level,sym->offset);

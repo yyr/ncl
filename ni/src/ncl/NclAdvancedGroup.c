@@ -315,10 +315,6 @@ NclGroup *_NclAdvancedGroupCreate(NclObj inst, NclObjClass theclass, NclObjTypes
         return NULL;
     }
 
-    ret = _NclInitClass(nclAdvancedFileClass);
-    if(ret < NhlWARNING) 
-        return(NULL);
-
     if(theclass == NULL)
     {
         class_ptr = nclAdvancedFileClass;
@@ -350,6 +346,7 @@ NclGroup *_NclAdvancedGroupCreate(NclObj inst, NclObjClass theclass, NclObjTypes
     group_out->advancedfile.grpnode = grpnode;
 
     group_out->advancedfile.grpnode->fid = thefile->advancedfile.grpnode->fid;
+    group_out->advancedfile.grpnode->open = thefile->advancedfile.grpnode->open;
     group_out->advancedfile.grpnode->path = thefile->advancedfile.fpath;
     group_out->advancedfile.grpnode->extension = thefile->advancedfile.file_ext_q;
 

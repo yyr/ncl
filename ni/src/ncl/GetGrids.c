@@ -488,7 +488,7 @@ GribParamList* thevarrec;
 int kgds;
 #endif
 {
-	unsigned char *gds = thevarrec->thelist->rec_inq->gds;
+	unsigned char *gds = thevarrec->ref_rec->gds;
 	int nx,ny;
 
 	nx = UnsignedCnvtToDecimal(2,&(gds[6]));
@@ -1002,7 +1002,7 @@ double dy;
 	int grid_oriented = 1;
 
 	if (thevarrec->has_gds) {
-		grid_oriented = (thevarrec->thelist->rec_inq->gds[16] & 010) ? 1 : 0;
+		grid_oriented = (thevarrec->ref_rec->gds[16] & 010) ? 1 : 0;
 	}
 
 /* lat atts */
@@ -3992,7 +3992,7 @@ double dy;
 	int grid_oriented = 1;
 
 	if (thevarrec->has_gds) {
-		grid_oriented = (thevarrec->thelist->rec_inq->gds[16] & 010) ? 1 : 0;
+		grid_oriented = (thevarrec->ref_rec->gds[16] & 010) ? 1 : 0;
 	}
 
 
@@ -7350,6 +7350,7 @@ GribParamList* thevarrec;
 						}
 						index++;
 					}
+					if (index == grid_size) break;
 				}
 				else {
 					for (j = 0; j < num_per_subsection; j++) {
@@ -7375,6 +7376,7 @@ GribParamList* thevarrec;
 						cix = tbits / 8;
 						bit_offset = tbits % 8;
 						index++;
+						if (index == grid_size) break;
 					}
 				}
 			}
@@ -8039,10 +8041,10 @@ int* nrotatts;
 	*n_dims_rot= 0;
 	*dimsizes_rot= NULL;
 
-	if((thevarrec->thelist == NULL)||(thevarrec->thelist->rec_inq == NULL)) 
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
 		return;
 
-	gds = thevarrec->thelist->rec_inq->gds;
+	gds = thevarrec->ref_rec->gds;
 	if(gds == NULL) {
 		return;
 	}
@@ -8414,12 +8416,26 @@ int* nrotatts;
 	double latin2;
 	int idir,jdir;
 	unsigned char tmpc[4];
-	unsigned char *gds = (unsigned char*)thevarrec->thelist->rec_inq->gds;
+	unsigned char *gds;
 	float *tmp_float;
 	NclQuark *tmp_string;
 	int do_rot = 1;
 	NhlBoolean grid_oriented = False;
 	NrmQuark grid_name = NrmNULLQUARK;
+
+	*lat = NULL;
+	*n_dims_lat = 0;
+	*dimsizes_lat = NULL;
+	*lon = NULL;
+	*n_dims_lon= 0;
+	*dimsizes_lon= NULL;
+	*rot = NULL;
+	*dimsizes_rot = NULL;
+	*n_dims_rot = 0;
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
+		return;
+
+	gds = (unsigned char*)thevarrec->ref_rec->gds;
 
 	nx = UnsignedCnvtToDecimal(2,&(gds[6]));
 	ny = UnsignedCnvtToDecimal(2,&(gds[8]));
@@ -8591,13 +8607,64 @@ int* nrotatts;
 	int is_thinned_lon = 0;
 	int idir;
 
-	if((thevarrec->thelist != NULL)&&(thevarrec->thelist->rec_inq != NULL)) {
-			
+	if((thevarrec->thelist != NULL)&&(thevarrec->ref_rec != NULL)) {
+
+		/* we may need the number of latitudes if the grid is thinned in longitude */
 		*n_dims_lat = 1;
 		*dimsizes_lat = malloc(sizeof(ng_size_t));
-		(*dimsizes_lat)[0] = (int)UnsignedCnvtToDecimal(2,&(thevarrec->thelist->rec_inq->gds[8]));
+		(*dimsizes_lat)[0] = (int)UnsignedCnvtToDecimal(2,&(thevarrec->ref_rec->gds[8]));
+
+		/* do longitude first because the information may be needed for calculating latitude correctly */
+
+		tmpc[0] = thevarrec->ref_rec->gds[13] & (char)0177;
+		tmpc[1] = thevarrec->ref_rec->gds[14];
+		tmpc[2] = thevarrec->ref_rec->gds[15];
+		ilo1 = ((thevarrec->ref_rec->gds[13] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
+		tmpc[0] = thevarrec->ref_rec->gds[20] & (char)0177;
+		tmpc[1] = thevarrec->ref_rec->gds[21];
+		tmpc[2] = thevarrec->ref_rec->gds[22];
+		ilo2 = ((thevarrec->ref_rec->gds[20] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
 		
-		nlat = 2 * UnsignedCnvtToDecimal(2,&(thevarrec->thelist->rec_inq->gds[25]));
+		*n_dims_lon = 1;
+		*dimsizes_lon = malloc(sizeof(ng_size_t));
+		nlon = CnvtToDecimal(2,&thevarrec->ref_rec->gds[6]);
+		idir = ((char)0200 & thevarrec->ref_rec->gds[27]) ? -1 : 1;
+
+		if (nlon == 0xffff) {
+			is_thinned_lon = 1;
+			GetThinnedLonParams(thevarrec->ref_rec->gds,
+					    (*dimsizes_lat)[0],ilo1,ilo2,idir,&nlon,&loinc);
+		} else if (nlon == 1) {
+			loinc = ((double)CnvtToDecimal(2,&((thevarrec->ref_rec->gds)[23])));
+		}
+		else {
+			if (idir == 1) {
+				int ti = ilo2;
+				while (ti < ilo1) {
+					ti += 360000;
+				}
+				loinc = (ti - ilo1) / (double) (nlon - 1);
+				ilo2 = ti;
+			}
+			else {
+				int ti = ilo1;
+				while (ti < ilo2) {
+					ti += 360000;
+				}
+				loinc = (ti - ilo2) / (double) (nlon - 1);
+				ilo1 = ti;
+			}
+
+		}
+		(*dimsizes_lon)[0] = nlon;
+		*lon = malloc(sizeof(float)*nlon);
+		for(i = 0; i < (*dimsizes_lon)[0]; i++) {
+			(*lon)[i] = (ilo1 + i*idir*loinc)/1000.0;
+		}
+
+
+		
+		nlat = 2 * UnsignedCnvtToDecimal(2,&(thevarrec->ref_rec->gds[25]));
 		
 		/* 
 		 * this is a hack for certain IPCC data that does not have the correct info in gds[25+]. 
@@ -8609,28 +8676,36 @@ int* nrotatts;
  			NhlPError(NhlWARNING,NhlEUNKNOWN,
 			"GdsGAGrid: Invalid value for Gaussian LatLon grid in GDS octets 26-27; inferring N from octets 9-10 (See GRIB Section 2 documentation)");
 		}
+/*
+ * These come out south to north
+ */
 
+		tmpc[0] = thevarrec->ref_rec->gds[10] & (char)0177;
+		tmpc[1] = thevarrec->ref_rec->gds[11];
+		tmpc[2] = thevarrec->ref_rec->gds[12];
+		ila1 = ((thevarrec->ref_rec->gds[10] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
+		tmpc[0] = thevarrec->ref_rec->gds[17] & (char)0177;
+		tmpc[1] = thevarrec->ref_rec->gds[18];
+		tmpc[2] = thevarrec->ref_rec->gds[19];
+		ila2 = ((thevarrec->ref_rec->gds[17] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
+
+		if (nlat == (*dimsizes_lat)[0] && (fabs (ila1 / 1000.0) < 85.0 || fabs (ila1 / 1000.0) < 85.0)) {
+			/* not a global grid but the value of N must have been set as if it were ;
+			   therefore try to infer N from the longitude increment (this should work even when the longitude is not global)
+			*/
+			int global_nlon = (int) (360000 / loinc + 0.5);
+			nlat = global_nlon / 2;
+		}
+			
 		theta = (double*)NclMalloc(sizeof(double)*nlat);
 		wts = (double*)NclMalloc(sizeof(double)*nlat);
 		lwork = 4 * nlat*(nlat+1)+2;
 		work = (double*)NclMalloc(sizeof(double)*lwork);
 		*lat = (float*)NclMalloc(sizeof(float)*nlat);
-/*
- * These come out south to north
- */
-
-		tmpc[0] = thevarrec->thelist->rec_inq->gds[10] & (char)0177;
-		tmpc[1] = thevarrec->thelist->rec_inq->gds[11];
-		tmpc[2] = thevarrec->thelist->rec_inq->gds[12];
-		ila1 = ((thevarrec->thelist->rec_inq->gds[10] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
-		tmpc[0] = thevarrec->thelist->rec_inq->gds[17] & (char)0177;
-		tmpc[1] = thevarrec->thelist->rec_inq->gds[18];
-		tmpc[2] = thevarrec->thelist->rec_inq->gds[19];
-		ila2 = ((thevarrec->thelist->rec_inq->gds[17] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
 
 		NGCALLF(gaqdnio,GAQDNIO)(&nlat,theta,wts,work,&lwork,&ierror);
 
-		if(!(thevarrec->thelist->rec_inq->gds[27] & (char)0100)) {
+		if(!(thevarrec->ref_rec->gds[27] & (char)0100)) {
                         /* -j direction implies north to south*/
 			int done = 0;
 			int redo_nlat = 0;
@@ -8793,51 +8868,6 @@ int* nrotatts;
 		NclFree(wts);
 		NclFree(theta);
 
-
-		tmpc[0] = thevarrec->thelist->rec_inq->gds[13] & (char)0177;
-		tmpc[1] = thevarrec->thelist->rec_inq->gds[14];
-		tmpc[2] = thevarrec->thelist->rec_inq->gds[15];
-		ilo1 = ((thevarrec->thelist->rec_inq->gds[13] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
-		tmpc[0] = thevarrec->thelist->rec_inq->gds[20] & (char)0177;
-		tmpc[1] = thevarrec->thelist->rec_inq->gds[21];
-		tmpc[2] = thevarrec->thelist->rec_inq->gds[22];
-		ilo2 = ((thevarrec->thelist->rec_inq->gds[20] & (char)0200) ? -1:1)*(int)UnsignedCnvtToDecimal(3,tmpc);
-		
-			
-		*n_dims_lon = 1;
-		*dimsizes_lon = malloc(sizeof(ng_size_t));
-		nlon = CnvtToDecimal(2,&thevarrec->thelist->rec_inq->gds[6]);
-		idir = ((char)0200 & thevarrec->thelist->rec_inq->gds[27]) ? -1 : 1;
-
-		if (nlon == 0xffff) {
-			is_thinned_lon = 1;
-			GetThinnedLonParams(thevarrec->thelist->rec_inq->gds,
-					    nlat,ilo1,ilo2,idir,&nlon,&loinc);
-		} else if (nlon == 1) {
-			loinc = ((double)CnvtToDecimal(2,&((thevarrec->thelist->rec_inq->gds)[23])));
-		}
-		else {
-			if (idir == 1) {
-				int ti = ilo2;
-				while (ti < ilo1) {
-					ti += 360000;
-				}
-				loinc = (ti - ilo1) / (double) (nlon - 1);
-			}
-			else {
-				int ti = ilo1;
-				while (ti < ilo2) {
-					ti += 360000;
-				}
-				loinc = (ti - ilo2) / (double) (nlon - 1);
-			}
-
-		}
-		(*dimsizes_lon)[0] = nlon;
-		*lon = malloc(sizeof(float)*nlon);
-		for(i = 0; i < (*dimsizes_lon)[0]; i++) {
-			(*lon)[i] = (ilo1 + i*idir*loinc)/1000.0;
-		}
 	} else {
 		*lat = NULL;
 		*n_dims_lat = 0;
@@ -8969,7 +8999,7 @@ int* nrotatts;
 	int north;
 	unsigned char tmpc[4];
 	int idir,jdir,i,j;
-	unsigned char *gds = (unsigned char*)thevarrec->thelist->rec_inq->gds;
+	unsigned char *gds;
 	float nx0,nx1,ny0,ny1;
 	float C,d_per_km,dlon;
 	float *tmp_float;
@@ -8978,6 +9008,20 @@ int* nrotatts;
 	NhlBoolean grid_oriented;
 	NrmQuark grid_name = NrmNULLQUARK;
 
+
+	*lat = NULL;
+	*n_dims_lat = 0;
+	*dimsizes_lat = NULL;
+	*lon = NULL;
+	*n_dims_lon= 0;
+	*dimsizes_lon= NULL;
+	*rot = NULL;
+	*dimsizes_rot = NULL;
+	*n_dims_rot = 0;
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
+		return;
+
+	gds = (unsigned char*)thevarrec->ref_rec->gds;
 
 	nx = UnsignedCnvtToDecimal(2,&(gds[6]));
 	ny = UnsignedCnvtToDecimal(2,&(gds[8]));
@@ -9305,14 +9349,19 @@ int* nrotatts;
 	unsigned char *gds;
 
 
-	m = 0;	
-	while((m<thevarrec->n_entries)&&(thevarrec->thelist[m].rec_inq == NULL)) m++;
-
-	if(m == thevarrec->n_entries) {
-		NhlPError(NhlFATAL,NhlEUNKNOWN,"GdsSHGrid: No valid records can't continue");
+	*lat = NULL;
+	*n_dims_lat = 0;
+	*dimsizes_lat = NULL;
+	*lon = NULL;
+	*n_dims_lon= 0;
+	*dimsizes_lon= NULL;
+	*rot = NULL;
+	*dimsizes_rot = NULL;
+	*n_dims_rot = 0;
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
 		return;
-	}
-	gds = (unsigned char*)thevarrec->thelist[m].rec_inq->gds;
+
+	gds = (unsigned char*)thevarrec->ref_rec->gds;
 
 
 	j = UnsignedCnvtToDecimal(2,&(gds[6]));
@@ -9402,10 +9451,13 @@ int* nrotatts;
 	*lon = NULL;
 	*n_dims_lon= 0;
 	*dimsizes_lon= NULL;
-	if((thevarrec->thelist == NULL)||(thevarrec->thelist->rec_inq == NULL)) 
+	*rot = NULL;
+	*dimsizes_rot = NULL;
+	*n_dims_rot = 0;
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
 		return;
 
-	gds = thevarrec->thelist->rec_inq->gds;
+	gds = thevarrec->ref_rec->gds;
 	if(gds == NULL) {
 		return;
 	}
@@ -9654,10 +9706,10 @@ int* nrotatts;
 	*rot = NULL;
 	*n_dims_rot = 0;
 	*dimsizes_rot = NULL;
-	if((thevarrec->thelist == NULL)||(thevarrec->thelist->rec_inq == NULL)) 
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
 		return;
 
-	gds = thevarrec->thelist->rec_inq->gds;
+	gds = thevarrec->ref_rec->gds;
 	if(gds == NULL) {
 		return;
 	}
@@ -9910,10 +9962,10 @@ int* nrotatts;
 	*n_dims_rot = 0;
 	*dimsizes_rot = NULL; 
 		
-	if((thevarrec->thelist == NULL)||(thevarrec->thelist->rec_inq == NULL)) 
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
 		return;
 
-	gds = thevarrec->thelist->rec_inq->gds;
+	gds = thevarrec->ref_rec->gds;
 	if(gds == NULL) {
 		return;
 	}
@@ -10411,7 +10463,7 @@ int* nrotatts;
 	int dj;
 	unsigned char tmpc[4];
 	int i;
-	unsigned char *gds = (unsigned char*)thevarrec->thelist->rec_inq->gds;
+	unsigned char *gds;
 	float *tmp_float;
 	NclQuark* tmp_string;
 	int kgds[200];
@@ -10427,6 +10479,20 @@ int* nrotatts;
 
 	/* arakawa RLL: Rotated LatLon grids - 201,202 and 203 */
 	
+	*lat = NULL;
+	*n_dims_lat = 0;
+	*dimsizes_lat = NULL;
+	*lon = NULL;
+	*n_dims_lon= 0;
+	*dimsizes_lon= NULL;
+	*rot = NULL;
+	*dimsizes_rot = NULL;
+	*n_dims_rot = 0;
+	if((thevarrec->thelist == NULL)||(thevarrec->ref_rec == NULL)) 
+		return;
+
+	gds = (unsigned char*)thevarrec->ref_rec->gds;
+
 	gtype = UnsignedCnvtToDecimal(1,&(gds[5]));
 
 	nx = UnsignedCnvtToDecimal(2,&(gds[6]));

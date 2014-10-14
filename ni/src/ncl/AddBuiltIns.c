@@ -1,5 +1,5 @@
 /*
- *      $Id: AddBuiltIns.c 13994 2012-12-08 01:46:09Z dbrown $
+ *      $Id: AddBuiltIns.c 14343 2013-06-19 23:04:39Z huangwei $
  */
 /************************************************************************
 *                                                                       *
@@ -131,15 +131,12 @@ void
 #endif
 );
 
-#ifdef USE_NETCDF4_FEATURES
 extern NhlErrorTypes _NclIFileVlenDef(void);
 extern NhlErrorTypes _NclIFileEnumDef(void);
 extern NhlErrorTypes _NclIFileCompoundDef(void);
 extern NhlErrorTypes _NclIFileWriteCompound(void);
 extern NhlErrorTypes _NclIFileOpaqueDef(void);
-
 extern NhlErrorTypes _NclIFileGrpDef(void);
-#endif
 
 extern NhlErrorTypes _NclIFileVarDef(
 #if NhlNeedProto
@@ -1069,6 +1066,8 @@ NhlErrorTypes _Nclget_cpu_time(
 void
 #endif
 );
+
+NhlErrorTypes _Nclget_wall_time(void);
 
 NhlErrorTypes _NclCreateGraphic(
 #if NhlNeedProto
@@ -2336,7 +2335,6 @@ void _NclAddBuiltIns
 	SetArgTemplate(args,3,"logical",1,NclANY);nargs++;
 	NclRegisterProc(_NclIFileDimDef,args,"filedimdef",nargs);
 
-#ifdef USE_NETCDF4_FEATURES
 	nargs = 0;
 	args = NewArgs(2);
 	dimsizes[0] = 1;
@@ -2391,7 +2389,6 @@ void _NclAddBuiltIns
 	SetArgTemplate(args,3,"snumeric",1,NclANY);nargs++;
 	SetArgTemplate(args,4,"string",1,NclANY);nargs++;
 	NclRegisterProc(_NclIFileOpaqueDef,args,"fileopaquedef",nargs);
-#endif
 
 	nargs = 0;
 	args = NewArgs(4);
@@ -2648,6 +2645,7 @@ void _NclAddBuiltIns
     NclRegisterProc(_Nclset_default_fillvalue,args,"set_default_fillvalue",nargs);
 
 	NclRegisterFunc(_Nclget_cpu_time,NULL,"get_cpu_time",0);
+	NclRegisterFunc(_Nclget_wall_time,NULL,"get_wall_time",0);
 /*
 	nargs = 0;
 	args = NewArgs(1);

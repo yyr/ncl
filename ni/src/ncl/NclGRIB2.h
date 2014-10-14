@@ -456,7 +456,7 @@ typedef struct _g2Sec7 {
 } G2Sec7;
 
 typedef struct  _g2Rec {
-    off_t offset;
+    size_t offset;
     int rec_size;
     int version;        /* GRIB version */
     char *table_source_name;
@@ -560,7 +560,7 @@ typedef struct _Grib2VarTraits {
 	int center;
 	int subcenter;
 	int prod_status;
-	int proc_data_type;
+	int gen_process_type;
 	int sig_ref_time;
 	int pds_template;
 	int discipline;
@@ -610,6 +610,7 @@ struct _Grib2ParamList {
     NclOneDValCoordData levels;
     NclMultiDValData    levels0;
     NclMultiDValData    levels1;
+    Grib2RecordInqRec   *ref_rec;
     Grib2RecordInqRecList   *thelist;
     int n_atts;
     Grib2AttInqRecList  *theatts;
@@ -633,7 +634,7 @@ struct _Grib2AttInqRecList {
 
 
 struct _Grib2RecordInqRec {
-    off_t offset;
+    size_t offset;
     int field_num;
     int rec_size;
     int rec_num;

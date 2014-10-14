@@ -1,5 +1,5 @@
 /*
- *  $Id: CairoWorkstationP.h,v 1.5 2010-03-16 20:32:30 brownrig Exp $
+ *  $Id: CairoWorkstationP.h 15126 2014-03-14 20:41:42Z brownrig $
  */
 
 # ifndef    _NCairoWorkstationP_h
@@ -20,6 +20,8 @@
 # define    CTIFF       (43)
 # define    CX11        (44)
 # define    CEPS        (45)
+# define    CQT         (46)
+# define    CSVG        (47)
 
 /* We are creating distinct workstation objects for PS/PDF versus image-based cairo output formats.
  * However, we'll use common methods and structs. In the struct below, some fields are applicable
@@ -32,6 +34,7 @@ typedef struct _NhlCairoWorkstationLayerPart {
     int lower_y;
     int upper_x;
     int upper_y;
+    NhlBoolean cairo_fill_hack;
 
     /* fields for PS/PDF workstations */
     NhlString          paper_size;      /* standard paper name, e.g., "legal", "A2", etc. */
@@ -77,5 +80,6 @@ typedef struct _NhlCairoWorkstationClassRec   *NhlCairoWorkstationClass;
 extern NhlCairoWorkstationClassRec    NhlcairoDocumentWorkstationClassRec;
 extern NhlCairoWorkstationClassRec    NhlcairoImageWorkstationClassRec;
 extern NhlCairoWorkstationClassRec    NhlcairoWindowWorkstationClassRec;
+extern NhlCairoWorkstationClassRec    NhlcairoQtWorkstationClassRec;
 
 # endif /* _NCairoWorkstationP_h */

@@ -41,7 +41,7 @@ c     will calculate covariance or correlation matrices
 c     x        - input data array  ( unchanged on output)
 c     ntim,nvar- exact dimensions of x in calling routine
 c     xmsg     - missing data code (if none set to some no. not encountered)
-c     iopt     - =0 return
+c     iopt     - 0 ==> covariance, 1 ==> correlation
 c     vcm      - var-cov matrix
 c     trace    - sum of diagonal elements
 c                                              ! input
@@ -52,7 +52,10 @@ c                                              ! output
 C NCLEND
 
       ier   = 0
-
+c
+c iopt == 0 --> calculate variance-covariance matrix
+c iopt == 1 --> calculate correlation matrix
+c
       if (iopt.eq.0) then
           call dvcmssm (x,ntim,nvar,ntim,nvar,xmsg,vcm,lvcm,ier)
           nn    = 0
@@ -79,6 +82,7 @@ c     will calculate covariance or correlation matrices
 c     x        - input data array  ( unchanged on output)
 c     ntim,nvar- exact dimensions of x in calling routine
 c     xmsg     - missing data code (if none set to some no. not encountered)
+c     iopt     - 0 ==> covariance, 1 ==> correlation
 c     vcm      - var-cov matrix
 c     lvcm     - not used
 c                                              ! input
@@ -87,9 +91,11 @@ c                                              ! input
 c                                              ! output
       double precision vcm(nvar,nvar)
 C NCLEND
-
       ier = 0
-
+c
+c iopt == 1 --> calculate variance-covariance matrix
+c iopt == 0 --> calculate correlation matrix
+c
       if (iopt.eq.0) then
           call dvcvmns (x,ntim,nvar,ntim,nvar,xmsg,vcm,lvcm,ier)
           trace = 0.0d0

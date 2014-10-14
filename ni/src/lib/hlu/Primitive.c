@@ -192,6 +192,7 @@ PrimitiveInitialize
 	if (prp->y_arr != NULL)
 		prp->y_arr = _NhlCopyGenArray(prp->y_arr,True);
 
+
 	return ret;
 }
 
@@ -259,6 +260,7 @@ PrimitiveSetValues
 		}
 	}
 
+
 	return ret;
 }
 
@@ -294,6 +296,7 @@ PrimitiveDestroy
 
 	if (prp->y_arr) 
 		NhlFreeGenArray(prp->y_arr);
+
 
 	return ret;
 }

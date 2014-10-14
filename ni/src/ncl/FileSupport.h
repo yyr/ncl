@@ -1,5 +1,5 @@
 /*
- *      $Id: FileSupport.h 12753 2011-12-20 21:43:15Z huangwei $
+ *      $Id: FileSupport.h 15121 2014-03-12 17:49:11Z huangwei $
  */
 /************************************************************************
 *									*
@@ -368,12 +368,15 @@ extern struct _NclApiDataList *_NclGetFileVarInfoList2(
 struct _NclFileRec * /*thefile*/
 #endif
 );
+extern struct _NclApiDataList *_NclGetFileVarInfo1(struct _NclFileRec * /*thefile*/,
+						   NclQuark /*file_var_name*/);
 extern struct _NclApiDataList *_NclGetFileVarInfo2(
 #if     NhlNeedProto
 struct _NclFileRec * /*thefile*/,
 NclQuark /*file_var_name*/
 #endif
 );
+extern struct _NclApiDataList *_NclGetFileInfo1(struct _NclFileRec * /*thefile*/);
 extern struct _NclApiDataList *_NclGetFileInfo2(
 #if NhlNeedProto
 struct _NclFileRec * /*thefile*/
@@ -415,6 +418,9 @@ extern NclQuark *_NclFileReadGrpNames(NclFile thefile, int *num_grps);
 extern ng_size_t *_NclFileReadChunkSizes(NclFile thefile, int *nchunks);
 extern int _NclFileReadCompressionLevel(NclFile thefile);
 extern NclQuark _NclFileReadVersion(NclFile thefile);
+
+extern int _isNewFileStructure(NclFile thefile);
+extern void _NclInitFileClasses();
 
 #endif /*_FileSupport_h */
 

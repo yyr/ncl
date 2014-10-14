@@ -26,6 +26,7 @@ extern "C" {
 #include <ncarg/hlu/hlu.h>
 #include <ncarg/hlu/NresDB.h>
 #include <ncarg/hlu/Callbacks.h>
+#include <ncarg/nfp/nctime.h>
 
 #include "defs.h"
 #include "Symbol.h"
@@ -49,7 +50,6 @@ extern "C" {
 #include "parser.h"
 #include "NclAtt.h"
 #include "NclList.h"
-#include "NclAdvancedList.h"
 #include "NclHLUObj.h"
 #include "TypeSupport.h"
 #include "HLUSupport.h"
@@ -78,7 +78,7 @@ char **fptr;
 NclValue *machine;
 NhlErrorTypes estatus = NhlNOERROR;
 static int level = 0;
-
+static short _ItIsNclReassign = 0;
 
 static void _NclPushExecute
 #if     NhlNeedProto
@@ -114,6 +114,49 @@ static void _NclPopExecute
                 NclFree(tmp);
         }
 }
+
+#ifdef USE_NETCDF4_FEATURES
+static NclSelectionRecord* _NclAllocateAdvancedFileSelPointer(NclFile file, NclQuark var,
+                                                              int nsubs, NhlErrorTypes* estatus)
+{
+    NclAdvancedFile advancedfile = (NclAdvancedFile)file;
+    NclFileVarNode *varnode = NULL;
+    NclSelectionRecord* sel_ptr = NULL;
+
+    *estatus = NhlNOERROR;
+
+    varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
+    if(NULL == varnode)
+    {
+        NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
+                   NrmQuarkToString(var),NrmQuarkToString(advancedfile->advancedfile.grpnode->path)));
+        _NclCleanUpStack(nsubs);
+        *estatus = NhlFATAL;
+        return sel_ptr;
+    }
+
+    if(0 == nsubs)
+    {
+        sel_ptr = NULL;
+    }
+    else if(nsubs == varnode->dim_rec->n_dims)
+    {
+        sel_ptr = (NclSelectionRecord*)NclMalloc(sizeof(NclSelectionRecord));
+        sel_ptr->n_entries = nsubs;
+    }
+    else
+    {
+        NhlPError(NhlFATAL,NhlEUNKNOWN,
+                 "Number of subscripts do not match number of dimensions of variable, (%d) subscripts used, (%d) subscripts expected",
+                  nsubs,varnode->dim_rec->n_dims);
+        _NclCleanUpStack(nsubs);
+        *estatus = NhlFATAL;
+     }
+
+     return sel_ptr;
+}
+#endif
+
 void CallLIST_ASSIGN_VERIFY_SUB (void) {
 	NclStackEntry *data_ptr;
 
@@ -165,59 +208,28 @@ void CallTERM_LIST_OP(void) {
 	temporary_list_ptr = _NclRetrieveRec(temporary,DONT_CARE);
 
 	if(temporary_list_ptr != NULL) {
-		char *class_name = temporary_list_ptr->u.data_list->obj.class_ptr->obj_class.class_name;
+		n_elements = temporary_list_ptr->u.data_list->list.nelem;
 
-		if(0 == strcmp("NclAdvancedListClass", class_name))
+		if(1 != n_elements)
 		{
-			NclAdvancedList advancedlist = (NclAdvancedList) temporary_list_ptr->u.data_list;
-			n_elements = advancedlist->advancedlist.n_elem;
-			if(1 != n_elements)
+			if(temporary_list_ptr->u.data_list->list.list_type & NCL_JOIN)
 			{
-				estatus = _NclBuildNewListVar(n_elements, &output);
-                		if(estatus != NhlFATAL)
-				{
-                     			estatus = _NclPush(output);
-				}
+				estatus = _NclBuildArray(n_elements,&output);
 			}
-		}
-		else
-		{
-			n_elements = temporary_list_ptr->u.data_list->list.nelem;
-
-			if(n_elements != 1)
+			else if(temporary_list_ptr->u.data_list->list.list_type & NCL_CONCAT)
 			{
-				if(temporary_list_ptr->u.data_list->list.list_type & NCL_ITEM)
-				{
-					estatus = _NclBuildListVar(n_elements,&output);
-				}
-				else if(temporary_list_ptr->u.data_list->list.list_type & NCL_VLEN)
-				{
-					estatus = _NclBuildListVar(n_elements,&output);
-				}
-				else if(temporary_list_ptr->u.data_list->list.list_type & NCL_STRUCT)
-				{
-					estatus = _NclBuildListVar(n_elements,&output);
-				}
-				else if(temporary_list_ptr->u.data_list->list.list_type & NCL_JOIN)
-				{
-					estatus = _NclBuildArray(n_elements,&output);
-				}
-/*
-				else if(temporary_list_ptr->u.data_list->list.list_type & NCL_CONCAT)
-				{
-					estatus = _NclBuildConcatArray(n_elements,&output);
-				}
-*/
-				else
-				{
-					/*This code will make the output a new list.*/
-					estatus = _NclBuildListVar(n_elements,&output);
-				}
-
-               			if(estatus != NhlFATAL)
-               				estatus = _NclPush(output);
+				estatus = _NclBuildConcatArray(n_elements,&output);
 			}
+			else
+			{
+				/*This code will make the output a new list.*/
+				estatus = _NclBuildListVar(n_elements,&output);
+			}
+
+       			if(estatus != NhlFATAL)
+       				estatus = _NclPush(output);
 		}
+
 		_NclDestroyObj((NclObj)temporary_list_ptr->u.data_list);
 	}
 
@@ -229,7 +241,6 @@ void CallLIST_READ_OP(void) {
 	NclSymbol *temporary;
 	NclStackEntry *list_ptr;
 	NclStackEntry *temporary_list_ptr;
-	NclStackEntry result;
 	NclStackEntry data;
 	NclList list;
 	NclList newlist;
@@ -246,6 +257,8 @@ void CallLIST_READ_OP(void) {
 	temporary = (NclSymbol*)(*ptr);
 	ptr++;lptr++;fptr++;
 	subs = *(int*)ptr;
+
+	int number_of_item = 0;
 
 	list_ptr = _NclRetrieveRec(listsym,DONT_CARE);
 	temporary_list_ptr = _NclRetrieveRec(temporary,DONT_CARE);
@@ -380,32 +393,29 @@ void CallLIST_READ_OP(void) {
 			default:
 				break;
 		}
+
+		number_of_item = 1 + sel.u.sub.finish - sel.u.sub.start;
+
 		sel_ptr = &sel;
 		_NclFreeSubRec(&data.u.sub_rec);
 	} else {
 		sel_ptr = NULL;
 	}
 
-	newlist =_NclListSelect(list,sel_ptr);
-	if(newlist != NULL) {
-/*
-		ng_size_t dim_sizes[NCL_MAX_DIMENSIONS];
-		int ndims = 1;
-		obj *id;
-		id = (obj*)NclMalloc(sizeof(obj));
-		*id = newlist->obj.id;
-		_NclListSetType((NclObj)newlist,NCL_FIFO);
-
-		dim_sizes[0] = 1;
-		result.kind = NclStk_VAL;
-		result.u.data_obj = _NclMultiDVallistDataCreate(NULL,NULL,Ncl_MultiDVallistData,
-						0,id,NULL,
-						ndims,dim_sizes,TEMPORARY,NULL);
-		_NclPush(result);
-
-*/
-		temporary_list_ptr->kind = NclStk_LIST;
-		temporary_list_ptr->u.data_list = newlist;
+	if(number_of_item)
+	{
+		newlist = _NclListSelect(list,sel_ptr);
+		if(NULL != newlist)
+		{
+			temporary_list_ptr->kind = NclStk_LIST;
+			temporary_list_ptr->u.data_list = newlist;
+		}
+		else
+		{
+			temporary_list_ptr->kind = NclStk_NOVAL;
+			temporary_list_ptr->u.data_list = NULL;
+			estatus = NhlFATAL;
+		}
 	} else {
 		temporary_list_ptr->kind = NclStk_NOVAL;
 		temporary_list_ptr->u.data_list = NULL;
@@ -414,7 +424,149 @@ void CallLIST_READ_OP(void) {
 	
 	return;
 }
+int HasTimeUnits(NrmQuark units)
+{
+	char *str_units = NrmQuarkToString(units);
+	int ok_so_far = 0;
 
+	/* make sure the string has a minimum length of 6 (I don't think it is possible to have time units with less than
+	   6 total characters -- this prevents a short string from causing overrun with these tests 
+	if (strlen(str_units) < 6)
+	return 0; */
+
+	if (! str_units) 
+		return 0;
+	if(!strncasecmp(str_units,"sec",3) || !strcasecmp(str_units,"s")){
+		ok_so_far = 1;
+        }
+        else if(!strncasecmp(str_units,"min",3) || !strcasecmp(str_units,"mn")){
+		ok_so_far = 1;
+        }
+        else if(!strncasecmp(str_units,"hour",4) || !strcasecmp(str_units,"hr")){
+		ok_so_far = 1;
+        }
+        else if(!strncasecmp(str_units,"day",3) || !strcasecmp(str_units,"dy")){
+		ok_so_far = 1;
+        }
+        else if(!strncasecmp(str_units,"week",4) || !strcasecmp(str_units,"wk")){
+		ok_so_far = 1;
+        }
+        else if(!strncasecmp(str_units,"month",5) || !strcasecmp(str_units,"mo")){
+		ok_so_far = 1;
+        }
+        else if(!strncasecmp(str_units,"season",6)){
+		ok_so_far = 1;
+        }
+        else if(!strncasecmp(str_units,"year",4) || !strcasecmp(str_units,"yr")){
+		ok_so_far = 1;
+        }
+	if (! ok_so_far) {
+		return 0;
+	}
+	/* Since some of the unit abbreviations such as "s" cannot really be considered a very good test of whether the
+	   unit string represents time, also check for the presence of an equivalent to "since" */
+	
+	if (! strcasestr(str_units,"since") || 
+	    !  strcasestr(str_units,"after") ||
+	    ! strcasestr(str_units,"ref")  ||
+	    ! strcasestr(str_units,"from")) {
+		return 1;
+	}
+	return 0;
+}
+
+extern int cuErrorOccurred;
+
+NhlErrorTypes FixAggCoord(NclOneDValCoordData agg_coord_md, long *agg_dim_count, NrmQuark *units, NrmQuark *calendar, int nfiles)
+{
+	int i;
+	int first = 1;
+	cdCalenType ctype, base_ctype;
+	cdUnitTime base_cdunit, cdunit;
+	cdCompTime base_cdcomptime, cdcomptime;
+	ng_size_t agg_ix = 0;
+	NrmQuark qbase_unit;
+	/*NclBasicDataTypes coord_type;*/
+	/*int increasing;*/
+	void *val;
+	double dx,dx_out,dx_diff;
+	ng_size_t tsize;
+	void *diff;
+
+	cuErrorOccurred = 0;
+	if (nfiles <= 0) 
+		return NhlNOERROR;
+
+	val = agg_coord_md->multidval.val;
+	tsize = agg_coord_md->multidval.type->type_class.size;
+	/*coord_type = agg_coord_md->multidval.data_type;*/
+	diff = NclMalloc(tsize);
+
+	/*
+	switch (agg_coord_md->onedval.mono_type) {
+	case NclINCREASING:
+		increasing = 1;
+		break;
+	case NclDECREASING:
+		increasing = 0;
+		break;
+	default:
+		NhlPError(NhlWARNING, NhlEUNKNOWN,"non-monotonic coordinate in first aggregated file -- cannot be repaired automatically");
+		return NhlWARNING;
+	}
+	*/
+		
+	for (i = 0; i < nfiles; i++) {
+		if (agg_dim_count[i] == 0) /* indicates a bad files */
+			continue;
+		if (calendar[i] == NrmNULLQUARK)
+			ctype = cdStandard;
+		else
+			ctype = calendar_type(NrmQuarkToString(_NclGetLower(calendar[i])));
+		if (first) {
+			first = 0;
+			base_ctype = ctype;
+			if ((units[i] == NrmNULLQUARK) || cdParseRelunits(ctype,NrmQuarkToString(units[i]),&base_cdunit,&base_cdcomptime)) {
+				NhlPError(NhlWARNING, NhlEUNKNOWN,"non-monotonic aggregation variable -- not enough information to fix");
+				return NhlWARNING;
+			}
+			qbase_unit = units[i];
+			agg_ix = agg_dim_count[i];
+			continue;
+		}
+		if (units[i] == qbase_unit) /* nothing to do */
+			continue;
+		if ((units[i] == NrmNULLQUARK) || cdParseRelunits(ctype,NrmQuarkToString(units[i]),&cdunit,&cdcomptime)) {
+			NhlPError(NhlWARNING, NhlEUNKNOWN,"non-monotonic aggregation variable -- not enough information to fix");
+			return NhlWARNING;
+		}
+		
+		_Nclcoerce((NclTypeClass)nclTypedoubleClass,
+			   (void*)(&dx),
+			   (char *)val + agg_ix * tsize,
+			   1,
+			   NULL,
+			   NULL,
+			   agg_coord_md->multidval.type);
+
+		cdRel2Comp(ctype,NrmQuarkToString(units[i]),dx,&cdcomptime);
+		cdComp2Rel(base_ctype,cdcomptime,NrmQuarkToString(qbase_unit),&dx_out);
+		dx_diff = dx_out - dx;
+		_NclScalarForcedCoerce((void*)&dx_diff,NCL_double,diff, agg_coord_md->multidval.data_type);
+		_Nclplus(agg_coord_md->multidval.type,(char *)val + agg_ix * tsize,(char *)val + agg_ix * tsize,diff,NULL,NULL,agg_dim_count[i],1);
+
+		agg_ix += agg_dim_count[i];
+	}
+	NclFree(diff);
+	/* check that array is now monotonic */
+	if (! _Nclis_mono(agg_coord_md->multidval.type, agg_coord_md->multidval.val, NULL, agg_coord_md->multidval.totalelements)) {
+		NhlPError(NhlWARNING, NhlEUNKNOWN,"error attempting to fix non-monotonic aggregation variable");
+		return NhlWARNING;
+	}
+
+	return NhlNOERROR;
+}
+	
 void CallLIST_READ_FILEVAR_OP(void) {
 	NclSymbol *listsym;
 	NclStackEntry *list_ptr;
@@ -432,6 +584,8 @@ void CallLIST_READ_FILEVAR_OP(void) {
 	int the_obj_id;
 	NclObj the_obj;
 	long *agg_dim_count = NULL;
+ 	NrmQuark *units = NULL;
+ 	NrmQuark *calendar = NULL;
 	int list_index;
 	long total_agg_dim_size, agg_start_index;
 	long agg_end_index;
@@ -439,8 +593,8 @@ void CallLIST_READ_FILEVAR_OP(void) {
 	long agg_stride_index;
 	NrmQuark agg_dim_name = NrmNULLQUARK;
 	NclFile *files = NULL;
-	NclVar var1 = NULL, tvar, agg_coord_var;
-	NclMultiDValData agg_coord_md = NULL;
+	NclVar var1 = NULL, agg_coord_var;
+	NclOneDValCoordData agg_coord_md = NULL;
 	NclMultiDValData var_md;
 	NclDimRec dim_info;
 	int first;
@@ -647,9 +801,12 @@ void CallLIST_READ_FILEVAR_OP(void) {
 	 * JOIN and CAT types are handled separately.
          */
 	agg_coord_var = NULL; /* use to test for presence of coordinate variable */
-	agg_dim_count = NclMalloc(sizeof(long) * newlist->list.nelem);
-	files = NclMalloc (sizeof(NclFile) * newlist->list.nelem);
-	if (! (agg_dim_count && files)) {
+	agg_coord_var_md = NULL;
+	agg_dim_count = NclCalloc(newlist->list.nelem, sizeof(long));
+	units = NclCalloc(newlist->list.nelem, sizeof(NrmQuark));
+	calendar = NclCalloc(newlist->list.nelem, sizeof(NrmQuark));
+	files = NclCalloc(newlist->list.nelem, sizeof(NclFile));
+	if (! (agg_dim_count && files && units && calendar)) {
 		NhlPError(NhlFATAL,ENOMEM,"Memory allocation failure");
 		estatus = NhlFATAL;
 	}
@@ -666,6 +823,8 @@ void CallLIST_READ_FILEVAR_OP(void) {
 		agg_dim_name = NrmStringToQuark("ncl_join");
 		for (i = 0; i < total_agg_dim_size; i++) {
 			agg_dim_count[i] = 1;
+			units[i] = NrmNULLQUARK;
+			calendar[i] = NrmNULLQUARK;
 		}
 		list_index = newlist->list.nelem - 1;
 		while ((the_obj_id = _NclListGetNext((NclObj)newlist)) != -1) {
@@ -719,7 +878,7 @@ void CallLIST_READ_FILEVAR_OP(void) {
 								}
 								else
 								{
-									for (i = 0; i < var_ndims; ++i)
+									for (i = 1; i < var_ndims; ++i) /* dim 0 does not need to match */
 									{
 										if(varnode->dim_rec->dim_node[i].size != var_dim_sizes[i])
 										{
@@ -822,45 +981,138 @@ void CallLIST_READ_FILEVAR_OP(void) {
 				thefile = (NclFile)_NclGetObj(*(obj*)file_md->multidval.val);
 				if (thefile && var != NrmNULLQUARK && ((index = _NclFileIsVar(thefile, var)) > -1)) {
 					int bad = 0;
-					struct _NclFVarRec *var_info = thefile->file.var_info[index];
-					if (first) { /* save the dimension sizes */
-						var_ndims = var_info->num_dimensions;
-						for (i = 0; i < var_info->num_dimensions; i++) {
-							var_dim_sizes[i] = thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size;
+#ifdef USE_NETCDF4_FEATURES
+					if(thefile->file.advanced_file_structure)
+					{
+						NclAdvancedFile advancedfile = (NclAdvancedFile)thefile;
+						NclFileVarNode *varnode = NULL;
+						varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
+						if(NULL == varnode)
+						{
+							NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
+								   NrmQuarkToString(var),
+								   NrmQuarkToString(advancedfile->advancedfile.grpnode->path)));
 						}
-						first = 0;
-					}
-					else {
-						if (var_info->num_dimensions != var_ndims) {
-							NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension count for variable  does not conform to others in list; skipping file",
-								  NrmQuarkToString(thefile->file.fpath));
-							bad = 1;
+						if(first && (NULL != varnode->dim_rec))
+						{
+							var_ndims = varnode->dim_rec->n_dims;
+							for (i = 0; i < var_ndims; ++i)
+							{
+								var_dim_sizes[i] = varnode->dim_rec->dim_node[i].size;
+							}
+							first = 0;
 						}
-						else {
-							for (i = 1; i < var_info->num_dimensions; i++) { /* dim 0 does not need to match */
-								if (thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size != var_dim_sizes[i]) {
-									NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension sizes do not conform to others in list; skipping file",
-										  NrmQuarkToString(thefile->file.fpath));
-									bad = 1;
-									break;
+						if(NULL != varnode->dim_rec)
+						{
+							if(varnode->dim_rec->n_dims != var_ndims)
+							{
+								NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+									   "File %s dimension count for variable does not conform to others in list; skipping file",
+									   NrmQuarkToString(advancedfile->advancedfile.fpath)));
+								bad = 1;
+							}
+							else
+							{
+								for (i = 1; i < var_ndims; ++i) /* Wei 05/24/2013, Guess the first dimension does not need to match. */
+								{
+									if(varnode->dim_rec->dim_node[i].size != var_dim_sizes[i])
+									{
+										NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+											   "File %s dimension sizes do not conform to others in list; skipping file",
+											   NrmQuarkToString(advancedfile->advancedfile.fpath)));
+										bad = 1;
+										break;
+									}
 								}
 							}
 						}
+						else
+						{
+							bad = 1;
+						}
+
+						if (bad) {
+							files[list_index] = NULL;
+							agg_dim_count[list_index] = 0;
+							units[list_index] = NrmNULLQUARK;
+							calendar[list_index] = NrmNULLQUARK;
+							list_index--;
+						}
+						else {
+							NclMultiDValData tmd;
+							agg_dim_name = varnode->dim_rec->dim_node[0].name;
+							total_agg_dim_size += varnode->dim_rec->dim_node[0].size;
+							agg_dim_count[list_index] = varnode->dim_rec->dim_node[0].size;
+							if (_NclFileVarIsAtt(thefile,agg_dim_name,NrmStringToQuark("units")) != -1) {
+								tmd = _NclFileReadVarAtt(thefile,agg_dim_name,NrmStringToQuark("units"),NULL);
+								units[list_index] = *(NrmQuark *) tmd->multidval.val;
+							}
+							if (_NclFileVarIsAtt(thefile,agg_dim_name,NrmStringToQuark("calendar")) != -1) {
+								tmd = _NclFileReadVarAtt(thefile,agg_dim_name,NrmStringToQuark("calendar"),NULL);
+								calendar[list_index] = *(NrmQuark *) tmd->multidval.val;
+							}
+							files[list_index] = thefile;
+							good_file_count++;
+							list_index--;
+
+						}
 					}
-					if (bad) {
-						files[list_index] = NULL;
-						agg_dim_count[list_index] = 0;
-						list_index--;
-					}
-					else {
-						agg_dim = thefile->file.var_info[index]->file_dim_num[0];
-						agg_dim_name = thefile->file.file_dim_info[agg_dim]->dim_name_quark;
-						total_agg_dim_size += thefile->file.file_dim_info[agg_dim]->dim_size;
-						agg_dim_count[list_index] = thefile->file.file_dim_info[agg_dim]->dim_size;
-						files[list_index] = thefile;
-						good_file_count++;
-						list_index--;
-					}
+					else 
+#endif
+					{
+						struct _NclFVarRec *var_info = thefile->file.var_info[index];
+						if (first) { /* save the dimension sizes */
+							var_ndims = var_info->num_dimensions;
+							for (i = 0; i < var_info->num_dimensions; i++) {
+								var_dim_sizes[i] = thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size;
+							}
+							first = 0;
+						}
+						else {
+							if (var_info->num_dimensions != var_ndims) {
+								NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension count for variable  does not conform to others in list; skipping file",
+									  NrmQuarkToString(thefile->file.fpath));
+								bad = 1;
+							}
+							else {
+								for (i = 1; i < var_info->num_dimensions; i++) { /* dim 0 does not need to match */
+									if (thefile->file.file_dim_info[var_info->file_dim_num[i]]->dim_size != var_dim_sizes[i]) {
+										NhlPError(NhlWARNING,NhlEUNKNOWN,"File %s dimension sizes do not conform to others in list; skipping file",
+											  NrmQuarkToString(thefile->file.fpath));
+										bad = 1;
+										break;
+									}
+								}
+							}
+						}
+
+						if (bad) {
+							files[list_index] = NULL;
+							agg_dim_count[list_index] = 0;
+							units[list_index] = NrmNULLQUARK;
+							calendar[list_index] = NrmNULLQUARK;
+							list_index--;
+						}
+						else {
+							NclMultiDValData tmd;
+							agg_dim = thefile->file.var_info[index]->file_dim_num[0];
+							agg_dim_name = thefile->file.file_dim_info[agg_dim]->dim_name_quark;
+							total_agg_dim_size += thefile->file.file_dim_info[agg_dim]->dim_size;
+							agg_dim_count[list_index] = thefile->file.file_dim_info[agg_dim]->dim_size;
+							if (_NclFileVarIsAtt(thefile,agg_dim_name,NrmStringToQuark("units")) != -1) {
+								tmd = _NclFileReadVarAtt(thefile,agg_dim_name,NrmStringToQuark("units"),NULL);
+								units[list_index] = *(NrmQuark *) tmd->multidval.val;
+							}
+							if (_NclFileVarIsAtt(thefile,agg_dim_name,NrmStringToQuark("calendar")) != -1) {
+								tmd = _NclFileReadVarAtt(thefile,agg_dim_name,NrmStringToQuark("calendar"),NULL);
+								calendar[list_index] = *(NrmQuark *) tmd->multidval.val;
+							}
+							files[list_index] = thefile;
+							good_file_count++;
+							list_index--;
+
+						}
+					}					
 				}
 				else {
 					files[list_index] = NULL;
@@ -876,7 +1128,9 @@ void CallLIST_READ_FILEVAR_OP(void) {
 		}
 		if (_NclFileVarIsCoord(files[0],agg_dim_name) > -1) {
 			long offset;
-			agg_coord_md = _NclFileReadVarValue(files[0],agg_dim_name,NULL);
+			NclCoordVar cvar;
+			cvar = (NclCoordVar)_NclFileReadCoord(files[0],agg_dim_name,NULL);
+			agg_coord_md = (NclOneDValCoordData) _NclGetObj(cvar->var.thevalue_id);
 			if (!agg_coord_md) {
 				NhlPError(NhlFATAL,ENOMEM,"Memory allocation failure");
 				estatus = NhlFATAL;
@@ -919,9 +1173,9 @@ void CallLIST_READ_FILEVAR_OP(void) {
 				dim_info.dim_num = 0;
 				dim_info.dim_size = total_agg_dim_size;
 				agg_coord_md->obj.status = PERMANENT;
-				tvar = _NclCoordVarCreate(NULL,NULL,Ncl_CoordVar,0,NULL,agg_coord_md,&dim_info,-1,NULL,COORD,NrmQuarkToString(agg_dim_name),TEMPORARY);
+				/*tvar = _NclCoordVarCreate(NULL,NULL,Ncl_CoordVar,0,NULL,agg_coord_md,&dim_info,-1,NULL,COORD,NrmQuarkToString(agg_dim_name),TEMPORARY);*/
 				agg_coord_md->obj.status = TEMPORARY;
-				agg_coord_var = _NclVarCreate(NULL,NULL,Ncl_Var,0,NULL,agg_coord_md,&dim_info,-1,&tvar->obj.id,VAR,NrmQuarkToString(agg_dim_name),TEMPORARY);
+				agg_coord_var = _NclVarCreate(NULL,NULL,Ncl_Var,0,NULL,(NclMultiDValData)agg_coord_md,&dim_info,-1,&cvar->obj.id,VAR,NrmQuarkToString(agg_dim_name),TEMPORARY);
 			}
 		}	
 	}	
@@ -1566,6 +1820,24 @@ void CallLIST_READ_FILEVAR_OP(void) {
 			NclFree(vec);
 	}
 
+	if (agg_coord_var && agg_coord_var_md &&
+	    (! _Nclis_mono(agg_coord_var_md->multidval.type, agg_coord_var_md->multidval.val, NULL, agg_coord_var_md->multidval.totalelements))) {
+		if (HasTimeUnits(units[0])) {
+			FixAggCoord((NclOneDValCoordData)agg_coord_var_md,agg_dim_count,units,calendar,newlist->list.nelem);
+			if (agg_coord_var->var.var_quark == var1->var.var_quark && var1->var.n_dims == 1) {  
+				NclMultiDValData tmd = (NclMultiDValData)_NclGetObj(var1->var.thevalue_id);
+				if (!tmd || tmd->multidval.data_type != agg_coord_var_md->multidval.data_type || tmd->multidval.totalsize != agg_coord_var_md->multidval.totalsize) {
+					NhlPError(NhlWARNING,NhlEUNKNOWN,"Error attempting to conform coordinate variable data to initial file's time units");
+				}
+				else {
+					memcpy(tmd->multidval.val,agg_coord_var_md->multidval.val,agg_coord_var_md->multidval.totalsize);
+				}
+			}
+		}
+		else {
+			NhlPError(NhlWARNING, NhlEUNKNOWN,"Non-monotonic coordinate array generated -- check validity of the aggregated (leftmost) dimension");
+		}
+	}
 
 	if (var1) {
 		data.kind = NclStk_VAR;
@@ -1597,6 +1869,10 @@ void CallLIST_READ_FILEVAR_OP(void) {
 		NclFree(files);
 	if (agg_dim_count)
 		NclFree(agg_dim_count);
+	if (units)
+		NclFree(units);
+	if (calendar)
+		NclFree(calendar);
 	if (newlist)
 		_NclDestroyObj((NclObj)newlist);
 	
@@ -1640,19 +1916,11 @@ void CallSET_NEXT_OP(void)
 */
 			return;
 		} else {
-			if(0 == strcmp("NclAdvancedListClass", list->obj.class_ptr->obj_class.class_name))
-			{
-				(void)_NclChangeSymbolType(temporary, LIST);
-				tmp_ptr->kind = NclStk_LIST;
-				tmp_ptr->u.data_list = list;
-
-				return;
-			}
-
 			switch(the_obj->obj.obj_type) {
 			case Ncl_Var:
 			case Ncl_HLUVar:
 			case Ncl_CoordVar:
+			case Ncl_MultiDVallistData:
 				(void)_NclChangeSymbolType(temporary,VAR);
 				tmp_ptr->kind = NclStk_VAR;
 				tmp_ptr->u.data_var = (NclVar)the_obj;
@@ -2444,6 +2712,8 @@ void CallJMP_SCALAR_TRUE_OP(void) {
 								if(estatus != NhlFATAL) {
 									estatus =  _NclPush(data1);
 								}
+								if (data.u.data_obj->obj.status != PERMANENT)
+									_NclDestroyObj((NclObj)data.u.data_obj);
 								return;
 							}
 						}
@@ -2488,6 +2758,8 @@ void CallJMP_SCALAR_FALSE_OP(void) {
 								if(estatus != NhlFATAL) {
 									estatus =  _NclPush(data1);
 								}
+								if (data.u.data_obj->obj.status != PERMANENT)
+									_NclDestroyObj((NclObj)data.u.data_obj);
 								return;
 							}
 						}
@@ -2606,8 +2878,10 @@ void CallINTRINSIC_FUNC_CALL(void) {
 */
 				caller_level = _NclFinishFrame();	
 				if(((NclSymbol*)*ptr)->u.bfunc != NULL) {
+#ifdef ENABLE_PROFILING
 					NclSymbol *func = (NclSymbol *)(*ptr);
 					NCL_PROF_PFENTER(func->name);
+#endif
 					ret = (*((NclSymbol*)*ptr)->u.bfunc->thefunc)();
 					NCL_PROF_PFEXIT(func->name);
 /*
@@ -2663,8 +2937,10 @@ void CallINTRINSIC_PROC_CALL(void) {
 */
 				caller_level = _NclFinishFrame();	
 				if(((NclSymbol*)*ptr)->u.bproc != NULL) {
+#ifdef ENABLE_PROFILING
 					NclSymbol *proc = (NclSymbol *)(*ptr);
 					NCL_PROF_PFENTER(proc->name);
+#endif
 					ret = (*((NclSymbol*)*ptr)->u.bproc->theproc)();
 					NCL_PROF_PFEXIT(proc->name);
 					if(ret < NhlWARNING) {
@@ -2875,7 +3151,6 @@ void CallLOOP_INC_OP(void) {
 					NclStackEntry *tmp_ptr;
 					NclStackEntry *data_ptr;
 					NclMultiDValData tmp_md;
-					NclMultiDValData tmp2_md;
 					NclSymbol *l_inc;
 					NclSymbol *l_dir;
 					NclMultiDValData end_md = NULL;;
@@ -3157,7 +3432,7 @@ void CallASSIGN_VAR_DIM_OP(void) {
 							NCL_long);
 							
 					} else {
-						dim_name = NrmQuarkToString(*(string*)dim_expr_md->multidval.val);
+						dim_name = NrmQuarkToString(*(NclQuark *)dim_expr_md->multidval.val);
 					}
 					if((dim_ref_md->multidval.data_type != NCL_long)) {
 						_NclScalarCoerce(
@@ -3245,7 +3520,7 @@ void CallNEW_OP(void) {
 						NhlPError(NhlFATAL,NhlEUNKNOWN,"new: data type must either be a keyword or string");
 						estatus = NhlFATAL;
 					} else {
-						data_type = _NclLookUp(NrmQuarkToString(*(string*)tmp_md->multidval.val));
+						data_type = _NclLookUp(NrmQuarkToString(*(NclQuark *)tmp_md->multidval.val));
 					}	
 				} else {
 					data_type = (NclSymbol*)*ptr;
@@ -3610,9 +3885,9 @@ static void performASSIGN_VAR(NclSymbol *sym, int nsubs, NclStackEntry *lhs_var)
 					int n;
 					NclDimRec dim_info[NCL_MAX_DIMENSIONS];
 					NclVar tmpvar;
-					NclAdvancedList tmplist = (NclAdvancedList)rhs.u.data_list;
+					NclList tmplist = (NclList)rhs.u.data_list;
 
-					tmpvar = (NclVar)_NclGetObj(tmplist->advancedlist.item[0]->obj_id);
+					tmpvar = (NclVar)_NclGetObj(tmplist->list.first->obj_id);
 
 					rhs_md = _NclVarValueRead(tmpvar,NULL,NULL);
 					if(rhs_md != NULL)
@@ -3751,18 +4026,9 @@ static void performASSIGN_VAR(NclSymbol *sym, int nsubs, NclStackEntry *lhs_var)
 
 void CallASSIGN_VAR_OP(void)
 {
-	NclStackEntry rhs;
-	NclStackEntry data;
 	NclStackEntry *lhs_var = NULL;
-	NclMultiDValData rhs_md = NULL;
-	NclMultiDValData tmp_md = NULL;
-	NclSelectionRecord *sel_ptr = NULL;
 	int nsubs;	
-	ng_size_t i;
 	NclSymbol *sym = NULL;
-	NhlErrorTypes ret = NhlNOERROR;
-	NhlArgVal udata;
-			
 
 	ptr++;lptr++;fptr++;
 	sym = (NclSymbol*)(*ptr);
@@ -3782,7 +4048,6 @@ NhlErrorTypes ClearDataBeforeReassign(NclStackEntry *data)
     int sub_sel = 0;
     NclObj tmp,pobj;
     NclRefList *rlist = NULL;
-    int obj_id;
     NhlErrorTypes ret = NhlNOERROR;
 
     switch(data->kind)
@@ -3951,17 +4216,9 @@ NhlErrorTypes ClearDataBeforeReassign(NclStackEntry *data)
 
 void CallREASSIGN_VAR_OP(void)
 {
-    NclStackEntry rhs;
-    NclStackEntry data;
     NclStackEntry *lhs_var = NULL;
-    NclMultiDValData rhs_md = NULL;
-    NclMultiDValData tmp_md = NULL;
-    NclSelectionRecord *sel_ptr = NULL;
     int nsubs;    
-    ng_size_t i;
     NclSymbol *sym = NULL;
-    NhlErrorTypes ret = NhlNOERROR;
-    NhlArgVal udata;
 
     ptr++;lptr++;fptr++;
     sym = (NclSymbol*)(*ptr);
@@ -4651,7 +4908,7 @@ void CallCREATE_OBJ_OP(void) {
 						}
 					}
 				}
-				objname = NrmQuarkToString(*(string*)obj_name_md->multidval.val);
+				objname = NrmQuarkToString(*(NclQuark *)obj_name_md->multidval.val);
 				if(obj_name_md->obj.status != PERMANENT) {
 					_NclDestroyObj((NclObj)obj_name_md);
 				}
@@ -5433,6 +5690,151 @@ void CallVAR_COORD_OP(void) {
 				}
 			}
 
+void CallREASSIGN_VAR_COORD_OP(void) {
+				NclStackEntry *var = NULL,cvar;
+				NclStackEntry data;
+				NclSymbol* thesym = NULL;
+				char *coord_name = NULL;
+				int nsubs = 0;
+				NhlErrorTypes ret = NhlNOERROR;
+				NclSelectionRecord *sel_ptr = NULL;
+				NclMultiDValData thevalue = NULL;
+				int id;
+				
+				cvar = _NclPop();
+				switch(cvar.kind) {
+				case NclStk_VAL: 
+					thevalue = cvar.u.data_obj;
+					break;
+				case NclStk_VAR:
+					thevalue = _NclVarValueRead(cvar.u.data_var,NULL,NULL);
+					break;
+				default:
+					thevalue = NULL;
+					estatus = NhlFATAL;
+					break;
+				}
+
+				if((thevalue == NULL)||((thevalue->multidval.kind != SCALAR)&&(thevalue->multidval.type != (NclTypeClass)nclTypestringClass))) {
+					NhlPError(NhlFATAL,NhlEUNKNOWN,"Variable Attribute names must be scalar string values can't continue");
+					estatus = NhlFATAL;
+				} else {
+					coord_name = NrmQuarkToString(*(NclQuark*)thevalue->multidval.val);
+					if(cvar.u.data_obj->obj.status != PERMANENT) {
+						_NclDestroyObj((NclObj)cvar.u.data_obj);
+					}
+				}
+				thevalue = NULL;
+
+				ptr++;lptr++;fptr++;
+				thesym = (NclSymbol*)*ptr;
+/*
+				ptr++;lptr++;fptr++;
+				coord_name = NrmQuarkToString(*ptr);
+*/
+				ptr++;lptr++;fptr++;
+				nsubs = *(int*)ptr;
+
+				var = _NclRetrieveRec(thesym,WRITE_IT);
+				if((var == NULL)||(var->u.data_var == NULL)) {
+					estatus = NhlFATAL;
+				} else if(_NclIsDim(var->u.data_var,coord_name) == -1) {
+					NhlPError(NhlFATAL,NhlEUNKNOWN,"(%s) is not a named dimension in variable (%s).",coord_name,thesym->name);
+					estatus = NhlFATAL;
+				} else {
+					if(nsubs == 0) {
+						sel_ptr = NULL;
+					} else if(nsubs == 1){
+						sel_ptr = _NclGetVarSelRec(var->u.data_var);
+						sel_ptr->n_entries = 1;
+						data =_NclPop();
+						if(data.u.sub_rec.name != NULL) {
+							NhlPError(NhlWARNING,NhlEUNKNOWN,"Named dimensions can not be used with coordinate variables since only one dimension applies");
+							estatus = NhlWARNING;
+						}
+						switch(data.u.sub_rec.sub_type) {
+						case INT_VECT:
+/*
+* Need to free some stuff here
+*/						
+							ret = _NclBuildVSelection(var->u.data_var,&data.u.sub_rec.u.vec,&(sel_ptr->selection[0]),0,NULL);
+							break;
+						case INT_SINGLE:
+						case INT_RANGE:
+/*
+* Need to free some stuff here
+*/							
+							ret = _NclBuildRSelection(var->u.data_var,&data.u.sub_rec.u.range,&(sel_ptr->selection[0]),0,NULL);
+							break;
+						case COORD_VECT:
+						case COORD_SINGLE:
+						case COORD_RANGE:
+							NhlPError(NhlFATAL,NhlEUNKNOWN,"Coordinate indexing can not be used with coordinate variables ");
+							NclFree(sel_ptr);
+							sel_ptr = NULL;
+							estatus = NhlFATAL;
+							break;
+						}
+						_NclFreeSubRec(&data.u.sub_rec);
+						if(ret < NhlWARNING)
+							estatus = NhlFATAL;
+
+					} else {
+						NhlPError(NhlFATAL,NhlEUNKNOWN,"Coordinate variables have only one dimension, %d subscripts on left hand side of assignment",nsubs);
+						_NclCleanUpStack(nsubs);
+						estatus = NhlFATAL;
+					}
+
+					if(estatus != NhlFATAL) {
+						data = _NclPop();
+						switch(data.kind) {
+						case NclStk_VAL: 
+							thevalue = data.u.data_obj;
+							break;
+						case NclStk_VAR:
+							thevalue = _NclVarValueRead(data.u.data_var,NULL,NULL);
+							break;
+						default:
+							thevalue = NULL;
+							estatus = NhlFATAL;
+						break;
+						}
+					
+						if(thevalue != NULL) {
+							id = thevalue->obj.id;
+							ret = _NclReplaceCoordVar(var->u.data_var,thevalue,coord_name,sel_ptr);
+							if(data.kind == NclStk_VAR) {
+								_NclAttCopyWrite(_NclReadCoordVar(var->u.data_var,coord_name,NULL),data.u.data_var);
+							}
+							if(ret<estatus){
+								estatus = ret;
+							}
+						} else {
+							id = -1;
+							estatus = NhlFATAL;
+						}
+/* _NclWriteCoordVar destroys non-permanent input so the following is not needed
+* Rather than fix _NclWriteCoordVar to not free it was just easier to 
+* comment the followign out.
+*/
+						switch(data.kind) {
+						case NclStk_VAL: 
+							if( (_NclGetObj(id)!= NULL)&&(data.u.data_obj->obj.status != PERMANENT))
+								_NclDestroyObj((NclObj)data.u.data_obj);
+							break;
+						case NclStk_VAR:
+							if(data.u.data_obj->obj.status != PERMANENT) 
+								_NclDestroyObj((NclObj)data.u.data_var);
+							break;
+						default:
+							break;
+						}
+					} else {	
+						_NclCleanUpStack(1);
+					}
+				}
+			}
+
 void CallASSIGN_FILE_VAR_OP(void) {
 /*
 * Changed to a two operand function 1/30
@@ -5506,7 +5908,7 @@ void CallASSIGN_FILE_VAR_OP(void) {
 									NhlPError(NhlFATAL,NhlEUNKNOWN,
 										"Number of subscripts (%d) and number of dimensions (%d) do not match for variable (%s->%s)",
 										nsubs,
-										file->file.var_info[index]->num_dimensions,
+										ndims,
 										file_sym->name,
 										NrmQuarkToString(var));
 										estatus = NhlFATAL;
@@ -5673,20 +6075,64 @@ void CallFILE_VARVAL_OP(void) {
 						if(value != NULL) 
 							file = (NclFile)_NclGetObj((int)*(obj*)value->multidval.val);
 						if((file != NULL)&&((index = _NclFileIsVar(file,var)) != -1)) {
-							for(i = 0 ; i < file->file.var_info[index]->num_dimensions; i++) {
-								dim_is_ref[i] = 0;
+							memset(dim_is_ref, 0, NCL_MAX_DIMENSIONS*sizeof(int));
+							/*
+#ifdef USE_NETCDF4_FEATURES
+							if(1 == file->file.advanced_file_structure)
+							{
+								NclAdvancedFile advancedfile = (NclAdvancedFile)file;
+								NclFileVarNode *varnode = NULL;
+								varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
+								if(NULL == varnode)
+								{
+									NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
+										NrmQuarkToString(var),
+										NrmQuarkToString(advancedfile->advancedfile.grpnode->path)));
+								}
+
+								if(NULL != varnode->dim_rec)
+								{
+									for (i = 0; i < varnode->dim_rec->n_dims; ++i)
+										dim_is_ref[i] = 0;
+								}
+							}
+							else
+#endif
+							{
+								for(i = 0 ; i < file->file.var_info[index]->num_dimensions; i++) {
+									dim_is_ref[i] = 0;
+								}
+							}
+							*/
+
+							if(nsubs==0)
+							{
+								sel_ptr = NULL;
+							}
+							else
+							{
+#ifdef USE_NETCDF4_FEATURES
+								if(1 == file->file.advanced_file_structure)
+								{
+									sel_ptr = _NclAllocateAdvancedFileSelPointer(file, var, nsubs, &estatus);
+								}
+								else
+#endif
+								{
+									if(nsubs == file->file.var_info[index]->num_dimensions)
+									{
+										sel_ptr = (NclSelectionRecord*)NclMalloc (sizeof(NclSelectionRecord));
+										sel_ptr->n_entries = nsubs;
+									}
+									else
+									{
+										NhlPError(NhlFATAL,NhlEUNKNOWN,"Number of subscripts do not match number of dimensions of variable, (%d) subscripts used, (%d) subscripts expected",nsubs,file->file.var_info[index]->num_dimensions);
+										estatus = NhlFATAL;
+										_NclCleanUpStack(nsubs);
+									}
+								}
 							}
 
-							if((nsubs != 0)&&(nsubs ==  file->file.var_info[index]->num_dimensions)){
-								sel_ptr = (NclSelectionRecord*)NclMalloc (sizeof(NclSelectionRecord));
-								sel_ptr->n_entries = nsubs;
-							} else if(nsubs==0){
-								sel_ptr = NULL;
-							} else {
-								NhlPError(NhlFATAL,NhlEUNKNOWN,"Number of subscripts do not match number of dimensions of variable, (%d) subscripts used, (%d) subscripts expected",nsubs,file->file.var_info[index]->num_dimensions);
-								estatus = NhlFATAL;
-								_NclCleanUpStack(nsubs);
-							}
 							if(estatus != NhlFATAL) {
 								if(sel_ptr != NULL) {
 									for(i=0;i<sel_ptr->n_entries;i++) {
@@ -5852,42 +6298,17 @@ void CallFILE_VAR_OP(void) {
 #ifdef USE_NETCDF4_FEATURES
 				if(file->file.advanced_file_structure)
 				{
-					NclAdvancedFile advancedfile = (NclAdvancedFile)file;
-					NclFileVarNode *varnode = NULL;
-					varnode = _getVarNodeFromNclFileGrpNode(advancedfile->advancedfile.grpnode, var);
-					if(NULL == varnode)
+					sel_ptr = _NclAllocateAdvancedFileSelPointer(file, var, nsubs, &estatus);
+					if(NhlFATAL == estatus)
 					{
 						NHLPERROR((NhlFATAL,NhlEUNKNOWN,"variable (%s) is not in file (%s)",
 							NrmQuarkToString(var),dfile->name));
-						_NclCleanUpStack(nsubs);
-						estatus = NhlFATAL;
 						out_var.kind = NclStk_NOVAL;	
 						out_var.u.data_obj = NULL;
 						return;
 					}
 
-					for(i = 0 ; i < varnode->dim_rec->n_dims; i++)
-						dim_is_ref[i] = 0;
-
-					if(0 == nsubs)
-					{
-						sel_ptr = NULL;
-					}
-					else if(nsubs == varnode->dim_rec->n_dims)
-					{
-						sel_ptr = (NclSelectionRecord*)NclMalloc(sizeof(NclSelectionRecord));
-						sel_ptr->n_entries = nsubs;
-					}
-					else
-					{
-						NhlPError(NhlFATAL,NhlEUNKNOWN,
-							"Number of subscripts do not match number of dimensions of variable, (%d) subscripts used, (%d) subscripts expected",
-							nsubs,varnode->dim_rec->n_dims);
-						estatus = NhlFATAL;
-						_NclCleanUpStack(nsubs);
-						return;
-					}
-
+					memset(dim_is_ref, 0, NCL_MAX_DIMENSIONS * sizeof(int));
 				}
 				else
 #endif
@@ -5990,7 +6411,6 @@ void CallFILE_GROUP_OP(void) {
 				int *id = (int*)NclMalloc((unsigned)sizeof(int));
 				ng_size_t dim_size = 1;
 
-#ifdef USE_NETCDF4_FEATURES
 				gvar = _NclPop();
 
 				switch(gvar.kind)
@@ -6076,7 +6496,6 @@ void CallFILE_GROUP_OP(void) {
 				}
 
 				estatus = _NclPush(out_group);
-#endif
 			}
 
 void CallASSIGN_VARATT_OP(void) {
@@ -6313,7 +6732,7 @@ void CallASSIGN_FILEVAR_COORD_ATT_OP(void) {
 				NclMultiDValData file_md;
 				NclSymbol *file_sym;
 				NclQuark coord_name = NrmNULLQUARK;
-				NclQuark var_name = NrmNULLQUARK;
+				/*NclQuark var_name = NrmNULLQUARK;*/
 				NclQuark att_name = NrmNULLQUARK;
 				int nsubs = 0;
 				NclSelectionRecord *sel_ptr = NULL;
@@ -6383,7 +6802,7 @@ void CallASSIGN_FILEVAR_COORD_ATT_OP(void) {
 					NhlPError(NhlFATAL,NhlEUNKNOWN,"File Variable names must be scalar string values can't continue");
 					estatus = NhlFATAL;
 				} else {
-					var_name = *(NclQuark*)thevalue->multidval.val;
+					/*var_name = *(NclQuark*)thevalue->multidval.val;*/
 					if(fvar.u.data_obj->obj.status != PERMANENT) {
 						_NclDestroyObj((NclObj)fvar.u.data_obj);
 					}
@@ -6818,7 +7237,7 @@ void CallPARAM_FILEVAR_COORD_ATT_OP(void) {
 				NclStackEntry *file_ptr,fvar,avar,cvar;
 				NclMultiDValData file_md,thevalue = NULL;
 				NclFile	file;
-				NclQuark coord_name = NrmNULLQUARK,att_name = NrmNULLQUARK,var_name = NrmNULLQUARK;
+				NclQuark coord_name = NrmNULLQUARK,att_name = NrmNULLQUARK; /*var_name = NrmNULLQUARK;*/
 				int nsubs = 0;
 				NclSelectionRecord* sel_ptr = NULL;
 				NclStackEntry out_data;
@@ -6888,7 +7307,7 @@ void CallPARAM_FILEVAR_COORD_ATT_OP(void) {
 					NhlPError(NhlFATAL,NhlEUNKNOWN,"File Variable names must be scalar string values can't continue");
 					estatus = NhlFATAL;
 				} else {
-					var_name = *(NclQuark*)thevalue->multidval.val;
+					/*var_name = *(NclQuark*)thevalue->multidval.val;*/
 					if(fvar.u.data_obj->obj.status != PERMANENT) {
 						_NclDestroyObj((NclObj)fvar.u.data_obj);
 					}
@@ -7267,16 +7686,17 @@ void performASSIGN_VAR_VAR_OP(NclStackEntry *lhs_var, NclStackEntry *rhs_var,
 
     if((rhs_var == NULL)||(rhs_var->kind == NclStk_NOVAL))
     {
-        NHLPERROR((NhlFATAL,NhlEUNKNOWN,"performASSIGN_VAR_VAR_OP: %s is undefined",rhs_sym->name));
+        NHLPERROR((NhlFATAL,NhlEUNKNOWN,"%s is undefined",rhs_sym->name));
         estatus = NhlFATAL;
     }
 
-    if((estatus!=NhlFATAL)&&(lhs_var != NULL)&&(lhs_var->kind == NclStk_NOVAL))
+    /*if((estatus!=NhlFATAL)&&(lhs_var != NULL)&&(lhs_var->kind == NclStk_NOVAL))*/
+    if(((estatus!=NhlFATAL)&&(lhs_var != NULL)&&(lhs_var->kind == NclStk_NOVAL)) || _ItIsNclReassign)
     {
         if(lhs_nsubs != 0)
         {
             NHLPERROR((NhlFATAL,NhlEUNKNOWN,
-                      "performASSIGN_VAR_VAR_OP: %s is undefined, can not subscript an undefined variable",
+                      "%s is undefined, can not subscript an undefined variable",
                        lhs_sym->name));
             estatus = NhlFATAL;
             _NclCleanUpStack(lhs_nsubs);
@@ -7428,7 +7848,7 @@ void performASSIGN_VAR_VAR_OP(NclStackEntry *lhs_var, NclStackEntry *rhs_var,
         else
         {
             NHLPERROR((NhlFATAL,NhlEUNKNOWN,
-                      "performASSIGN_VAR_VAR_OP: Number of subscripts on rhs do not match\n\t\t\t%s, (%d) %s, (%d) %s\n",
+                      "Number of subscripts on right-hand-side do not match\n\t\t\t%s: (%d), %s: (%d)\n",
                       "number of dimensions of variable", rhs_nsubs, "Subscripts used", rhs_var->u.data_var->var.n_dims));
             estatus = NhlFATAL;
             _NclCleanUpStack(rhs_nsubs);
@@ -7450,7 +7870,7 @@ void performASSIGN_VAR_VAR_OP(NclStackEntry *lhs_var, NclStackEntry *rhs_var,
         else if((estatus != NhlFATAL)&&(rhs_nsubs != rhs_var->u.data_var->var.n_dims))
         {
             NHLPERROR((NhlFATAL,NhlEUNKNOWN,
-                      "performASSIGN_VAR_VAR_OP: Number of subscripts on rhs do not match\n\t\t\t%s, (%d) %s, (%d) %s\n",
+                      "Number of subscripts on right-hand-side do not match\n\t\t\t%s: (%d), %s: (%d)\n",
                       "number of dimensions of variable", rhs_nsubs, "Subscripts used", rhs_var->u.data_var->var.n_dims));
             estatus = NhlFATAL;
             _NclCleanUpStack(rhs_nsubs);
@@ -7516,7 +7936,7 @@ void performASSIGN_VAR_VAR_OP(NclStackEntry *lhs_var, NclStackEntry *rhs_var,
         else if((estatus != NhlFATAL)&&(lhs_nsubs != lhs_var->u.data_var->var.n_dims))
         {
             NHLPERROR((NhlFATAL,NhlEUNKNOWN,
-                      "performASSIGN_VAR_VAR_OP: Number of subscripts on lhs do not match\n\t\t\t%s, (%d) %s, (%d) %s\n",
+                      "Number of subscripts on left-hand-side do not match\n\t\t\t%s: (%d),  %s: (%d)\n",
                       "number of dimensions of variable", lhs_nsubs, "Subscripts used", lhs_var->u.data_var->var.n_dims));
             estatus = NhlFATAL;
             _NclCleanUpStack(lhs_nsubs);
@@ -7654,10 +8074,21 @@ void CallREASSIGN_VAR_VAR_OP(void)
     ptr++;lptr++;fptr++;
     lhs_nsubs = *(int*)ptr;
 
-    ClearDataBeforeReassign(lhs_var);
+    if(0 == strcmp(lhs_sym->name, rhs_sym->name))
+    {
+        _ItIsNclReassign = 1;
 
-    performASSIGN_VAR_VAR_OP(lhs_var, rhs_var, lhs_nsubs, rhs_nsubs,
-                             lhs_sym, rhs_sym);
+        performASSIGN_VAR_VAR_OP(lhs_var, rhs_var, lhs_nsubs, rhs_nsubs,
+                                   lhs_sym, rhs_sym);
+        _ItIsNclReassign = 0;
+    }
+    else
+    {
+        ClearDataBeforeReassign(lhs_var);
+
+        performASSIGN_VAR_VAR_OP(lhs_var, rhs_var, lhs_nsubs, rhs_nsubs,
+                                 lhs_sym, rhs_sym);
+    }
 }
 
 void CallPUSHNULL(void) {
@@ -8027,6 +8458,10 @@ NclExecuteReturnStatus _NclExecute
 				CallVAR_COORD_OP();
 			}
 			break;
+			case REASSIGN_VAR_COORD_OP : {
+				CallREASSIGN_VAR_COORD_OP();
+			}
+			break;
 			case ASSIGN_FILE_VAR_OP : {
 				CallASSIGN_FILE_VAR_OP();
 			}
@@ -8097,15 +8532,20 @@ NclExecuteReturnStatus _NclExecute
 				}
 				break;
 			case FILE_GROUPVAL_OP :
-				/*
+				/*We do not suport group operator (other than read group/variable yet).
 				{
 					CallFILE_GROUPVAL_OP();
 				}
 				*/
-				fprintf(stdout, "\tfile: %s, line:%d\n", __FILE__, __LINE__);
-				fprintf(stdout, "\tstop *ptr: %ld\n", (long)*ptr);
-				fprintf(stdout, "\tstop FILE_GROUPVAL_OP: %d\n", FILE_GROUPVAL_OP);
-				exit ( -1 );
+				fprintf(stderr, "\tfile: %s, line:%d\n", __FILE__, __LINE__);
+				fprintf(stderr, "\tExecute: Error occurred at or near line %d\n",(cmd_line ? (*lptr): *lptr));
+				fprintf(stderr, "\tSTOP at FILE_GROUPVAL_OP: %d\n", FILE_GROUPVAL_OP);
+				fprintf(stderr, "\tWe are not surpose to reach here.\n");
+				fprintf(stderr, "\tThe reason could be that the group we are trying to access have special characters.\n");
+				fprintf(stderr, "\tCheck the script, maybe try to change the script to something like:\n");
+				fprintf(stderr, "\tgn = \"the-group-name\"\n");
+				fprintf(stderr, "\tg = f=>$gn$\n\n");
+				NHLPERROR((estatus,NhlEUNKNOWN,"Execute: Error occurred at or near line %d\n",(cmd_line ? (*lptr): *lptr)));
 				break;
 			case PARAM_FILE_GROUP_OP:
 				fprintf(stdout, "\tfile: %s, line:%d\n", __FILE__, __LINE__);
@@ -8115,8 +8555,7 @@ NclExecuteReturnStatus _NclExecute
 				break;
 			default:
 			      /*
-			       *fprintf(stderr, "function %s, file: %s, line: %d\n",
-			       *                 __PRETTY_FUNCTION__, __FILE__, __LINE__)
+			       *fprintf(stderr, "\nfile: %s, line: %d\n", __FILE__, __LINE__)
 			       *fprintf(stderr, "\tUNKNOWN Operator *ptr: %ld\n", (long)*ptr);
 			       */
 				break;
@@ -8146,7 +8585,12 @@ NclExecuteReturnStatus _NclExecute
 		estatus = NhlNOERROR;	
 		ptr++;lptr++;fptr++;
 
-		nxt_fileq = (*fptr) ? (NrmStringToQuark(*fptr)) : -1;
+		if (*fptr == cfile) {
+			nxt_fileq = cfileq;
+		}
+		else {
+			nxt_fileq = (*fptr) ? (NrmStringToQuark(*fptr)) : -1;
+		}
 		if(cfile && ((cline != *lptr) || (cfileq != nxt_fileq))){
 			NCL_PROF_LEXIT(cfile, cline);	
 			cline = *lptr;

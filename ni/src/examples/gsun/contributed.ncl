@@ -444,138 +444,54 @@ begin
     end  do
   end if
 end
+
 ;==============================
 undef("copy_VarAtts")
 procedure copy_VarAtts(var_from,var_to)    
-local att_names, i, fromType, toType, sameType \
-    , fromFillValue, fromFillType, fromMissType, fromMissValue, logical_FillValue
+local att_names, i, toType, fromFillValue, fromFillType
 begin                                       
     att_names =getvaratts(var_from);
 
     if(.not.all(ismissing(att_names))) then
 
-       fromType = typeof(var_from)
-       toType   = typeof(var_to)
-       sameType = fromType .eq. toType
+            ; copy all attributes except _FillValue and missing_value
+            ; use := cuz shape/type may differ if var_to had previous attributes
 
-       if (sameType .or. fromType.eq."file"  \
-                    .or. .not.(isatt(var_from,"_FillValue"))) then
-           do i = 0,dimsizes(att_names)-1
-              if (isatt(var_to,att_names(i)) .and. isatt(var_from,att_names(i)) ) then
-                  delete(var_to@$att_names(i)$)  ; var_from att may be diff size/type
-              end if
-              var_to@$att_names(i)$ = var_from@$att_names(i)$
-           end do
+       do i = 0,dimsizes(att_names)-1
+          if (.not.(att_names(i).eq."_FillValue" .or. att_names(i).eq."missing_value")) then
+              var_to@$att_names(i)$ := var_from@$att_names(i)$  
+          end if
+       end do
 
-       else      ; handle _FillValue with different type than var_to
+            ; handle _FillValue and missing_value
 
-           do i = 0,dimsizes(att_names)-1
-              if (isatt(var_to,att_names(i)) .and. isatt(var_from,att_names(i)) ) then
-                  delete(var_to@$att_names(i)$)  ; var_from att may be diff size/type
-              end if
+       toType        = typeof(var_to)
 
-              if (.not.(att_names(i).eq."_FillValue" .or. \
-                        att_names(i).eq."missing_value")) then
-	          var_to@$att_names(i)$ = var_from@$att_names(i)$
+       if (any(att_names.eq."_FillValue")) then    ; associated with 'var_from'
+           fromFillValue = var_from@_FillValue 
+           fromFillType  = typeof(var_from@_FillValue) 
 
-              else    ; attribute must be _FillValue or missing_value
+           if (fromFillType.eq.toType) then
+               var_to@_FillValue = fromFillValue
+           else
+               var_to@_FillValue_original := fromFillValue 
+               var_to@_FillValue := totype(fromFillValue, toType)
+           end if
+       end if             
 
-                  if (att_names(i).eq."_FillValue") then
-                      fromFillValue = var_from@_FillValue 
-                      fromFillType  = typeof(var_from@_FillValue) 
+       if (any(att_names.eq."missing_value")) then    ; associated with 'var_from'
+           fromMissValue = var_from@missing_value
+           fromMissType  = typeof(var_from@missing_value) 
 
-                      if (toType.eq.fromFillType) then
-                          var_to@_FillValue = var_from@_FillValue
-                      else
-                          var_to@_FillValue_original = fromFillValue   ; output original _FillValue
-                                                                       ; ne _FillValue
-                          if (toType.eq."float") then
-                              var_to@_FillValue = tofloat(fromFillValue)
-                          end if
-                          if (toType.eq."integer") then
-                              var_to@_FillValue = toint(fromFillValue)
-                          end if
-                          if (toType.eq."short") then
-                              var_to@_FillValue = toshort(fromFillValue)
-                          end if
-                          if (toType.eq."byte") then
-                              var_to@_FillValue = tobyte(fromFillValue)
-                          end if
-                          if (toType.eq."logical") then
-                              logical_FillValue = new(1,"logical")
-                              var_to@_FillValue = logical_FillValue
-                          end if
-                          if (toType.eq."ubyte") then
-                              var_to@_FillValue = toubyte(fromFillValue)
-                          end if
-                          if (toType.eq."uint") then
-                              var_to@_FillValue = touint(fromFillValue)
-                          end if
-                          if (toType.eq."int64") then
-                              var_to@_FillValue = toint64(fromFillValue)
-                          end if
-                          if (toType.eq."uint64") then
-                              var_to@_FillValue = touint64(fromFillValue)
-                          end if
-                          if (toType.eq."ulong") then
-                              var_to@_FillValue = toulong(fromFillValue)
-                          end if
-                          if (toType.eq."ushort") then
-                              var_to@_FillValue = toushort(fromFillValue)
-                          end if
-                      end if
-                  end if
-                  if (att_names(i).eq."missing_value") then
-                      fromMissValue = var_from@missing_value
-                      fromMissType  = typeof(var_from@missing_value)
-
-                      if (toType.eq.fromMissType) then
-                          var_to@missing_value = var_from@missing_value
-                      else
-                          var_to@missing_value_original = fromMissValue  ; output original missing_value
-     
-                          if (toType.eq."float") then
-                              var_to@missing_value = tofloat(fromMissValue)
-                          end if
-                          if (toType.eq."integer") then
-                              var_to@missing_value = toint(fromMissValue)
-                          end if
-                          if (toType.eq."short") then
-                              var_to@missing_value = toshort(fromMissValue)
-                          end if
-                          if (toType.eq."byte") then
-                              var_to@missing_value = tobyte(fromMissValue)
-                          end if
-                          if (toType.eq."logical") then
-                              logicalmissing_value = new(1,"logical")
-                              var_to@missing_value = logicalmissing_value
-                          end if
-                          if (toType.eq."ubyte") then
-                              var_to@missing_value = toubyte(fromMissValue)
-                          end if
-                          if (toType.eq."uint") then
-                              var_to@missing_value = touint(fromMissValue)
-                          end if
-                          if (toType.eq."int64") then
-                              var_to@missing_value = toint64(fromMissValue)
-                          end if
-                          if (toType.eq."uint64") then
-                              var_to@missing_value = touint64(fromMissValue)
-                          end if
-                          if (toType.eq."ulong") then
-                              var_to@missing_value = toulong(fromMissValue)
-                          end if
-                          if (toType.eq."ushort") then
-                              var_to@missing_value = toushort(fromMissValue)
-                          end if
-                      end if 
-                  end if     ; if (att_names(i).eq."missing_value")
-              end if
-           end do            ; handle _FillValue
-       end if                ; if (sameType .or. ....
-    end if                   ; if(.not.all(ismissing(att_names))) 
+           if (fromMissType.eq.toType) then
+               var_to@missing_value = fromMissValue
+           else
+               var_to@missing_value_original := fromMissValue 
+               var_to@missing_value := totype(fromMissValue, toType)
+           end if
+       end if             
+    end if               
 end
-
 ;======================================================================
 ; This is the modified version of copy_VarAtts originaly developed by
 ; Dennis Shea.
@@ -1398,6 +1314,37 @@ begin
   return(uv)
 end
 
+; **************************************************************
+; D. Shea
+; Loops thru a 1D variable [eg, time] and finds
+; the indices which match up with the values of the cvWant 1D array
+; e.g. time_want = (/1948, 1957, 1964, 1965, 1989/)
+; indWant   = get1Dindex (time, time_want)
+; note that the values of cvWant must EXIST in cv
+
+undef("get1Dindex")
+function get1Dindex (cv[*],  cvWant[*])
+local nWant, indWant, n, indcv, nMult
+
+begin
+  nWant   = dimsizes (cvWant)
+  indWant = new (nWant, "integer")
+  nMult   = 0
+
+  do n=0,nWant-1
+     indcv     := ind( cv.eq.cvWant(n) ) ; could be multiple values
+     indWant(n) = indcv(0)               ; return the 1st if multiple indcv
+     if (dimsizes(indcv).gt.1) then
+         nMult = nMult + 1
+     end if
+  end do
+
+  indWant@index_info = "Out of nWant="+nWant+" : multiple index occurrences="+nMult
+  indWant@nMultInd   = nMult
+
+  return (indWant)
+end 
+
 ; *******************************************************************
 ; u.utku.turuncoglu@be.itu.edu.tr
 ; The following procedure to sorts x,y coordinate pair based on
@@ -1445,28 +1392,6 @@ begin
   end if
 end
 
-
-; **************************************************************
-; D. Shea
-; Loops thru a 1D variable [eg, time] and finds
-; the indices which match up with the values of the cvWant 1D array
-; e.g. time_want = (/1948, 1957, 1964, 1965, 1989/)
-; indWant   = get1Dindex (time, time_want)
-; note that the values of cvWant must EXIST in cv
-
-undef("get1Dindex")
-function get1Dindex (cv[*],  cvWant[*])
-local nWant, indWant, n
-begin
-  nWant   = dimsizes (cvWant)
-  indWant = new (nWant, typeof(dimsizes(cv)))
-
-  do n=0,nWant-1
-     indWant(n) = ind( cv.eq.cvWant(n) )
-  end do
-
-  return (indWant)        
-end
 ;********************************************************************
 ; D. Shea
 ; set a _FillValue "automatically" 
@@ -2255,14 +2180,14 @@ begin
   end if
   if (t.eq."float") then
       if (opt.eq.0) then
-          return( floattoint(x) )       ; truncate
+          return( toint(x) )       ; truncate
       else
           return( round(x,3) )
       end if
   end if
   if (t.eq."double") then
       if (opt.eq.0) then
-          return( doubletointeger(x) )  ; truncate
+          return( toint(x) )  ; truncate
       else
           return( round(x,3) )
       end if
@@ -4101,32 +4026,51 @@ begin
    ntim  = dimx(0)
    nlat  = dimx(1)
    mlon  = dimx(2)
-   ndys  = 366                                     ; allow for leap year
+   if (isatt(yyyyddd,"calendar")) then
+       if (yyyyddd@calendar.eq."360_day" .or. yyyyddd@calendar.eq."360") then
+           ndys = 360
+       end if
+       if (yyyyddd@calendar.eq."365_day" .or. yyyyddd@calendar.eq."365"      .or. \
+           yyyyddd@calendar.eq."noleap"  .or. yyyyddd@calendar.eq."no_leap") then
+           ndys  = 365
+       end if
+       if (yyyyddd@calendar.eq."366_day" .or. yyyyddd@calendar.eq."366"      .or. \
+           yyyyddd@calendar.eq."allleap" .or. yyyyddd@calendar.eq."all_leap") then
+           ndys  = 366
+       end if
+       if (yyyyddd@calendar.eq."standard" .or. yyyyddd@calendar.eq."gregorian") then
+           ndys  = 366
+       end if
+   else
+       ndys  = 366     ; default
+   end if
 
-   days  = yyyyddd - (yyyyddd/1000)*1000           ; strip year info [yyyy]
-
+   days  = yyyyddd - (yyyyddd/1000)*1000           ; strip year info [ddd]
    clmDay= new((/ndys,nlat,mlon/),typeof(x), getFillValue(x) ) ; daily climatology
+
 ;
 ; Compute averages for each sequential day of the year. 
-; This uses dimension swapping.
 ;
-   do ndy=0,ndys-2                                 ; ndy=0->364 ==> day of year 1->365       
-      indx = ind( days.eq.(ndy+1) )                ; indx:indx Mar 2012, handle 1 element
+   do ndy=0,ndys-1                                 
+      indx = ind( days.eq.(ndy+1) )               
       if (.not.ismissing(indx(0))) then
           nindx = dimsizes(indx)
-        if (nindx.eq.1) then                       ; force 3rd dimension
-         ;clmDay(ndy,:,:) = dim_avg(x(lat|:,lon|:,time|indx:indx))
-          clmDay(ndy,:,:) = dim_avg_n(x(indx:indx,:,:), 0) ; 5 Nov 2009 => dim_avg_n
-        else
-         ;clmDay(ndy,:,:) = dim_avg(x(lat|:,lon|:,time|indx))
-          clmDay(ndy,:,:) = dim_avg_n(x(indx,:,:), 0)  ; 5 Nov 2009 => dim_avg_n
-        end if
+          if (nindx.eq.1) then                       ; force 3rd dimension
+              clmDay(ndy,:,:) = dim_avg_n(x(indx:indx,:,:), 0) 
+          else
+              clmDay(ndy,:,:) = dim_avg_n(x(indx,:,:), 0) 
+          end if
       end if
       delete(indx)                  
    end do
+
+   if (.not.isatt(yyyyddd,"calendar") .or. \
+       isatt(yyyyddd,"calendar") .and. yyyyddd@calendar.eq."standard" .or. \
+                                       yyyyddd@calendar.eq."gregorian") then
                                                    ; nominal day 366 
                                                    ; ave(31 Dec + 1 Jan)=leap
-   clmDay(ndys-1,:,:) = (clmDay(0,:,:) + clmDay(ndys-2,:,:))*0.5
+       clmDay(ndys-1,:,:) = (clmDay(0,:,:) + clmDay(ndys-2,:,:))*0.5
+   end if
 
    nFill = num(ismissing(clmDay))
    if (nFill.eq.0) then
@@ -4152,6 +4096,10 @@ begin
    
    copy_VarCoords(x(0,:,:), clmDay(0,:,:))   ; trick
    delete(clmDay@year_day)                   ; clean up
+
+   if (isatt(yyyyddd,"calendar")) then
+       clmDay@calendar = yyyyddd@calendar 
+   end if
  
    return (clmDay)
 end
@@ -4196,7 +4144,24 @@ begin
    klev  = dimx(1)
    nlat  = dimx(2)
    mlon  = dimx(3)
-   ndys  = 366                                     ; allow for leap year
+   if (isatt(yyyyddd,"calendar")) then
+       if (yyyyddd@calendar.eq."360_day" .or. yyyyddd@calendar.eq."360") then
+           ndys = 360
+       end if
+       if (yyyy@calendar.eq."365_day" .or. yyyy@calendar.eq."365"      .or. \
+           yyyy@calendar.eq."noleap"  .or. yyyy@calendar.eq."no_leap") then
+           ndys  = 365
+       end if
+       if (yyyy@calendar.eq."366_day" .or. yyyy@calendar.eq."366"      .or. \
+           yyyy@calendar.eq."allleap" .or. yyyy@calendar.eq."all_leap") then
+           ndys  = 366
+       end if
+       if (yyyy@calendar.eq."standard" .or. yyyy@calendar.eq."gregorian") then
+           ndys  = 366
+       end if
+   else
+       ndys  = 366     ; default
+   end if
 
    days  = yyyyddd - (yyyyddd/1000)*1000           ; strip year info [yyyy]
 
@@ -4209,17 +4174,22 @@ begin
       indx = ind( days.eq.(ndy+1) )                ; indx:indx Mar 2012, handle 1 element
       if (.not.ismissing(indx(0))) then
           nindx = dimsizes(indx)
-        if (nindx.eq.1) then                       ; force 3rd dimension
-            clmDay(ndy,:,:,:) = dim_avg_n(x(indx:indx,:,:,:), 0)
-        else
-            clmDay(ndy,:,:,:) = dim_avg_n(x(indx,:,:,:), 0)
-        end if
+          if (nindx.eq.1) then                     ; force 3rd dimension
+              clmDay(ndy,:,:,:) = dim_avg_n(x(indx:indx,:,:,:), 0)
+          else
+              clmDay(ndy,:,:,:) = dim_avg_n(x(indx,:,:,:), 0)
+          end if
       end if
       delete(indx)                  
    end do
-                                                   ; nominal day 366 
-                                                   ; ave(31 Dec + 1 Jan)=leap
-   clmDay(ndys-1,:,:,:) = (clmDay(0,:,:,:) + clmDay(ndys-2,:,:,:))*0.5
+
+   if (.not.isatt(yyyyddd,"calendar") .or. \
+       isatt(yyyyddd,"calendar") .and. yyyyddd@calendar.eq."standard" .or. \
+                                       yyyyddd@calendar.eq."gregorian") then
+                                              ; nominal day 366 
+                                              ; ave(31 Dec + 1 Jan)=leap
+      clmDay(ndys-1,:,:,:) = (clmDay(0,:,:,:) + clmDay(ndys-2,:,:,:))*0.5
+   end if
 
    nFill = num(ismissing(clmDay))
    if (nFill.eq.0) then
@@ -4236,7 +4206,6 @@ begin
    clmDay@information = "Raw daily averages across all years"
    clmDay@smoothing   = "None"
 
-
    year_day           = ispan(1,ndys,1)
    year_day@long_name = "day of year"
    year_day@units     = "ddd"
@@ -4246,6 +4215,10 @@ begin
    
    copy_VarCoords(x(0,:,:,:), clmDay(0,:,:,:))   ; trick
    delete(clmDay@year_day)                   ; clean up
+
+   if (isatt(yyyyddd,"calendar")) then
+       clmDay@calendar = yyyyddd@calendar 
+   end if
  
    return (clmDay)
 end
@@ -4272,7 +4245,7 @@ begin
   end if
 
   z  = clmDay($dn(1)$|:,$dn(2)$|:,$dn(0)$|:); reorder make time fastest varying dimension
-  cf = ezfftf( z )                          ; [2] x [nlat] x [mlon] x [183]
+  cf = ezfftf( z )                          ; [2] x [nlat] x [mlon] x [nday/2+1]
 
                                             ; remember NCL is 0-based 
                                             ; cf(:,0:nHarm-1) are retained unaltered
@@ -4337,7 +4310,7 @@ undef("clmDayHr")
 ; It has not been extensively tested and it is not documented.
 ; Consider this unsupported at this time.
 ;
-function clmDayHr(z, yyyymmddhh[*]:integer)
+function clmDayHr(z:numeric, yyyymmddhh[*]:integer)
 begin
   yyyy = yyyymmddhh/1000000
   mdh  = yyyymmddhh%1000000
@@ -4346,18 +4319,49 @@ begin
   dd   = dh/100
   hh   = dh-dd*100
 
+  if (isatt(yyyymmddhh,"calendar")) then
+      yyyy@calendar = yyyymmddhh@calendar     ; needed for 'day_of_year'
+  end if
+
   NTIM   = dimsizes(yyyymmddhh)     ; all time steps
 
   dddhh  = day_of_year(yyyy, mm, dd)*100 + hh
   yyyydddhh = yyyy*100000 +  dddhh
 
+  if (isatt(yyyy,"calendar")) then
+      yyyydddhh@calendar = yyyy@calendar
+  end if
+
   dhh    = hh(1)-hh(0)              ; assume constant 
   nsmp   = 24/dhh                   ; # samples/day                          
 
-  nday   = 365                      ; no leap
-  ntim   = nsmp*nday                ; # non-leap year times
+  if (.not.isatt(yyyy,"calendar") .or. \
+      isatt(yyyy,"calendar") .and. yyyy@calendar.eq."standard" .or. \
+                                   yyyy@calendar.eq."gregorian") then
+      nday   = 365
+      ndayx  = 366                  ; including leap year
+  end if
+  if (isatt(yyyy,"calendar")) then
+      if (yyyy@calendar.eq."none") then
+          print("clmDayHr: yyyy@calendar=none: I have no idea what to do")
+          exit
+      end if
+      if (yyyy@calendar.eq."360_day" .or. yyyy@calendar.eq."360") then
+          nday  = 360
+          ndayx = 360
+      end if
+      if (yyyy@calendar.eq."365_day" .or. yyyy@calendar.eq."365"      .or. \
+          yyyy@calendar.eq."noleap"  .or. yyyy@calendar.eq."no_leap") then
+          nday  = 365
+          ndayx = 365
+      end if
+      if (yyyy@calendar.eq."366_day" .or. yyyy@calendar.eq."366"      .or. \
+          yyyy@calendar.eq."allleap" .or. yyyy@calendar.eq."all_leap") then
+          nday  = 366
+          ndayx = 366
+      end if
+  end if
 
-  ndayx  = 366                      ; including leap year
   ntimx  = nsmp*ndayx
 
   dimz   = dimsizes(z)
@@ -4366,24 +4370,31 @@ begin
 ;---------------------------------------------------------------
 ; Create array to hold climatology and counts.
 ;---------------------------------------------------------------
+  if (typeof(z).eq."double") then
+      zType = "double"
+      zFill =  1d20
+  else
+      zType = "float"
+      zFill =  1e20
+  end if
 
   if (rankz.eq.4) then
       klev   = dimz(1)
       nlat   = dimz(2)
       mlon   = dimz(3)
-      zClm   = new ( (/ntimx,klev,nlat,mlon/), "float", 1e20)
+      zClm   = new ( (/ntimx,klev,nlat,mlon/), zType, zFill)
   end if
   if (rankz.eq.3) then
       nlat   = dimz(1)
       mlon   = dimz(2)
-      zClm   = new ( (/ntimx,nlat,mlon/), "float", 1e20)
+      zClm   = new ( (/ntimx,nlat,mlon/), zType, zFill)
   end if
   if (rankz.eq.2) then
       npts   = dimz(1)
-      zClm   = new ( (/ntimx,npts/), "float", 1e20)
+      zClm   = new ( (/ntimx,npts/), zType, zFill)
   end if
   if (rankz.eq.1) then
-      zClm   = new ( (/ntimx/), "float", 1e20)
+      zClm   = new ( (/ntimx/), zType, zFill)
   end if
 
   yrStrt = yyyy(0)
@@ -4418,23 +4429,26 @@ begin
 ;---------------------------------------------------------------
 ; Fill in climatological day 366 with the average
 ; of Jan 1 (day 1) and 31 Dec (day 365)
+; greorian, standard or no calendar attribute
 ;---------------------------------------------------------------
-  do ns=0,nsmp-1
-
-     if (rankz.eq.4) then
-         zClm(ntim+ns,:,:,:) = 0.5*(zClm(ns,:,:,:)+zClm(ntim-(nsmp-ns),:,:,:))
-     end if
-     if (rankz.eq.3) then
-         zClm(ntim+ns,:,:)   = 0.5*(zClm(ns,:,:)+zClm(ntim-(nsmp-ns),:,:))
-     end if
-     if (rankz.eq.2) then
-         zClm(ntim+ns,:)     = 0.5*(zClm(ns,:)+zClm(ntim-(nsmp-ns),:))
-     end if
-     if (rankz.eq.1) then
-         zClm(ntim+ns)       = 0.5*(zClm(ns)+zClm(ntim-(nsmp-ns)))
-     end if
-
-  end do
+  if (nday.eq.365 .and. ndayx.eq.366) then
+      do ns=0,nsmp-1
+    
+         if (rankz.eq.4) then
+             zClm(ntim+ns,:,:,:) = 0.5*(zClm(ns,:,:,:)+zClm(ntim-(nsmp-ns),:,:,:))
+         end if
+         if (rankz.eq.3) then
+             zClm(ntim+ns,:,:)   = 0.5*(zClm(ns,:,:)+zClm(ntim-(nsmp-ns),:,:))
+         end if
+         if (rankz.eq.2) then
+             zClm(ntim+ns,:)     = 0.5*(zClm(ns,:)+zClm(ntim-(nsmp-ns),:))
+         end if
+         if (rankz.eq.1) then
+             zClm(ntim+ns)       = 0.5*(zClm(ns)+zClm(ntim-(nsmp-ns)))
+         end if
+    
+      end do
+  end if
 
 ;---------------------------------------------------------------
 ; Meta data
@@ -4499,22 +4513,24 @@ function calcDayAnomTLL (x[*][*][*]:numeric, yyyyddd:integer, clmDay[*][*][*]:nu
 
 ; Usage:  xAnom = calcDayAnomTLL (x, yyyyddd, clmDay)
 
-local dimx, ntim, nlat, mlon, ndys, days, xAnom, nt
+local dimx, ntim, nlat, mlon, days, xAnom, nt
 begin
+   if (isatt(yyyyddd,"calendar") .and. isatt(clmDay,"calendar")) then  
+       if (yyyyddd@calendar .ne. clmDay@calendar) then
+           print("calcDayAnomTLL: calendar mismatch")
+           print("                yyyyddd@calendar = "+yyyyddd@calendar)
+           print("                 clmday@calendar = "+ clmDay@calendar)
+           exit
+       end if
+   end if
 
    dimx  = dimsizes (x)
 
    ntim  = dimx(0)
    nlat  = dimx(1)
    mlon  = dimx(2)
-   ndys  = 366                               
 
    days  = yyyyddd - (yyyyddd/1000)*1000      ; strip year info [yyyy]
-
-; quick check [debug]
-  ;if (.not.all(days(0:ndys-2).eq.clmDay&year_day(0:ndys-2))) then
-  ;    print("calcDayAnomTLL: day mismatch")
-  ;end if
 
 ; loop on every day and compute difference. 
 
@@ -4524,114 +4540,126 @@ begin
    end do
 
    if (isatt(x,"long_name")) then
-       xAnom@long_name = "Anomalies: "+x@long_name
-   else
-       xAnom@long_name = "Anomalies from Daily Climatology"
-   end if
-   if (isatt(x,"units")) then
-       xAnom@units = x@units
-   end if
-
-   copy_VarCoords(x, xAnom)
-
-   return(xAnom)
-end
-
-; *******************************************************************
-undef("calcDayAnomTLLL")
-function calcDayAnomTLLL (x[*][*][*][*]:numeric, yyyyddd:integer, clmDay[*][*][*][*]:numeric)   
-
-; Remove the Annual Cycle from daily data. 
-; On return x will consist of deviations from each day's long term mean.
-;
-;              x(time,lev,lat,lon)  <==== input dimension order
-;              x!0 = "time"         <==== time is in days
-;              x!1 = "lev"
-;              x!2 = "lat"
-;              x!3 = "lon"
-;
-;
-;    non-Leap  yyyyddd
-;              1905001 =>  Jan  1, 1905
-;              1905032 =>  Feb  1, 1905
-;              1905059 =>  Feb 28, 1905
-;              1905060 =>  Mar  1, 1905
-;              1905365 =>  Dec 31, 1905
-;
-;    Leap
-;              1908001 =>  Jan  1, 1908]
-;              1908032 =>  Feb  1, 1908]
-;              1908059 =>  Feb 28, 1908]
-;              1908060 =>  Feb 29, 1908]
-;              1908061 =>  Mar  1, 1908]
-;              1908366 =>  Dec 31, 1908]
-
-; Usage:  xAnom = calcDayAnomTLLL (x, yyyyddd, clmDay)
-
-local dimx, ntim, klev,nlat, mlon, ndys, days, xAnom, nt
-begin
-
-   dimx  = dimsizes (x)
-
-   ntim  = dimx(0)
-   klev  = dimx(1)
-   nlat  = dimx(2)
-   mlon  = dimx(3)
-   ndys  = 366                               
-
-   days  = yyyyddd - (yyyyddd/1000)*1000      ; strip year info [yyyy]
-
-; quick check [debug]
-  ;if (.not.all(days(0:ndys-2).eq.clmDay&year_day(0:ndys-2))) then
-  ;    print("calcDayAnomTLL: day mismatch")
-  ;end if
-
-; loop on every day and compute difference. 
-
-   xAnom = (/ x  /)                                 ; create xAnom
-   do nt=0,ntim-1
-      xAnom(nt,:,:,:) = x(nt,:,:,:) - clmDay(days(nt)-1,:,:,:)   ; -1 for 0-based subscript
-   end do
-
-   if (isatt(x,"long_name")) then
-       xAnom@long_name = "Anomalies: "+x@long_name
-   else
-       xAnom@long_name = "Anomalies from Daily Climatology"
-   end if
-   if (isatt(x,"units")) then
-       xAnom@units = x@units
-   end if
-
-   copy_VarCoords(x, xAnom)
-   return(xAnom)
-end
-
-; **********************************************************************
-; D. Shea
-; create different view of variable
-; The undocumented func had 2 arguments (yyyymmdd[*], opt[1]:logical)
-; This was changed when this function was made part of the official 
-; distribution 5.1.1
-
+        xAnom@long_name = "Anomalies: "+x@long_name
+    else
+        xAnom@long_name = "Anomalies from Daily Climatology"
+    end if
+    if (isatt(x,"units")) then
+        xAnom@units = x@units
+    end if
+    if (isatt(yyyyddd,"calendar")) then
+        xAnom@calendar = yyyyddd@calendar
+    end if
+ 
+    copy_VarCoords(x, xAnom)
+ 
+    return(xAnom)
+ end
+ 
+ ; *******************************************************************
+ undef("calcDayAnomTLLL")
+ function calcDayAnomTLLL (x[*][*][*][*]:numeric, yyyyddd:integer, clmDay[*][*][*][*]:numeric)   
+ 
+ ; Remove the Annual Cycle from daily data. 
+ ; On return x will consist of deviations from each day's long term mean.
+ ;
+ ;              x(time,lev,lat,lon)  <==== input dimension order
+ ;              x!0 = "time"         <==== time is in days
+ ;              x!1 = "lev"
+ ;              x!2 = "lat"
+ ;              x!3 = "lon"
+ ;
+ ;
+ ;    non-Leap  yyyyddd
+ ;              1905001 =>  Jan  1, 1905
+ ;              1905032 =>  Feb  1, 1905
+ ;              1905059 =>  Feb 28, 1905
+ ;              1905060 =>  Mar  1, 1905
+ ;              1905365 =>  Dec 31, 1905
+ ;
+ ;    Leap
+ ;              1908001 =>  Jan  1, 1908]
+ ;              1908032 =>  Feb  1, 1908]
+ ;              1908059 =>  Feb 28, 1908]
+ ;              1908060 =>  Feb 29, 1908]
+ ;              1908061 =>  Mar  1, 1908]
+ ;              1908366 =>  Dec 31, 1908]
+ 
+ ; Usage:  xAnom = calcDayAnomTLLL (x, yyyyddd, clmDay)
+ 
+ local dimx, ntim, klev,nlat, mlon, ndys, days, xAnom, nt
+ begin
+    if (isatt(yyyyddd,"calendar") .and. isatt(clmDay,"calendar")) then  
+        if (yyyyddd@calendar .ne. clmDay@calendar) then
+            print("calcDayAnomTLL: calendar mismatch")
+            print("                yyyyddd@calendar = "+yyyyddd@calendar)
+            print("                 clmday@calendar = "+ clmDay@calendar)
+            exit
+        end if
+    end if
+ 
+    dimx  = dimsizes (x)
+ 
+    ntim  = dimx(0)
+    klev  = dimx(1)
+    nlat  = dimx(2)
+    mlon  = dimx(3)
+ 
+    days  = yyyyddd - (yyyyddd/1000)*1000      ; strip year info [yyyy]
+ 
+ ; loop on every day and compute difference. 
+ 
+    xAnom = (/ x  /)                                 ; create xAnom
+    do nt=0,ntim-1
+       xAnom(nt,:,:,:) = x(nt,:,:,:) - clmDay(days(nt)-1,:,:,:)   ; -1 for 0-based subscript
+    end do
+ 
+    if (isatt(x,"long_name")) then
+        xAnom@long_name = "Anomalies: "+x@long_name
+    else
+        xAnom@long_name = "Anomalies from Daily Climatology"
+    end if
+    if (isatt(x,"units")) then
+        xAnom@units = x@units
+    end if
+ 
+    if (isatt(yyyyddd,"calendar")) then
+        xAnom@calendar = yyyyddd@calendar
+    end if
+ 
+    copy_VarCoords(x, xAnom)
+    return(xAnom)
+ end
+ 
+ ; **********************************************************************
+ ; D. Shea
+ ; create different view of variable
+ ; v6.2.0: calendar attribute recognized
+ 
 undef("yyyymmdd_to_yyyyddd")
 function yyyymmdd_to_yyyyddd (yyyymmdd[*]:integer)
 local yyyy, mmdd, mm, dd, yyyyddd
 begin
- yyyy = yyyymmdd/10000
- mmdd = yyyymmdd - (yyyy*10000)
- mm   = mmdd/100
- dd   = mmdd - (mm*100)
+  yyyy = yyyymmdd/10000
+  mmdd = yyyymmdd - (yyyy*10000)
+  mm   = mmdd/100
+  dd   = mmdd - (mm*100)
+ 
+  if (isatt(yyyymmdd,"calendar")) then     ; needed for day_of_year
+      yyyy@calendar = yyyymmdd@calendar
+  end if
+ 
+  yyyyddd  = yyyy*1000 +day_of_year(yyyy, mm, dd)
+  copy_VarMeta(yyyymmdd, yyyyddd)
+  yyyyddd@long_name = "yyyy and day_of_year"
+  yyyyddd@units = "yyyyddd"
 
- yyyyddd  = yyyy*1000 +day_of_year(yyyy, mm, dd)
- copy_VarMeta(yyyymmdd, yyyyddd)
- yyyyddd@long_name = "yyyy and day_of_year"
- yyyyddd@units = "yyyyddd"
- return(yyyyddd)
+  return(yyyyddd)
 end
 
 ; **********************************************************************
 ; D. Shea
-; create different view of variable
+; v6.2.0: calendar attribute recognized
 
 undef("yyyyddd_to_yyyymmdd")
 function yyyyddd_to_yyyymmdd ( yyyyddd[*]:integer )
@@ -4643,15 +4671,31 @@ begin
   nTime    = dimsizes( yyyyddd )
   yyyy     = yyyyddd/1000
   ddd      = yyyyddd - yyyy*1000
-           ; non leap and leap
+           ; non leap and leap [greorian, standard, or no 'calendar' attribute
   days     = (/ (/31,28,31,30,31,30,31,31,30,31,30,31/) \    ; [2] x [12]
               , (/31,29,31,30,31,30,31,31,30,31,30,31/) /)
+
+  if (isatt(yyyyddd,"calendar")) then                        ; retrofit to existing code
+      yyyy@calendar = yyyyddd@calendar                       ; needed for day_of_year
+
+      if (yyyyddd@calendar.eq."365_day" .or. yyyyddd@calendar.eq."365" .or. \
+          yyyyddd@calendar.eq."noleap"  .or. yyyyddd@calendar.eq."no_leap") then
+          days(1,:) = days(0,:)         ; make all non-leap year 
+      end if
+      if (yyyyddd@calendar.eq."366_day" .or. yyyyddd@calendar.eq."366" .or. \
+          yyyyddd@calendar.eq."allleap" .or. yyyyddd@calendar.eq."all_leap") then
+          days(0,:) = days(1,:)         ; make all leap yeary
+      end if
+      if (yyyyddd@calendar.eq."360_day" .or. yyyyddd@calendar.eq."360") then
+          days      = 30                ; make all 30
+      end if
+  end if
 
   yyyymmdd = new (nTime, integer)
 
   do nt=0,nTime-1
      iyr   = 0
-     if (isleapyear(yyyy(nt))) then
+     if (isleapyear(yyyy(nt))) then   ; only has effect for standard, gregorian
          iyr   = 1
      end if
 
@@ -4683,6 +4727,10 @@ begin
    yyyymmdd@long_name = "current date"
    yyyymmdd@units     = "YYYYMMDD" 
    yyyymmdd@info      = "converted from YYYYDDD" 
+
+   if (isatt(yyyyddd,"calendar")) then
+       yyyymmdd@calendar = yyyyddd@calendar
+   end if
 
    return(yyyymmdd) 
 end
@@ -4969,6 +5017,8 @@ end
 ;****************************************************
 ; D. Shea
 ; Take a monthly climatology and make a daily climatology
+; Current for gregorian / standard year.
+;
 ; Supported: leftmost dimension must be 12
 ;            x(12), x(12,N), x(12,N1,N2), x(12,N1,N2,N3)
 ; x must have named dimensions on entry
@@ -5649,19 +5699,34 @@ end
 ; Mark Stevens
 ; will choose a color to fill in a poly(line/gon/marker) based upon
 ; secondary scalar field.
-
+;
+; This function was updated 6/10/2013 to allow n x 3 or
+; n x 4 (RGBA) arrays.
+;
 undef("GetFillColor")
-function GetFillColor(cnlvls[*]:numeric,cmap[*][3]:numeric,data:numeric)
-local ncn, nclr, color, n
+function GetFillColor(cnlvls[*]:numeric,cmapt,data:numeric)
+local dims, ncn, nclr, color, n
 begin
+
+ if(isstring(cmapt)) then
+    cmap = read_colormap_file(cmapt)
+ else if(isnumeric(cmapt)) then
+   dims = dimsizes(cmapt)
+   if(dims(0).lt.3.or.dims(0).gt.256.or..not.any(dims(1).ne.(/3,4/))) then
+     print ("Error: GetFillColors: cmap must be an n x 3 or n x 4 array of RGB or RGBA values, or a valid color map name")
+     return(new(3,"float"))    ; return a missing value
+   end if
+   cmap = cmapt
+ else
+   print ("Error: GetFillColors: cmap must be an n x 3 or n x 4 array of RGB or RGBA values, or a valid color map name")
+ end if
+ end if
 
  ncn = dimsizes (cnlvls)
  nclr = dimsizes (cmap(:,0))
- color = new (3,"float",-1.0)
-
  if (nclr-2 .lt. ncn+1) then 
-   print ("Not enough colors in colormap for number of contour levels")
-   return (color)
+   print ("Error: GetFillColors: Not enough colors in colormap for number of contour levels")
+   return (new(3,float))   ; return missing
  end if
 
  if (data .le. cnlvls(0)) then
@@ -7639,12 +7704,12 @@ begin
   if (typeof(yyyymm).eq."double" .or. typeof(mmOffset).eq."double") then 
       xmos = 12.d0                         
       one  = 1.0d0                        
-      YYYYMM = doubletoint(yyyymm)       ; numerical issue
+      YYYYMM = toint(yyyymm)       ; numerical issue
   else                                   
       xmos = 12.0                       
       one  = 1.0                       
       if (typeof(yyyymm).eq."float") then
-          YYYYMM = floattoint(yyyymm)    ; numerical issue
+          YYYYMM = toint(yyyymm)    ; numerical issue
       else
           YYYYMM = yyyymm
       end if
@@ -7669,7 +7734,8 @@ end
 ;
 ; yyyymmdd       - scalar or array of dates
 ; 
-; assumes Gregorian calendar
+; 6.2.0: calendar attribute
+;
 undef ("yyyymmdd2yyyyFrac") 
 function yyyymmdd2yyyyFrac (yyyymmdd:numeric, ddOffset[1]:numeric)
 local year, mmdd, mon, day, dayYear, nDay, yrFrac, n, con, varType, YYYYMMDD
@@ -7679,11 +7745,7 @@ begin
      if (varType.eq."integer") then
          YYYYMMDD = yyyymmdd
      else
-         if (varType.eq."float") then
-             YYYYMMDD = floattointeger(yyyymmdd)
-         else
-             YYYYMMDD = doubletointeger(yyyymmdd)
-         end if
+         YYYYMMDD = toint(yyyymmdd)
      end if
 
      year = YYYYMMDD/10000
@@ -7693,20 +7755,44 @@ begin
      mon  = mmdd/100
      day  = mmdd-mon*100
      delete (mmdd)
+
+     if (isatt(yyyymmdd,"calendar")) then   ; retrofit code for calendar
+         year@calendar = yyyymmdd@calendar  ; check for calendar
+     end if
      
-     dayYear = day_of_year(year, mon, day)  ; Gregorian calendar
-     delete (mon)
-     delete (day)
+     dayYear = day_of_year(year, mon, day)  
+     delete ( [/mon, day /] )
      
-     nDay   = dimsizes(yyyymmdd)
-     if (varType.eq."integer" .or. varType.eq."float") then
-         yrFrac = new( nDay, "float")
-         con    = (/ 365, 366 /)*1.0
-     else
+     nDay   = dimsizes(yyyymmdd)            ; all days 
+     if (varType.eq."double") then
          yrFrac = new( nDay, "double")
-         con    = (/ 365, 366 /)*1d0
+         one    = 1d0
+     else
+         yrFrac = new( nDay, "float")
+         one    = 1.0
      end if
      delete(yrFrac@_FillValue)
+
+     if (isatt(yyyymmdd,"calendar")) then    ; retrofit to existing code
+         yrFrac@calendar = yyyymmdd@calendar
+
+         if (yyyymmdd@calendar.eq."360_day" .or. yyyymmdd@calendar.eq."360") then
+             con = (/ 360, 360 /)*one
+         end if
+         if (yyyymmdd@calendar.eq."365_day" .or. yyyymmdd@calendar.eq."365"    .or. \
+             yyyymmdd@calendar.eq."noleap"  .or. yyyymmdd@calendar.eq."no_leap") then
+             con = (/ 365, 365 /)*one
+         end if
+         if (yyyymmdd@calendar.eq."366_day" .or. yyyymmdd@calendar.eq."366"    .or. \
+             yyyymmdd@calendar.eq."allleap" .or. yyyymmdd@calendar.eq."all_leap") then
+             con = (/ 366, 366 /)*one
+         end if
+         if (yyyymmdd@calendar.eq."gregorian" .or. yyyymmdd@calendar.eq."standard") then
+             con = (/ 365, 366 /)*one 
+         end if
+     else
+         con = (/ 365, 366 /)*one             ; default is gregorian/standard 
+     end if
         
      do n=0,nDay-1
         if (isleapyear(year(n))) then
@@ -7762,11 +7848,7 @@ begin
      if (varType.eq."integer") then
          YYYYMMDDHH = yyyymmddhh
      else
-         if (varType.eq."float") then
-             YYYYMMDDHH = floattointeger(yyyymmddhh)
-         else
-             YYYYMMDDHH = doubletointeger(yyyymmddhh)
-         end if
+         YYYYMMDDHH = toint(yyyymmddhh)
      end if
 
      year   = YYYYMMDDHH/1000000
@@ -7781,19 +7863,43 @@ begin
      hour = ddhh-day*100
      delete (ddhh)
 
-     dayYear = day_of_year(year, mon, day)  ; Gregorian calendar
-     delete (mon)
-     delete (day)
+     if (isatt(yyyymmddhh,"calendar")) then
+         year@calendar = yyyymmddhh@calendar  ; check for calendar
+     end if
+
+     dayYear = day_of_year(year, mon, day)    ; Gregorian calendar
+     delete ([/mon, day/])
 
      nTim   = dimsizes(yyyymmddhh)
-     if (varType.eq."integer" .or. varType.eq."float") then
-         yrFrac = new( nTim, "float")
-         con    = (/ 365, 366, 86400, 3600 /)*1.0
+
+     if (varType.eq."double") then
+         yrFrac = new( nDay, "double", "No_FillValue")
+         one    = 1d0
      else
-         yrFrac = new( nTim, "double")
-         con    = (/ 365, 366, 86400, 3600 /)*1d
+         yrFrac = new( nDay, "float", "No_FillValue")
+         one    = 1.0
      end if
-     delete(yrFrac@_FillValue)
+
+     if (isatt(yyyymmdd,"calendar")) then    ; retrofit to existing code
+         yrFrac@calendar = yyyymmdd@calendar
+
+         if (yyyymmdd@calendar.eq."360_day" .or. yyyymmdd@calendar.eq."360") then
+             con = (/ 360, 360, 86400, 3600 /)*one
+         end if
+         if (yyyymmdd@calendar.eq."365_day" .or. yyyymmdd@calendar.eq."365"    .or. \
+             yyyymmdd@calendar.eq."noleap"  .or. yyyymmdd@calendar.eq."no_leap") then
+             con = (/ 365, 365, 86400, 3600 /)*one
+         end if
+         if (yyyymmdd@calendar.eq."366_day" .or. yyyymmdd@calendar.eq."366"    .or. \
+             yyyymmdd@calendar.eq."allleap" .or. yyyymmdd@calendar.eq."all_leap") then
+             con = (/ 366, 366, 86400, 3600 /)*one
+         end if
+         if (yyyymmdd@calendar.eq."gregorian" .or. yyyymmdd@calendar.eq."standard") then
+             con = (/ 365, 366, 86400, 3600 /)*one 
+         end if
+     else
+         con = (/ 365, 366, 86400, 3600 /)*one   ; default is gregorian/standard
+     end if
 
      do n=0,nTim-1
         if (isleapyear(year(n))) then
@@ -8169,14 +8275,16 @@ begin
   ntim = nyrs*nmos*31 ; make long enough array
   tdum = new ( ntim, TYPE, "No_FillValue" )
 
+  year = 0
+  if (isatt(yrStrt,"calendar")) then
+      year@calendar = yrStrt@calendar
+  end if
+
   n = -1 ; initialize day counter
   do year = yrStrt,yrLast
     do nmo=1,nmos
        YRM  = year*10000 + nmo*100
        nday = days_in_month(year, nmo)
-       if (nmo.eq.2 .and. isatt(yrStrt,"noLeapYear")) then
-           nday = 28
-       end if
       do ndy = 1,nday
          n = n+1
          tdum(n) = YRM + ndy
@@ -8188,8 +8296,8 @@ begin
   time@long_name = "time"
   time@units     = "YYYYMMDD"
 
-  if (isatt(yrStrt,"noLeapYear")) then
-      time@calendar  = "noLeap"
+  if (isatt(yrStrt,"calendar")) then
+      time@calendar  = yrStrt@calendar
   end if
 
   time!0    = "time"
@@ -8208,14 +8316,16 @@ begin
   ntim = nyrs*nmos*nhrd*31       ; make long enough array
   tdum = new ( ntim, TYPE, "No_FillValue" )
 
+  year = 0
+  if (isatt(yrStrt,"calendar")) then
+      year@calendar = yrStrt@calendar   ; needed for days in month
+  end if
+
   n = -1 ; initialize counter index
   do year=yrStrt,yrLast
     do nmo=1,nmos
        YRM  = year*1000000 + nmo*10000
        nday = days_in_month(year, nmo)
-       if (nmo.eq.2 .and. isatt(yrStrt,"noLeapYear") .and. yrStrt@noLeapYear) then
-           nday = 28
-       end if
       do ndy=1,nday
         do nhr=0,23,hrStep
            n = n+1
@@ -8229,8 +8339,8 @@ begin
   time@long_name = "time"
   time@units     = "YYYYMMDDHH"
 
-  if (isatt(yrStrt,"noLeapYear")) then
-      time@calendar  = "noLeap"
+  if (isatt(yrStrt,"calendar")) then
+      time@calendar  = yrStrt@calendar
   end if
 
   time!0    = "time"
@@ -8306,6 +8416,10 @@ begin
     if (iscoord(date,dName)) then
         DATE&$dName$ = date&$dName$
     end if
+  end if
+
+  if (isatt(date,"calendar")) then
+      DATE@calendar  = date@calendar
   end if
 
   return(DATE)
@@ -8531,7 +8645,11 @@ begin
   res@cnLevelSelectionMode = "ManualLevels"   
   res@cnMinLevelValF       = mnmxint(0)
   res@cnMaxLevelValF       = mnmxint(1)
-  res@cnLevelSpacingF      = mnmxint(2)
+  if (isnan_ieee(mnmxint(2))) then            ; extreme case
+      res@cnLevelSpacingF  = 1.0
+  else
+      res@cnLevelSpacingF  = mnmxint(2)
+  end if
 end
 
 undef("isStrSubset")
@@ -9105,6 +9223,91 @@ begin
   return(omega)
 end
 ;************************************************************
+; D. Shea 
+;
+; Converts OMEGA (Pa/s) to W (m/s)                          
+; This is a 1st order approximation.
+
+undef("omega_to_w")
+function omega_to_w (omega, p, t)
+;
+; first order conversion: w = -omega/(density*gravity)
+;
+; omega: units = "Pa/sec"
+; p    : units = "Pa"
+; t    : units = "K"
+
+local dims_omega, dims_t, dims_p, rank_omega, rank_t, rank_p, RGAS, GRAV, rho, w
+begin
+   dims_omega = dimsizes( omega )
+   dims_t     = dimsizes( t )
+   dims_p     = dimsizes( p )
+
+   rank_omega = dimsizes( dims_omega )
+   rank_t     = dimsizes( dims_t ) 
+   rank_p     = dimsizes( dims_p ) 
+
+   if (rank_omega.ne.rank_t .or. rank_omega.ne.rank_p .or. \
+       .not.(all(dims_omega.eq.dims_t) .and. all(dims_omega.eq.dims_p)) ) then
+       print("omega_to_w: omega, p, t must be the same rank & size")
+       exit
+   end if
+
+   RGAS = 287.058            ; J/(kg-K) => m2/(s2 K)
+   GRAV = 9.80665            ; m/s2
+   rho  = p/(RGAS*t)         ; density => kg/m3
+   w    = -omega/(rho*GRAV)  ; array operation
+
+   w@long_name = "vertical velocity"
+   w@units     = "m/s"
+   w@info_tag  = "NCL: omega_to_w: -omega/(rho*g): approximation "
+   copy_VarCoords( omega, w)
+   return( w )
+end 
+;************************************************************
+; D. Shea 
+;
+; Converts W (m/s) to OMEGA (Pa/s)                          
+; This is a 1st order approximation.
+
+undef("w_to_omega")
+function w_to_omega (w, p, t)
+;
+; first order conversion: omega= -w*density*gravity
+;
+; w    : units = "m/sec"
+; p    : units = "Pa"
+; t    : units = "K"
+
+local dims_w, dims_t, dims_p, rank_w, rank_t, rank_p, RGAS, GRAV, rho, omega
+begin
+   dims_w = dimsizes( w )
+   dims_t = dimsizes( t )
+   dims_p = dimsizes( p )
+
+   rank_w = dimsizes( dims_w )
+   rank_t = dimsizes( dims_t )
+   rank_p = dimsizes( dims_p )
+
+   if (rank_w.ne.rank_t .or. rank_w.ne.rank_p .or. \
+       .not.(all(dims_w.eq.dims_t) .and. all(dims_w.eq.dims_p)) ) then
+       print("w_to_omega: omega, p, t must be the same rank & size")
+       exit
+   end if
+
+   RGAS = 287.058            ; J/(kg-K) => m2/(s2 K)
+   GRAV = 9.80665            ; m/s2
+   rho  = p/(RGAS*t)         ; density => kg/m3
+   omega    = -w*rho*GRAV    ; array operation
+
+   omega@long_name = "vertical velocity"
+   omega@units     = "Pa/s"
+   omega@info_tag  = "NCL: w_to_omega: omega= -w*rho*g: approximation "
+   copy_VarCoords( w, omega)
+   return( omega )
+end
+
+;************************************************************
 ; D. Shea and S. N. Hameed <U. Hawaii> 
 ;
 ; Determines the relative minima for a 1-dimensional array. 
@@ -9565,15 +9768,41 @@ begin
       print("month_to_annual_weighted: ntim="+NTIM+" not multiple of 12")
   end if
 
-  dymon = days_in_month ( yyyy, mm)      ; accounts for leap year
+  if (isatt(yyyymm,"calendar")) then
+      yyyy@calendar = yyyymm@calendar    ; needed for days_in_month
+  end if
+
+  dymon = days_in_month ( yyyy, mm)      ; accounts for calendar attribute
 
   if (typeof(x).eq."double") then
-      wSum_1 = 365d0
-      wSum_2 = 366d0
+      one    = 1d0
   else
-      wSum_1 = 365.
-      wSum_2 = 366.
+      one    = 1.0
   end if
+
+  if (isatt(yyyymmdd,"calendar")) then    ; retrofit to existing code
+      yrFrac@calendar = yyyymmdd@calendar
+
+      if (yyyymmdd@calendar.eq."360_day" .or. yyyymmdd@calendar.eq."360") then
+          con = (/ 360, 360 /)*one
+      end if
+      if (yyyymmdd@calendar.eq."365_day" .or. yyyymmdd@calendar.eq."365"    .or. \
+          yyyymmdd@calendar.eq."noleap"  .or. yyyymmdd@calendar.eq."no_leap") then
+          con = (/ 365, 365 /)*one
+      end if
+      if (yyyymmdd@calendar.eq."366_day" .or. yyyymmdd@calendar.eq."366"    .or. \
+          yyyymmdd@calendar.eq."allleap" .or. yyyymmdd@calendar.eq."all_leap") then
+          con = (/ 366, 366 /)*one
+      end if
+      if (yyyymmdd@calendar.eq."gregorian" .or. yyyymmdd@calendar.eq."standard") then
+          con = (/ 365, 366 /)*one 
+      end if
+  else
+      con = (/ 365, 366 /)*one             ; default is gregorian/standard 
+  end if
+
+  wSum_1 = con(0)
+  wSum_2 = con(1)
 
   if (rankx.eq.1) then
       xAnnual = new ( nyrs, typeof(x), getFillValue(x)) ;  contributed
@@ -9619,6 +9848,10 @@ begin
       end if
       if (isatt(x, "units")) then
           xAnnual@units     = x@units
+      end if
+
+      if (isatt(yyyymm,"calendar")) then
+          xAnnual@calendar = yyyymm@calendar    
       end if
 
       return(xAnnual)
@@ -9775,6 +10008,10 @@ begin
           xAnnual@units     = x@units
       end if
 
+     if (isatt(yyyymm,"calendar")) then
+         xAnnual@calendar = yyyymm@calendar    
+     end if
+
       return(xAnnual)
    end if
 end
@@ -9818,6 +10055,10 @@ begin
   end if
 
   rankx = dimsizes(dimx)                 ; number of dimensions
+
+  if (isatt(yyyymm,"calendar")) then
+      yyyy@calendar = yyyymm@calendar    ; needed for 'day_in_month'
+  end if
 
   dymon = days_in_month ( yyyy, mm)      ; accounts for leap year
 
@@ -10621,16 +10862,16 @@ begin
   type_r2 = typeof(r2)
 
   if (type_r1.eq."double") then
-      return( r1 - (r2 * doubletointeger( r1/r2) ) ) 
+      return( r1 - (r2 * toint( r1/r2) ) ) 
   end if  
 
   if (type_r1.eq."float") then
       if (type_r2.eq."float" .or. type_r2.eq."integer") then
-          return( r1 - (r2 * floattointeger( r1/r2 ) ))
+          return( r1 - (r2 * toint( r1/r2 ) ))
       end if     
 
       if (type_r2.eq."double") then
-          tmp = doubletofloat( r1 - (r2 * doubletointeger( r1/r2 ) ))
+          tmp = doubletofloat( r1 - (r2 * toint( r1/r2 ) ))
           return( tmp )
       end if
   end if  
@@ -10640,12 +10881,12 @@ begin
           return( r1 % r2 ) 
       end if
       if (type_r2.eq."float") then
-          R2 = floattointeger(r2)
-          return( r1 - floattointeger(R2 * (r1/R2)))
+          R2 = toint(r2)
+          return( r1 - toint(R2 * (r1/R2)))
       end if
       if (type_r2.eq."double") then
-          R2 = doubletointeger(r2)
-          return( r1 - doubletointeger(R2 * (r1/R2)))
+          R2 = toint(r2)
+          return( r1 - toint(R2 * (r1/R2)))
       end if
   end if
 
@@ -11216,7 +11457,6 @@ begin
   
   return( pdf )
 end
-
 ;**************************************************************
 ; Calculate the "joint PDF [%]" of arrays "x" and "y"
 ;**************************************************************
@@ -11226,7 +11466,7 @@ local nGood_x, nbinsx, xMin, xMax, mnmxint, binx, binxBound, binxCenter, nbx \
      ,nGood_y, nbinsy, yMin, yMax, ySpace , biny, binyBound, binyCenter, nby \
      ,outside, mnmxint, pdf2, nTot, dimx, dimy, rankx, ranky, x1d, y1d, iy, warnFlag\
      ,xMIN, xMAX, yMIN, yMAX, binxBoundMin, binxBoundMax, binyBoundMin, binyBoundMax\
-     ,nMax, nUse, nxLoOut, nxHiOut, nyLoOut, nyHiOut, popt, fmsg
+     ,nMax, nUse, nxLoOut, nxHiOut, nyLoOut, nyHiOut, popt, fmsg, epsx, epsy
 begin
 
   fmsg = default_fillvalue("float")
@@ -11267,10 +11507,10 @@ begin
   end if              ; warnFlag
 
   xMIN = min(x)*1d0   ; min/max for ENTIRE array             
-  xMAX = max(x)*1d0   ; force "double" [*1d0]
+  xMAX = max(x)*1d0   ; force "double" [*1d0] ... convenience only
   yMIN = min(y)*1d0   
   yMAX = max(y)*1d0  
-                                             ; max number possible
+                      ; max number possible (excludes _FillValue)
   nMax = num(x.ge.xMIN .and. x.le.xMAX .and. \
              y.ge.yMIN .and. y.le.yMAX) 
 
@@ -11362,6 +11602,27 @@ begin
 
   popt          = True
   popt@fraction = False     ; False means to return %
+  
+                      ; -------------------------------------------
+                      ; epsx, epsy:  Nov 2013 for v6.2.0
+		      ; get around:  LastLeftBin <= x,y < LastRightBin 
+		      ; Add eps LastRightBin will *include* xMAX and yMAX
+  if (opt .and. isatt(opt, "bin_max_epsx")) then
+      epsx = opt@bin_max_epsx ; set to 0.0 for pre 6.2.0 results
+  else
+      epsx = 1d-6             ; default (arbitrary)
+  end if
+                      
+  if (opt .and. isatt(opt, "bin_max_epsy")) then
+      epsy = opt@bin_max_epsy
+  else
+      epsy = 1d-6         
+  end if
+                    
+  binxBound(nbinsx)= binxBound(nbinsx) + epsx*binxBound(nbinsx)
+  binyBound(nbinsy)= binxBound(nbinsy) + epsy*binyBound(nbinsy)
+                      ; ------------------------------------------- 
+
   pdf2 = pdfxy_bin(x,y, binxBound,binyBound, popt)
                           ; all NCL [original code]
     ;;x1d  = ndtooned(x)  ; requires more memory
@@ -11378,15 +11639,16 @@ begin
     ;;   delete(iy)      ; size may change
     ;;end do
 
-  if (popt .and. isatt(popt,"fraction") .and. popt@fraction) then
-      pdf2 = 1d2*pdf2                ; frequency [%]
+  if (opt .and. isatt(opt,"fraction") .and. opt@fraction) then
+      pdf2 = pdf2/1d2                ; fraction [0,1]
   end if
 
   pdf2!0   = "y"         ; arbitrary name
   pdf2!1   = "x"
   pdf2&x   =  binxCenter 
   pdf2&y   =  binyCenter
-                                             ; actual number used
+                         ; actual number used, excludes outliers
+					     
   nUse     = num(x.ge.binxBoundMin .and. x.le.binxBoundMax .and. \
                  y.ge.binyBoundMin .and. y.le.binyBoundMax)
 
@@ -11488,9 +11750,14 @@ begin
   if (opt .and. isatt(opt,"std_span")) then
       spn = opt@std_span
   end if
-
-  if (opt .and. isatt(opt,"npts")) then
-      N = opt@npts
+                ; fix an incorrect documention issue
+                ; allow 'npts' or 'N'
+  if (opt .and. (isatt(opt,"npts") .or. isatt(opt,"N"))) then
+     if (isatt(opt,"N")) then
+         N = opt@N
+     else
+         N = opt@npts
+     end if
   else
       N = 101
   end if
@@ -12015,17 +12282,22 @@ begin
 end
 ;****************************************************************************
 ; Calculate a 'bunch' of dispersion statistics 
-; This can be slow for big 'x'
+; This was originally developed for looking at satellite swath data
+; which has many points but, often, many missing values and outliers.
+; It can be used to ascertain the best values to use for
+; contour resources: min/max/interval
 ; 
+; *This can be slow for big 'x'*
+;
 undef("stat_dispersion")
 function stat_dispersion (x:numeric, opt[1]:logical )
 ; Robust dispersion statistics
 ; 
-local nStat, nx, sFillV, nFill, one, statx, work, nwork, x1d, ivalid, allFill
+local nStat, nx, sFillV, nFill, one, statx, work, nwork, x1d, ivalid, allFill, nValid
 begin
    nx      = product( dimsizes(x) )
-   nFill   = 0
    nStat   = 30
+   nFill   = 0
    allFill = False 
 
    if (typeof(x).eq."double") then
@@ -12055,56 +12327,81 @@ begin
 
    if (typeof(x).eq."double") then
        one    = 1.0d
+       moment = (/0.0d, 0.0d ,0.0d ,0.0d /)
    else
        one    = 1.0
+       moment = (/0.0 , 0.0  ,0.0  ,0.0  /)
    end if
 
+   nValid   = 0l                    ; force 'long' int
+   nValid   = nx-nFill
+
+   nwork    = 0l                    ; force nwork as 'long' int
+   nwork    = dimsizes(work)        
+
    statx    = new ( nStat, typeof(sFillV), sFillV) 
-   if (.not.allFill) then
-       nwork    = 0l                    ; force nwork as 'long' int
-       nwork    = dimsizes(work)        ; so (say) 3*nwork will work
+   if (nwork.gt.1) then
       ;statx(0) = avg(x)                ; mean
       ;statx(1) = stddev(x)             ; std. deviation
        moment   = dim_stat4( work ) 
        statx(0) = moment(0)             ; mean
        statx(1) = moment(1)             ; std. deviation
        
-       if (nwork.ge.10) then 
-           qsort( work )                    ; sort into ascending order
-           statx(2) = min ( work )
+       qsort( work )                    ; sort into ascending order
+       statx(2) = work(0)               ; min ( work )
+
+; Daniel Leuenberger (Meteo Swiss) suggested the small 
+;      sample size granularity (10/2013)
                                             ; -1 ... NCL zero based 
-           statx(3) = work( nwork/10-1 )    ; lower dectile
-           statx(4) = work( nwork/8 -1 )    ; lower octtile
-           statx(5) = work( nwork/6 -1 )    ; lower sextile
-           statx(6) = work( nwork/4 -1 )    ; lower quartile
-           statx(7) = work( nwork/3 -1 )    ; lower 3tile
-           if (nwork%2 .eq.0) then          ; median even
-               statx(8) = (work(nwork/2-1)+work(nwork/2))*0.5  
-           else
-               statx(8) = work( nwork/2   ) ; median odd  
-           end if
-           statx(9) = work((nwork*2)/3 -1)  ; upper 3tile
-           statx(10)= work((nwork*3)/4 -1)  ; upper quartile
-           statx(11)= work((nwork*5)/6 -1)  ; upper sextile
-           statx(12)= work((nwork*7)/8 -1)  ; upper octtile
-           statx(13)= work((nwork*9)/10-1)  ; upper dectile
-           statx(14)= max ( work )      
-           statx(15)= statx(14)-statx(2)    ; range
-           if (statx(1).gt.0) then
+       if (nwork.ge.10) then 
+         statx(3) = work( nwork/10-1 )    ; lower dectile
+         statx(13)= work((nwork*9)/10-1)  ; upper dectile
+       end if
+
+       if (nwork.ge.8) then
+         statx(4) = work( nwork/8 -1 )    ; lower octtile
+         statx(12)= work((nwork*7)/8 -1)  ; upper octtile
+       end if
+
+       if (nwork.ge.6) then
+         statx(5) = work( nwork/6 -1 )    ; lower sextile
+         statx(11)= work((nwork*5)/6 -1)  ; upper sextile
+       end if
+
+       if (nwork.ge.4) then
+         statx(6) = work( nwork/4 -1 )    ; lower quartile
+         statx(10)= work((nwork*3)/4 -1)  ; upper quartile
+       end if
+ 
+       if (nwork.ge.3) then
+         statx(7) = work( nwork/3 -1 )    ; lower 3tile
+         statx(9) = work((nwork*2)/3 -1)  ; upper 3tile
+       end if
+
+       if (nwork.ge.2) then
+         if (nwork%2 .eq.0) then          ; median even
+           statx(8) = (work(nwork/2-1)+work(nwork/2))*0.5  
+         else
+           statx(8) = work( nwork/2   ) ; median odd  
+         end if
+       end if 
+
+       statx(14)= work(nwork-1)         ; max ( work )      
+       statx(15)= statx(14)-statx(2)    ; range
+       if (statx(1).gt.0) then
+       if (.not.ismissing(statx(1)) .and. statx(1).gt.0) then
                statx(16)= statx(15)/statx(1); a measure of dispersion
            end if
            statx(17)= sqrt(sum((work-statx(0))^2)/nwork) ; root mean sq anomaly
        end if                               ; nwork.ge.10
-   else                             
-       nwork    = 0
    end if                                   ; .not.allFill
    statx(18)= nx
-   statx(19)= nwork
+   statx(19)= nValid
    statx(20)= nFill
    statx(21)= 100*(one - (one*(nx-nFill))/nx)
 
-;;;if (nwork.gt.1000) then
-        ;JBuzan BEGIN
+   if (nwork.gt.1000) then
+        ;JBuzan [Purdue] 
        statx(22) = work( max((/ 0, nwork/1000-1 /)) ) ; lower 99.9% 
        statx(23) = work( max((/ 0, nwork/100-1  /)) ) ; lower 99.%  
        statx(24) = work( max((/ 0, nwork/20-1   /)) ) ; lower 95%   
@@ -12112,14 +12409,13 @@ begin
        statx(25) = work( min((/nwork-1, (nwork*19)/20-1    /)) ) ; upper 95%
        statx(26) = work( min((/nwork-1, (nwork*99)/100-1   /)) ) ; upper 99.%
        statx(27) = work( min((/nwork-1, (nwork*999)/1000-1 /)) ) ; upper 99.9%
-        ;JBuzan END
-;;;end if
+        ;JBuzan
+   end if
 
-        ;Arne Melsom
+        ;Arne Melsom (Norwegian Meteorological Institute)
    statx(28)  = moment(2)                   ; skewness
    statx(29)  = moment(3)                   ; kurtosis
         ;Arne Melsom
-
 
    statx@long_name = "Robust Dispersion Statistics"
    if (isatt(x,"long_name")) then
@@ -12362,11 +12658,12 @@ begin
     end if
 
     utc_date = cd_calendar(x&time, 0)
-    year     = floattointeger(utc_date(:,0))   
-    month    = floattointeger(utc_date(:,1))  
-    day      = floattointeger(utc_date(:,2))
-    hour     = floattointeger(utc_date(:,3))
-   ;minute   = floattointeger(utc_date(:,4))
+
+    year     = toint(utc_date(:,0))   
+    month    = toint(utc_date(:,1))  
+    day      = toint(utc_date(:,2))
+    hour     = toint(utc_date(:,3))
+   ;minute   = toint(utc_date(:,4))
    ;second   = utc_date(:,5)
 
     if (rankx.le.4) then
@@ -12398,7 +12695,7 @@ begin
 
     xReturn= new ( dAvg , typeof(x), getFillValue(x))
     xMonth = new ( NTIM , typeof(x&time), "No_FillValue")
-    printVarSummary(xMonth)
+  ;;printVarSummary(xMonth)
 
     NT   = -1
     do yr=yrStrt,yrLast
@@ -12829,7 +13126,11 @@ begin
   TIME   = cd_inv_calendar(toint(date(:,0)),toint(date(:,1)) \
                           ,toint(date(:,2)),toint(date(:,3)) \
                           ,toint(date(:,4)),todouble(date(:,5)),new_time_units, 0)
-  TIME@calendar = "gregorian"
+
+  if (isatt(time,"calendar")) then
+      TIME@calendar = time@calendar
+  end if
+
   TIME!0        = "time"
   TIME&time     =  TIME
                           ; delete attributes that may no longer be appropriate
@@ -13019,16 +13320,20 @@ function pattern_cor2 (x[*][*],y[*][*],w, opt:integer)
 ; (lat,lon)  .... wgt(lat)
 
 local dimx, dimy, dimw, wgt, WGT, sumWGT, xAvgArea, xAnom, yAnom \
-    , i, j, W1D, z1d, xyCov, xAnom2, yAnom2, r
+    , i, j, W1D, z1d, xyCov, xAnom2, yAnom2, r, rFill 
 begin
   if (isatt(x,"_FillValue")) then
       if (all(ismissing(x))) then
-          return(x@_FillValue)
+          rFill = (/ x@_FillValue /)
+          rFill@_FillValue = rFill
+          return(rFill)
       end if
   end if
   if (isatt(y,"_FillValue")) then
       if (all(ismissing(y))) then
-          return(y@_FillValue)
+          rFill = (/ y@_FillValue /)
+          rFill@_FillValue = rFill
+          return(rFill)
       end if
   end if
                              ; x and y must have the same sizes
@@ -13132,16 +13437,20 @@ function pattern_cor (x, y, w, opt:integer)
 ; between two fields
 ; (lat,lon)  .... wgt(1) or wgt(lat) or wgt(lat,lon)
 
-local dimx, dimy, rankx, ranky, nt, kl, xc, rpc
+local dimx, dimy, rankx, ranky, nt, kl, xc, rpc, rFill
 begin
   if (isatt(x,"_FillValue")) then
       if (all(ismissing(x))) then
-          return(x@_FillValue)
+          rFill = (/ x@_FillValue /)
+          rFill@_FillValue = rFill
+          return(rFill)
       end if
   end if
   if (isatt(y,"_FillValue")) then
       if (all(ismissing(y))) then
-          return(y@_FillValue)
+          rFill = (/ y@_FillValue /)
+          rFill@_FillValue = rFill
+          return(rFill)
       end if
   end if
                              ; x and y must have the same sizes
@@ -13339,6 +13648,10 @@ begin
 
   ntimx = dimx(0)              ; # input time steps
   ymdhms= cd_calendar(x&$dnamx(0)$, 0)
+
+  if (isatt(x&$dnamx(0)$, "calendar")) then
+      ymdhms@calendar = x&$dnamx(0)$@calendar
+  end if
  
   yyyy  = toint( ymdhms(:,0) )
   mm    = toint( ymdhms(:,1) )
@@ -13391,6 +13704,10 @@ begin
   TIME!0     = dnamx(0)
   TIME&$dnamx(0)$ =  TIME        ; make coordinate variable
 
+  if (isatt(x&$dnamx(0)$, "calendar")) then
+      TIME@calendar = x&$dnamx(0)$@calendar
+  end if
+
   DIMX    = dimx
   DIMX(0) = NTIM
   X     = new (DIMX, typeof(x), getFillValue(x))
@@ -13420,4 +13737,506 @@ begin
 
   return(X)
   
+end
+;----------------------------------------------------------
+undef("stat_mode")
+function stat_mode(A[*]:numeric)
+;
+; returns mode value(s) with attributes which indicate the
+;                       number of modes (@nmode)
+;                       count of mode occurences (@count)
+;                       number of non-missing values in 'A' (@npts)
+;---
+; 'A' need not be in ascending order. The function will sort.
+; Care should be used when A is type float or double.
+; A value of 12.34567 is not the same as 12.34568 
+; A suggestion is to preprocess the data. Say that 
+; 2 decimal places is 'close enough'. 
+;         scale = 100.0
+;         A = toint(A*scale)/scale 
+;       or
+;         A = round(A*scale, 0)/scale
+;---
+; Examples: 
+;
+; a0     = (/ -1, 7, 7, 2, 2, 2, -1, 7, -3, -3 /)
+; mode0  = (/2,7/), mode0@nmode=2, mode0@count=3, mode0@npts=10
+;
+; a1     = (/123, -1, 7, 7, 2, 2, 2, -1, 7, -3, -3, -456 /)
+; mode1  = (/2,7/), mode1@nmode=2, mode1@count=3, mode1@npts=12
+;
+; a2     = (/  1, 1, 1, 1, 1, 0,  2, 2,  2,  2 /)
+; mode2  = 1      , mode2@nmode=1, mode1@count=5, mode1@npts=10
+;
+; a3     = (/  0, 0,-1,-1, 9, 9,  3, 3,  7,  7 /)
+; mode3  = (/-1, 0, 3, 7, 9/), mode3@nmode=5, mode3@count=2, mode3@npts=10
+;
+; a4     = ispan(1,10,1)
+; mode4  = (/1,2,3,4,5,6,7,8,9,10/), mode4@nmode=10, mode4@count=1, mode4@npts=10
+;
+; a5     = (/1,2,3,4, 5,5, 7,8,9,10/)
+; mode5  = 5, mode5@nmode=1, mode5@count=2, mode5@npts=10
+;
+local i, ni, a, na, freq, FREQ, n, nm, ii, nseq \
+    , node, nmode, mode_count, val, ifmx
+begin
+
+  if (all(ismissing(A))) then
+      mode       = -999
+      mode@npts  = 0
+      mode@nmode = -999
+      mode@freq  = -999
+      mode@_FillValue = -999
+      return (mode)
+  end if
+
+  i    = ind(.not.ismissing(A))
+  ni   = dimsizes(i)
+  if (ni.eq.1) then
+      mode       = A(i(0)) 
+      mode@npts  = 1
+      mode@nmode = 1
+      mode@count = 1
+      return (mode)
+  end if
+
+  a    = A(i)           ; local
+  na   = ni             ; # of sorted non-missing value
+  qsort( a )
+
+
+  freq = new (na, "integer","No_FillValue")
+  nm   = new (na, "integer","No_FillValue")
+  val  = new (na, typeof(a),"No_FillValue")
+  
+  freq = 1      ; initialize (array syntax)
+  nm   = 0      ; number of unique numbers
+  ii   = 0      ; index
+  
+
+  do n=1,na-1
+     if (a(n-1).eq.a(n)) then
+         freq(ii) = freq(ii) + 1
+         val(ii)  = a(n)
+     else
+         nm(ii) =  n-1
+         ii     = ii+1
+     end if
+  end do
+
+  nm(ii)     = n -1
+  nseq       = ii+1
+
+  FREQ       = freq(:ii)          ; convenience
+  mode_cnt   = max(FREQ)
+  ifmx       = ind(FREQ.eq.mode_cnt)       
+  if (all(FREQ.eq.1)) then
+      mode   = a
+  else
+     mode    = val(ifmx)          ; mode values
+  end if
+  mode@npts  = na                 ; number of pts used
+  mode@nmode = dimsizes(mode)     ; num(FREQ.eq.mode_cnt)
+  mode@count = mode_cnt
+  
+  return(mode)
+end
+;============================================
+undef ("reg_multlin_stats")
+function reg_multlin_stats(Y[*]:numeric, XP:numeric, opt)
+;
+; Nomenclature:
+; Y     - dependent variable (size NY)
+;         missing values (_FillValue) are not allowed.
+; XP    - one [*] or more [*][*] independent variables.
+;         Missing values (_FillValue) are not allowed.
+;         The size of the leftmost dimension of XP must be the
+;         same size as Y[*]. The rightmost dimension for [*][*]
+;         contains the independent variables.
+; opt   - options [type logical: ie, True or False]
+;         opt = False              .... no options               
+;         opt = True
+;         opr@print_data = True    .... print input Y and XP in table form
+;         opr@print_anova= True    .... print ANOVA information
+;
+; See: 
+; Wilks, D.S. (2006): Statistical Methods in the Atmospheric Sciences
+;                     Academic Press (2nd Edition)
+; Davis, J.C. (2002): Statistics and Data Analysis in Geology
+;                     Wiley (3rd Edition)   ; pgs 462-470 
+;
+; Very readable discussions:
+; http://www.ltrr.arizona.edu/~dmeko/notes_11.pdf
+; http://reliawiki.org/index.php/Multiple_Linear_Regression_Analysis
+; http://homepages.rpi.edu/~tealj2/stat03.pdf
+; ---
+;
+local dimXP, N, NP, NY, M, T, Y, X, b, B, rankXP         \ ; local is
+    , Yavg, Yvar, Ystd, Xavg, Xvar, Xstd, Yest, n, m     \ ; not necessary
+    , Yres, SST, SSE, SSR, MST, MSE, MSR, SE, Frat       \
+    , r2, ra, r, fuv, XXt, XXTi, varcovx, df, stderr, tval, pval \
+    , opt_wm, fmt_XXt, fmt_XXti, fmt_covx, opt_pd, fmt_data
+begin
+
+       dimXP   = dimsizes(XP)
+       NX      = dimXP(0)              ; number of rows ('observations')    
+       N       = dimsizes(Y)
+
+       rankXP  = dimsizes(dimXP)
+
+; error checks on input
+
+       if (N.NE.NX) then              
+           print("reg_multlin_stats: number of rows of Y and XP  must match")
+           print("                   NY="+N +"  NXP="+NX           )
+           exit
+       end if
+
+       if (rankXP.gt.2) then
+           print("reg_multlin_stats: rank of XP > 2: rankXP="+rankXP)
+           exit
+       end if
+
+       if (isatt(Y,"_FillValue")  .and. any(ismissing(Y))) then
+           print("reg_multlin_stats: Y has missing values. Not allowed!")
+           exit
+       end if
+
+       if (isatt(XP,"_FillValue") .and. any(ismissing(XP))) then
+           print("reg_multlin_stats: XP has missing values. Not allowed!")
+           exit
+       end if
+           
+; input OK: onward
+
+       if (rankXP.eq.2) then
+           NP  = dimXP(1)              ; number predictor variables   
+       else
+           NP  = 1                     ; one predictor
+       end if
+
+       if (opt .and. isatt(opt,"print_data") .and. opt@print_data) then
+           print(" ")
+           opt_pd = True
+           opt_pd@title  = "----- reg_multlin_stats: Y, XP -----"
+           data       = new( (/N,NP+1/), typeof(Y))
+           data(:,0)  = (/ Y /)
+
+           if (NP.eq.1) then
+               data(:,1)  = (/ XP /)
+           else
+               data(:,1:) = (/ XP /)
+           end if
+
+           fmt_data   = "f11.2"
+           if (isatt(opt,"fmt_data")) then
+               fmt_data  = opt@fmt_data        ; eg: "f8.3", "e13.5",....
+           end if
+           write_matrix (data, (NP+1)+fmt_data , opt_pd)
+           print(" ")
+           delete(data)        ; not needed
+       end if
+       
+; Create the necessary arrays. X is a "design matrix"  
+;       http://en.wikipedia.org/wiki/Design_matrix
+;
+; Most multiple regression models include a constant term.
+;   This ensures that the model will be "unbiased"
+;   --i.e., the mean of the residuals will be exactly zero.
+
+       M       = NP+1                     ; extra column for design matrix
+                                          ; required ordering for reg_multlin 
+       X       = new ( (/M,N/) , typeof(XP), getFillValue(XP))
+       X(0,:)  = 1.0
+
+       if (NP.eq.1) then
+           X(1,:)  = XP                   ; one predictor
+       else
+           do m=0,NP-1  
+              X(m+1,:)  = XP(:,m)         ; m refers to predictor variables
+           end do
+       end if
+
+; Calculate the partial regression coefficients: b->beta_hat
+;      b = (X'X)^-1 X'y  (theoretically)
+; http://www.ncl.ucar.edu/Document/Functions/Built-in/reg_multlin.shtml
+                                         
+       b       = reg_multlin(Y,X,False)   ; partial regression coef 
+                                          ; unstandardized...depend on units
+       delete(b@constant)                 ; extraneous attribute
+
+; Assorted calculations
+
+       Yavg    = avg(Y)
+       Yvar    = variance(Y)         ; Unbiased estimate the variance 
+       Ystd    = sqrt(Yvar)
+
+       Xavg    = new(NP, typeof(b), "No_FillValue")  
+       Xvar    = new(NP, typeof(b), "No_FillValue")
+       Xstd    = new(NP, typeof(b), "No_FillValue")
+
+       bstd    = new(M,  typeof(b), "No_FillValue") ; standardized regression coef
+                                     ; describe what the partial regression coef. 
+                                     ; would equal if all variables had the same 
+                                     ; standard deviation.
+       do n=0,NP-1                 
+          Xavg(n)   = avg(X(n+1,:))
+          Xvar(n)   = variance(X(n+1,:))
+          Xstd(n)   = sqrt(Xvar(n))
+          bstd(n+1) = b(n+1)*Xstd(n)/Ystd       ; don't do b(0)
+       end do
+
+; Calculate model estimates: Yest = b(0) + b(1)*   + b(2)* + .....
+
+       Yest = new(N,typeof(Y),getFillValue(Y))
+       do n=0,N-1
+          Yest(n) = b(0) + sum(b(1:)*X(1:,n))   ; array syntax 
+       end do
+
+; ANOVA table info. (Eg, Wilks pg 185 & pg 197)
+;       Sums of squares , degrees of freedom, mean squares, F statistic
+;       Other statistics are also calculated.
+;
+; http://reliawiki.org/index.php/ANOVA_Calculations_in_Multiple_Linear_Regression
+;        Mean squares are obtained by dividing the sum of squares 
+;        with their associated degrees of freedom. 
+
+       dof  = N-NP-1 
+
+       Yres = Yest-Y               ; residuals (array operation)
+
+                                   ; SS ==> Sum of Squares 
+       SST  = sum((Y-Yavg)^2)      ; total SS      [dof=N-1]
+       SSR  = sum((Yest-Yavg)^2)   ; regression SS [dof=NP] ; (aka: model explained SS=>SSM)
+       SSE  = sum(Yres^2)          ; residual SS   [dof=N-NP-1]
+ 
+       MST  = SST/(N-1)            ; Mean SST      [dof=N-1]
+       MSR  = SSR/NP               ; Mean SSR      [dof=NP]
+       MSE  = SSE/dof              ; Mean SSE      [dof=(N-NP-1)] 
+
+       RSE  = sqrt(MSE)            ; residual standard error
+                                   
+       Frat = MSR/MSE              ; R dof=(M,N-NP-1) 
+                                   ; F-Test is an overall (global) test of the model’s fit.
+                                   ; If at least one variable has a significant coefficient,
+                                   ; then the model fit should be significant.
+                                   ; The F-statistic might be interpreted as the variation 
+                                   ; explained by the regression relative to the variation
+                                   ; not explained by the regression.
+                                   
+       r2   = SSR/SST              ; r2 = coefficient of determination. It is
+                                   ;      the square of the Pearson correlation 
+                                   ;      coefficient between the observed 
+                                   ;      and modeled (predicted) data values
+                                   ;      of the dependent variable. It is
+                                   ;      another measure of 'goodness of fit.'
+                                   ; biased high, particularly for small N
+
+       r2a  = r2-(1-r2)*NP/tofloat(dof)   ; adjusted r2... better for small N
+       r    = sqrt(r2)             ; multiple (overall) correlation
+       fuv  = 1.0-r2               ; fraction of variance *unexplained* 
+
+; Determine (a) standard error of coefficients; (b) t-values; (c)  p-values
+
+       XXt     = X#transpose(X)    ; (M,M); opposite of text books 
+       XXti    = inverse_matrix(XXt)
+       varcovx = MSE*XXti          ; variance-covariance matrix
+                                   ; of estimated regression coefficients
+
+       if (opt .and. isatt(opt,"debug") .and. opt@debug) then ; used for debugging only
+           print(" ")
+           print("-----  DEBUG ---------")
+           print(" ")
+           opt_wm = True
+           opt_wm@title  = "-----   XXt  ---------"
+           fmt_XXt = "f11.2"                     
+           if (isatt(opt,"fmt_XXt")) then
+               fmt_XXt  = opt@fmt_XXt            ; "f8.2", "f12.4", "e13.5", ...
+           end if
+           write_matrix (XXt, M+fmt_XXt , opt_wm)
+
+           opt_wm@title  = "-----   XXti ---------"
+           fmt_XXti = "f11.2"
+           if (isatt(opt,"fmt_XXti")) then
+               fmt_XXti = opt@fmt_XXti
+           end if
+           write_matrix (XXti, M+fmt_XXti , opt_wm)
+
+           opt_wm@title  = "----- varcovx --------"
+           fmt_covx = "f11.2"
+           if (isatt(opt,"fmt_covx")) then
+               fmt_covx = opt@fmt_covx
+           end if
+           write_matrix (varcovx, M+fmt_covx , opt_wm)
+
+           print(" ")
+       end if
+           
+       stderr = new( M, typeof(Y))
+       tval   = new( M, typeof(Y))
+       pval   = new( M, typeof(Y))
+
+       df  = N-NP
+       
+       do m=0,M-1
+          stderr(m) = sqrt(varcovx(m,m))  
+          tval(m)   = b(m)/stderr(m)
+          pval(m)   = betainc( df/(df+tval(m)^2), df/2.0, 0.5)
+       end do
+
+       if (opt .and. isatt(opt,"print_anova") .and. opt@print_anova) then
+           print(" ")
+           print("------- ANOVA information-------- ")
+           print(" ")
+           print("SST="+SST+"  SSR="+SSR+"  SSE="+SSE)
+           print("MST="+MST+"  MSR="+MSR+"  MSE="+MSE+" RSE="+RSE)
+           print("F-statistic="+Frat +" dof=("+NP+","+(N-NP-1)+")")
+           print("          -------                 ")
+         ;;print("r2="+r2+"  r="+r+"  ra="+ra+"  fuv="+fuv)  
+         ;;print("          -------                 ")
+         ;;print("stderr, tval, pval: "+stderr+"    "+tval+"    "+pval)
+           print(" ")
+       end if
+
+; associate assorted information as attributes of 'b'
+
+       b@long_name = "multiple regression coefficients"
+       b@model     = "Yest = b(0) + b(1)*X1 + b(2)*X2 + ...+b(M)*XM"
+
+       b@N     = N              ; # of 'observations'
+       b@NP    = NP             ; # of predictors
+       b@M     = M              ; design matrix size
+       b@bstd  = bstd           ; standardized coefficients
+
+       b@SST   = SST            ; [1]
+       b@SSE   = SSE
+       b@SSR   = SSR
+
+       b@MST   = MST
+       b@MSE   = MSE
+       b@MSE_dof = dof 
+       b@MSR   = MSR
+
+       b@RSE   = RSE            ; [1]
+       b@RSE_dof= N-M-1         ; [1]
+       
+       b@F     = Frat           ; [1]
+       b@F_dof = (/NP,dof/)     ; [2]
+
+       df1      = b@F_dof(0)
+       df2      = b@F_dof(1)
+       b@F_pval = ftest(MSR, df1+1, MSE, df2+1, 0)*0.5   ; [1]
+
+       b@r2     = r2            ; [1]
+       b@r      = r             ; [1]
+       b@r2a    = r2a           ; [1]
+
+       b@fuv    = fuv
+
+       b@Yest   = Yest          ; [NY]
+       b@Yavg   = Yavg          ; [1]
+       b@Ystd   = Ystd          ; [1]
+
+       b@Xavg   = Xavg          ; [1]
+       b@Xstd   = Xstd          ; [1]
+
+       b@stderr = stderr        ; [M]
+       b@tval   = tval          ; [M]
+       b@pval   = pval          ; [M]
+
+       return(b)
+end
+;============================================
+undef("regline_stats")
+function regline_stats(x[*]:numeric, y[*]:numeric)
+;
+; rc = regline_stats(x, y)
+;
+; Nomenclature:
+; x     - independent variable.
+; y     - dependent variable (same size as <em>x</em>)
+;
+; Missing values (_FillValue) are allowed. They are ignored.
+;
+; See: 
+; Wilks, D.S. (2006): Statistical Methods in the Atmospheric Sciences
+;                     Academic Press (2nd Edition)  ; pgs 180-204
+; Davis, J.C. (2002): Statistics and Data Analysis in Geology
+;                     Wiley (3rd Edition)   ; pgs 215-218 
+
+local nx, ny, ii, RC, rc
+begin
+
+; Get the lengths of the x and y arrays.
+   nx  = dimsizes(x)
+   ny  = dimsizes(y)
+
+; Check if those lengths match.
+   if (nx.ne.ny)then
+       print("regline_stats: x and y must be the same length!")
+       print("               nx="+nx+"   ny="+ny)               
+       exit
+   end if
+
+   if (any(ismissing(x)) .or. any(ismissing(y))) then
+       ii = ind(.not.ismissing(x) .and. .not.ismissing(y))
+       RC  = reg_multlin_stats(y(ii),x(ii),False)
+   else
+       RC  = reg_multlin_stats(y,x,False)
+   end if
+   rc = RC(1)           ; transfers all attributes
+
+   rc@long_name = "simple linear regression"
+   rc@model     = "Yest = b(0) + b(1)*X" 
+
+   rc@nptxy = rc@N      ; attributes for backward compatibility
+   rc@xave  = rc@Xavg   ; with the original 'regline'
+   rc@yave  = rc@Yavg
+   rc@rstd  = rc@RSE
+   rc@yintercept = RC(0)
+   rc@b     = RC
+
+   return(rc)
+end
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; print_clock.ncl
+;; Carl Schreck (carl@cicsnc.org)
+;; July 2011
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Description: Print timestamp along with a string
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+undef(   "print_clock" )
+procedure print_clock( \\
+  i_message \\ ; message to accompany timestamp
+)
+local None
+begin
+  
+  maxCols = 44
+
+  wallClock = systemfunc( "date +'  |  %F %T %Z'" )
+
+  if( isstring( i_message ) ) then
+    chMessage = stringtochar(i_message)
+
+    if( dimsizes(chMessage).gt.maxCols ) then
+      firstLine  = chartostring(chMessage(:maxCols-1))
+      restOfMsg  = chartostring(chMessage(maxCols-1:))
+      print( firstLine + wallClock )
+      print( (/ restOfMsg /) )
+    else
+      blank     = stringtochar(" ")
+      chPadding = new( maxCols +1 - dimsizes(chMessage), character )
+      chPadding = blank(0)
+      stPadding = chartostring(chPadding)
+      firstLine = str_concat( (/ i_message, stPadding /) )
+      print( firstLine + wallClock )
+    end if
+
+  else
+    ;; Message is not a string
+    print( i_message + wallClock )
+  end if
+
 end

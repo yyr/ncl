@@ -1039,21 +1039,21 @@ static NhlColor	ncl_default[] = {
 
 
 /*
- * List of all pre-defined colormaps.  Eventually, I would like to add
- * a dynamic list, so the user can add thier own cmap's.
+ * As of 10/21/2013, these colormaps have *.rgb versions for
+ * consistency.  Leave them alone here (don't rename them).
  */
 static _NhlPalCmap cmaps[] = {
-	{"default",	def,		NhlNumber(def)},
-	{"cyclic",	cyclic,		NhlNumber(cyclic)},
-	{"gscyclic",	gscyclic,	NhlNumber(gscyclic)},
-	{"gsltod",	gsld,		NhlNumber(gsld)},
-	{"gsdtol",	gsdl,		NhlNumber(gsdl)},
-	{"uniform",	uniform,	NhlNumber(uniform)},
-	{"temp1",	temp1,		NhlNumber(temp1)},
-	{"psgcap",	psgcap,		NhlNumber(psgcap)},
-	{"example",	example,	NhlNumber(example)},
-	{"ncl_default",	ncl_default,	NhlNumber(ncl_default)},
-	{NULL,		NULL,		0}
+        {"default",     def,         NhlNumber(def)},
+        {"cyclic",      cyclic,      NhlNumber(cyclic)},
+        {"gscyclic",    gscyclic,    NhlNumber(gscyclic)},
+        {"gsltod",      gsld,        NhlNumber(gsld)},
+        {"gsdtol",      gsdl,        NhlNumber(gsdl)},
+        {"uniform",     uniform,     NhlNumber(uniform)},
+        {"temp1",       temp1,       NhlNumber(temp1)},
+        {"psgcap",      psgcap,      NhlNumber(psgcap)},
+        {"example",     example,     NhlNumber(example)},
+        {"ncl_default", ncl_default, NhlNumber(ncl_default)},
+        {NULL,          NULL,           0}
 };
 
 static NhlErrorTypes PaletteClassInitialize(

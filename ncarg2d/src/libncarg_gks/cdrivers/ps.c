@@ -2781,7 +2781,7 @@ int ps_FillArea(gksc)
         /*
          *  Set up the line attributes to be used.
          */
-        if ((psa->attributes.fill_int_style != SOLID_FILL) ||
+        if ((psa->attributes.fill_int_style != SOLID_FILL && psa->attributes.fill_int_style != SOLID_TEXT_FILL) ||
                         (npoints >= PathSize)) {
                 fprintf(psa->file_pointer, "I\n");
                 fprintf(psa->file_pointer, "H\n");
@@ -2800,6 +2800,7 @@ int ps_FillArea(gksc)
             fprintf(psa->file_pointer, "K\n");
             break;
         case SOLID_FILL:
+        case SOLID_TEXT_FILL:
             if (npoints < StackSize) {           /* Short form PS fill */
               PSprint_points((PSddp *) gksc->ddp, pptr, npoints, POLY_FILL);
             }
@@ -2860,7 +2861,7 @@ int ps_FillArea(gksc)
         /*
          *  Restore line attributes.
          */
-        if ((psa->attributes.fill_int_style != SOLID_FILL) ||
+        if ((psa->attributes.fill_int_style != SOLID_FILL && psa->attributes.fill_int_style != SOLID_TEXT_FILL) ||
                         (npoints >= PathSize)) {
                 fprintf(psa->file_pointer, "W ");
                 fprintf(psa->file_pointer, "D\n");
@@ -2926,18 +2927,29 @@ int ps_Cellarray(gksc)
                                 (void) fprintf(psa->file_pointer,"\n");
                         }
                         color_index = xptr[index];
+                        float tred, tgreen, tblue;
+                        index2rgb(psa->color_map, color_index, &tred, &tgreen, &tblue);
                         if (psa->color == COLOR) {
+                            /* RLB 
                            (void) fprintf(psa->file_pointer, "%02X", 
                               (int)(255. * (psa->color_map[3*color_index  ])));
                            (void) fprintf(psa->file_pointer, "%02X", 
                               (int)(255. * (psa->color_map[3*color_index+1])));
                            (void) fprintf(psa->file_pointer, "%02X", 
                               (int)(255. * (psa->color_map[3*color_index+2])));
+                            *****/
+                            fprintf(psa->file_pointer, "%02X%02X%02X",
+                                    (int)(255. * tred),
+                                    (int)(255. * tgreen), 
+                                    (int)(255. * tblue));
                         }
                         else {
+                            /* RLB*
                            ftmp  = 0.30 * (psa->color_map[3*color_index  ]) +
                                    0.59 * (psa->color_map[3*color_index+1]) +
                                    0.11 * (psa->color_map[3*color_index+2]);
+                             ****/
+                            ftmp = 0.30*tred + 0.59*tgreen + 0.11*tblue;
                            intensity = (int) (255. * ftmp);
                            (void) fprintf(psa->file_pointer, "%02X", intensity);
                         }
@@ -3179,7 +3191,7 @@ int ps_SetColorRepresentation(gksc)
 
         unsigned        index   = (unsigned) xptr[0];
 
-        if (index & ALPHA_MASK)  /* argb color? */
+        if (index & ARGB_MASK)  /* argb color? */
             return 1;
 
         float           r =  rgbptr[0].r;
@@ -8811,7 +8823,7 @@ int ps_SetWindow(gksc)
 }
 
 void writePSColor(FILE *fp, int colorIndex) {
-    if (colorIndex & ALPHA_MASK) {
+    if (colorIndex & ARGB_MASK) {
         float r = ((RED_MASK   & colorIndex) >> 16) / 255.;
         float g = ((GREEN_MASK & colorIndex) >> 8) / 255.;
         float b = ((BLUE_MASK  & colorIndex)) / 255.;

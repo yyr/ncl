@@ -772,6 +772,31 @@ begin
 end
 
 ;***********************************************************************;
+; This function returns the RGBA triplets associated with a 
+; given list of named colors.  The "A" value is always returned 
+; as the value of 1.0. This function basically calls namedcolor2rgb and
+; adds the "A" value.
+; 
+; A n x 4 array is returned, where "n" is the number of 
+; named colors input.
+;
+; If a color is not found, missing values are returned for 
+; that color.
+;***********************************************************************;
+undef("namedcolor2rgba")
+function namedcolor2rgba(names[*]:string)
+local rgb_array, rgba_array
+begin
+  rgb_array  = namedcolor2rgb(names)
+  ncolors    = dimsizes(rgb_array(:,0))
+  rgba_array = new((/ncolors,4/),typeof(rgb_array))
+  rgba_array(:,0:2) = rgb_array
+  rgba_array(:,3) = where(.not.ismissing(rgb_array(:,2)),1.0,\
+                           rgba_array@_FillValue)
+  return(rgba_array)
+end
+
+;***********************************************************************;
 ; Given two named colors and the number of colors, this
 ; function creates a series of RGB triplets that spans
 ; between the two colors.
@@ -1859,7 +1884,7 @@ begin
       end getvalues
       if( (lbar_mode.eq.1) .or.\
           (vc_glyphstyle.eq.0.and..not.vc_monolinearrowcolor) .or.\
-          (vc_glyphstyle.eq.1.and..not.vc_monofillarrowcolor) .or. \
+          (vc_glyphstyle.eq.1.and..not.vc_monofillarrowfillcolor) .or. \
           (vc_glyphstyle.eq.2.and..not.vc_monowindbarbcolor)  .or. \
           (vc_glyphstyle.eq.3.and..not.vc_monolinearrowcolor)) then
         found = True
@@ -2717,7 +2742,13 @@ begin
   def_orient =  "auto" ; Best possible orientation will be used, by default.
 
 ; Get workstation parent of plot, and retrieve paper size and width.
-  tmp_wks = NhlGetParentWorkstation(plot(0))
+  ii = ind(.not.ismissing(plot))
+  if(all(ismissing(ii))) then
+    print("compute_device_coords: Error: all input plots are missing")
+    status_exit(1)
+  end if
+
+  tmp_wks = NhlGetParentWorkstation(plot(ii(0)))
   getvalues tmp_wks
     "wkPaperWidthF"  : wks_pw
     "wkPaperHeightF" : wks_ph
@@ -3501,13 +3532,28 @@ begin
 end
 
 ;***********************************************************************;
+; Function to determine if a cairo SVG is being requested.              ;
+;***********************************************************************;
+undef("is_cairo_svg")
+function is_cairo_svg(wtype)
+local lwtype
+begin
+  lwtype = lower_case(wtype)
+  if (lwtype.eq."svg") then
+    return(True)
+  else
+    return(False)
+  end if
+end
+
+;***********************************************************************;
 ; Function to determine if a cairo workstation is being requested.      ;
 ;***********************************************************************;
 undef("is_cairo_wks")
 function is_cairo_wks(wtype)
 begin
   if (is_cairo_ps(wtype).or.is_cairo_pdf(wtype).or.is_cairo_png(wtype).or. \
-       is_cairo_eps(wtype)) then
+       is_cairo_eps(wtype).or.is_cairo_svg(wtype)) then
     return(True)
   else
     return(False)
@@ -3736,9 +3782,9 @@ begin
     end if
 
 ;
-; We need to distinguish between PS/PDF versus image-based output formats
+; We need to distinguish between document-based versus image-based output formats
 ;
-    if (is_cairo_ps(type).or.is_cairo_pdf(type).or.is_cairo_eps(type)) then
+    if (is_cairo_ps(type).or.is_cairo_pdf(type).or.is_cairo_eps(type).or.is_cairo_svg(type)) then
         cairo = create_graphic(res_file, "documentWorkstationClass", "defaultapp", wkres)
     else
 	cairo = create_graphic(res_file, "imageWorkstationClass", "defaultapp", wkres)
@@ -3831,6 +3877,14 @@ begin
       if(isatt(name,"appUsrDir").and.not_found)
         res_dir = name@appUsrDir   ; No directory specified.
       end if
+    end if
+
+    ; This 5-line block addresses Jira 1750; we test to make sure the target directory
+    ; exists and is writable.
+    cmdStr = "if [ -w " + res_dir + " ] ; then echo 1 ; else echo 0 ; fi"
+    if (type.ne."x11" .and. systemfunc(cmdStr).ne.1) then
+        print("gsn_open_wks: Error: directory '" + res_dir + "' does not exist or lacks write permissions.");
+        status_exit(1)
     end if
 
     appid = create res_file appClass defaultapp
@@ -4588,32 +4642,39 @@ begin
 end
 
 ;***********************************************************************;
-; Function : gsn_add_shapefile_polylines                                ;
+; Procedure : gsn_shapefile_polylines                                   ;
 ;                   wks: workstation object                             ;
 ;                plotid: plot object                                    ;
 ;                 fname: Name of shapefile ("xxxx.shp")                 ;
 ;               resources: optional resources                           ;
 ;                                                                       ;
-; This function attaches shapefile polylines to the plot "plotid".      ;
+; ANY CHANGES MADE TO THIS CODE SHOULD POTENTIALLY BE MADE TO           ;
+; gsn_add_shapefile_polylines BELOW!! Note that in V6.2.0, the "add"    ;
+; version of this code was sped up significantly, so this procedure is  ;
+; not needed so much anymore.                                           ;
+;
+; This function draws shapefile polylines on the plot "plotid".         ;
+; See gsn_add_shapefile_polylines if you want to add them instead (this ;
+; can be much slower).                                                  ;
 ;                                                                       ;
 ; In version 6.1.0, some code was added to add checks if the lat/lon    ;
 ; segments are within the range of the map. This works best for a C.E.  ;
 ; map. You have to set the special min/max/lat/lon attributes for this  ;
 ; to work.  I won't advertise this yet, because the interface could     ;
-; probably be made better.                                              ;
+; probably be made better. See note about V6.2.0 above.                 ;
 ;***********************************************************************;
-undef("gsn_add_shapefile_polylines")
-function gsn_add_shapefile_polylines(wks,plot,fname:string,lnres)
+undef("gsn_shapefile_polylines")
+procedure gsn_shapefile_polylines(wks,plot,fname:string,lnres)
 local f, segments, geometry, segsDims, geomDims, geom_segIndex, \
 geom_numSegs, segs_xyzIndex, segs_numPnts, numFeatures, i, lat, lon, \
-startSegment, numSegments, seg, startPT, endPT, npoly, npl
+startSegment, numSegments, seg, startPT, endPT
 begin
 ;---Open the shapefile
   f = addfile(fname,"r")
 
 ;---Error checking
   if(ismissing(f)) then
-    print("Error: gsn_add_shapefile_polylines: Can't open shapefile '" + \
+    print("Error: gsn_shapefile_polylines: Can't open shapefile '" + \
            fname + "'")
     print("       No shapefile information will be added.")
     return(new(1,graphic))
@@ -4621,32 +4682,33 @@ begin
 
 ;---We can't use this routine to plot point data
   if(.not.any(f@geometry_type.eq.(/"polygon","polyline"/))) then
-    print("Error: gsn_add_shapefile_polylines: geometry_type attribute must be 'polygon' or 'polyline'")
+    print("Error: gsn_shapefile_polylines: geometry_type attribute must be 'polygon' or 'polyline'")
     print("       No shapefile information will be added.")
     return(new(1,graphic))
   end if
 
 ;---Read data off the shapefile
+  geomDims    = getfilevardimsizes(f,"geometry")
+  numFeatures = geomDims(0)
+  if(numFeatures.eq.0) then
+    print("Error: gsn_shapefile_polylines: the number of features in this file is 0.")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
   segments = f->segments
   geometry = f->geometry
   segsDims = dimsizes(segments)
-  geomDims = dimsizes(geometry)
 
 ;---Read global attributes  
   geom_segIndex = f@geom_segIndex
   geom_numSegs  = f@geom_numSegs
   segs_xyzIndex = f@segs_xyzIndex
   segs_numPnts  = f@segs_numPnts
-  numFeatures   = geomDims(0)
-
-;---Create array to hold all polylines
-  npoly = sum(geometry(:,geom_numSegs)) 
-  poly  = new(npoly,graphic)
 
 ;---Section to attach polylines to plot.
   lon = f->x
   lat = f->y
-  npl = 0     ; polyline counter
 ;
 ; Special check for minlat/maxlat/minlon/maxlon attributes.
 ;
@@ -4668,8 +4730,7 @@ begin
                    all(lon_sub.gt.lnres@maxlon).or. \
                    all(lat_sub.lt.lnres@minlat).or. \
                    all(lat_sub.gt.lnres@maxlat))) then
-            poly(npl) = gsn_add_polyline(wks, plot, lon_sub, lat_sub, lnres)
-            npl = npl + 1
+            gsn_polyline(wks, plot, lon_sub, lat_sub, lnres)
           end if
           delete([/lat_sub,lon_sub/])
        end do
@@ -4681,13 +4742,141 @@ begin
        do seg=startSegment, startSegment+numSegments-1
           startPT = segments(seg, segs_xyzIndex)
           endPT   = startPT + segments(seg, segs_numPnts) - 1
-          poly(npl) = gsn_add_polyline(wks, plot, lon(startPT:endPT),  \
-                                       lat(startPT:endPT), lnres)
-          npl = npl + 1
+          gsn_polyline(wks, plot, lon(startPT:endPT),  \
+                                  lat(startPT:endPT), lnres)
        end do
     end do
   end if
-  return(poly(0:npl-1))
+end
+
+;***********************************************************************;
+; Function : gsn_add_shapefile_polylines                                ;
+;                   wks: workstation object                             ;
+;                plotid: plot object                                    ;
+;                 fname: Name of shapefile ("xxxx.shp")                 ;
+;               resources: optional resources                           ;
+;                                                                       ;
+; ANY CHANGES MADE TO THIS CODE SHOULD POTENTIALLY BE MADE TO           ;
+; gsn_shapefile_polylines ABOVE!!                                       ;
+;                                                                       ;
+; This function attaches shapefile polylines to the plot "plotid".      ;
+; See gsn_shapefile_polylines if you want to just draw them.            ; 
+;                                                                       ;
+; In version 6.2.0 this function was significantly sped-up via the use  ;
+; of a new resource called "gsSegments". Only one primitive object id   ;
+; is now created. In some cases, we saw speed-ups of 80x (for example,  ;
+; with the France_adm5 shapefile). Because of this speed-up, the code   ;
+; added in V6.1.0 for checking for special minlat/maxlat/minlon/maxlon  ;
+; is no longer needed. It is commented out for now. It may eventually   ;
+; be removed once we are certain it doesn't serve any benefit.          ;
+;                                                                       ;
+; In version 6.1.0, some code was added to add checks if the lat/lon    ;
+; segments are within the range of the map. This works best for a C.E.  ;
+; map. You have to set the special min/max/lat/lon attributes for this  ;
+; to work.  I won't advertise this yet, because the interface could     ;
+; probably be made better. THIS CODE HAS BEEN COMMENTED OUT in V6.2.0.  ;
+;***********************************************************************;
+undef("gsn_add_shapefile_polylines")
+function gsn_add_shapefile_polylines(wks,plot,fname:string,lnres)
+local f, geomDims, numFeatures, lnres2
+begin
+;---Open the shapefile
+  f = addfile(fname,"r")
+
+;---Error checking
+  if(ismissing(f)) then
+    print("Error: gsn_add_shapefile_polylines: Can't open shapefile '" + \
+           fname + "'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;---We can't use this routine to plot point data
+  if(.not.any(f@geometry_type.eq.(/"polygon","polyline"/))) then
+    print("Error: gsn_add_shapefile_polylines: geometry_type attribute must be 'polygon' or 'polyline'")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+  if(lnres) then
+    lnres2 = lnres      ; Make a copy so that we don't keep gsSegments
+  else
+    lnres2 = True
+  end if
+
+;---Read data off the shapefile
+  geomDims    = getfilevardimsizes(f,"geometry")
+  numFeatures = geomDims(0)
+  if(numFeatures.eq.0) then
+    print("Error: gsn_add_shapefile_polylines: the number of features in this file is 0.")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
+;;  segments = f->segments
+;;  geometry = f->geometry
+;;  segsDims = dimsizes(segments)
+;;
+;;;---Read global attributes  
+;;  geom_segIndex = f@geom_segIndex
+;;  geom_numSegs  = f@geom_numSegs
+;;  segs_xyzIndex = f@segs_xyzIndex
+;;  segs_numPnts  = f@segs_numPnts
+;;
+;;;---Create array to hold all polylines
+;;  npoly = sum(geometry(:,geom_numSegs)) 
+;;  poly  = new(npoly,graphic)
+;;
+;;;---Section to attach polylines to plot.
+;;  lon = f->x
+;;  lat = f->y
+;;  npl = 0     ; polyline counter
+;;;
+;;; Special check for minlat/maxlat/minlon/maxlon attributes.
+;;;
+;;; If set, then each lat/lon segment will be checked if it's
+;;; in the range.  This can speed up plotting, but I need to
+;;; verify this!
+;;; 
+;;  if(isatt(lnres,"minlon").and.isatt(lnres,"maxlon").and.\
+;;     isatt(lnres,"minlat").and.isatt(lnres,"maxlat")) then
+;;    do i=0, numFeatures-1  
+;;       startSegment = geometry(i, geom_segIndex)
+;;       numSegments  = geometry(i, geom_numSegs)
+;;       do seg=startSegment, startSegment+numSegments-1
+;;          startPT = segments(seg, segs_xyzIndex)
+;;          endPT   = startPT + segments(seg, segs_numPnts) - 1
+;;          lat_sub = lat(startPT:endPT)
+;;          lon_sub = lon(startPT:endPT) 
+;;          if(.not.(all(lon_sub.lt.lnres@minlon).or. \
+;;                   all(lon_sub.gt.lnres@maxlon).or. \
+;;                   all(lat_sub.lt.lnres@minlat).or. \
+;;                   all(lat_sub.gt.lnres@maxlat))) then
+;;            poly(npl) = gsn_add_polyline(wks, plot, lon_sub, lat_sub, lnres)
+;;            npl = npl + 1
+;;          end if
+;;          delete([/lat_sub,lon_sub/])
+;;       end do
+;;    end do
+;;  else       ; Don't do any range checking. 
+;;    do i=0, numFeatures-1  
+;;       startSegment = geometry(i, geom_segIndex)
+;;       numSegments  = geometry(i, geom_numSegs)
+;;       do seg=startSegment, startSegment+numSegments-1
+;;          startPT = segments(seg, segs_xyzIndex)
+;;          endPT   = startPT + segments(seg, segs_numPnts) - 1
+;;          poly(npl) = gsn_add_polyline(wks, plot, lon(startPT:endPT),  \
+;;                                       lat(startPT:endPT), lnres)
+;;          npl = npl + 1
+;;       end do
+;;    end do
+;;  end if
+;;  return(poly(0:npl-1))
+
+;---This is all that's needed in V6.2.0.
+  lnres2@gsSegments = f->segments(:,0)
+  poly = gsn_add_polyline(wks, plot, f->x, f->y, lnres2)
+  return(poly)
 end
 
 ;***********************************************************************;
@@ -4699,17 +4888,23 @@ end
 ;                                                                       ;
 ; This function attaches shapefile polygons to the plot "plotid".       ;
 ;                                                                       ;
+; In version 6.2.0 this function was significantly sped-up via the use  ;
+; of a new resource called "gsSegments". Only one primitive object id   ;
+; is now created. In some cases, we saw speed-ups of 80x (for example,  ;
+; with the France_adm5 shapefile). Because of this speed-up, the code   ;
+; added in V6.1.0 for checking for special minlat/maxlat/minlon/maxlon  ;
+; is no longer needed. It is commented out for now. It may eventually   ;
+; be removed once we are certain it doesn't serve any benefit.          ;
+;                                                                       ;
 ; In version 6.1.0, some code was added to add checks if the lat/lon    ;
 ; segments are within the range of the map. This works best for a C.E.  ;
 ; map. You have to set the special min/max/lat/lon attributes for this  ;
 ; to work.  I won't advertise this yet, because the interface could     ;
-; probably be made better.                                              ;
+; probably be made better. THIS CODE HAS BEEN COMMENTED OUT in V6.2.0.  ;
 ;***********************************************************************;
 undef("gsn_add_shapefile_polygons")
 function gsn_add_shapefile_polygons(wks,plot,fname:string,gnres)
-local f, segments, geometry, segsDims, geomDims, geom_segIndex, \
-geom_numSegs, segs_xyzIndex, segs_numPnts, numFeatures, i, lat, lon, \
-startSegment, numSegments, seg, startPT, endPT, npoly, npl
+local f, geomDims, numFeatures, gnres2
 begin
 ;---Open the shapefile
   f = addfile(fname,"r")
@@ -4729,87 +4924,98 @@ begin
     return(new(1,graphic))
   end if
 
+;---Read data off the shapefile
+  geomDims    = getfilevardimsizes(f,"geometry")
+  numFeatures = geomDims(0)
+  if(numFeatures.eq.0) then
+    print("Error: gsn_add_shapefile_polygon: the number of features in this file is 0.")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
 ;---Get the number of colors
-  if(.not.gnres.or..not.isatt(gnres,"gsFillColor")) then
-    set_fill_color = True
+  if(.not.gnres2.or.(.not.isatt(gnres2,"gsFillColor").and.\
+                     .not.isatt(gnres2,"gsColors"))) then
     getvalues wks
       "wkColorMapLen"  : cmap_len
     end getvalues
-  else
-    set_fill_color = False
+    gnres2          = True   ; Make sure this is True
+    gnres2@gsColors = toint(random_uniform(2,cmap_len-2,numFeatures))
   end if
 
-;---Read data off the shapefile
-  segments = f->segments
-  geometry = f->geometry
-  segsDims = dimsizes(segments)
-  geomDims = dimsizes(geometry)
+;;  segments = f->segments
+;;  geometry = f->geometry
+;;  segsDims = dimsizes(segments)
+;;
+;;;---Read global attributes  
+;;  geom_segIndex = f@geom_segIndex
+;;  geom_numSegs  = f@geom_numSegs
+;;  segs_xyzIndex = f@segs_xyzIndex
+;;  segs_numPnts  = f@segs_numPnts
+;;
+;;;---Create array to hold all polylines
+;;  npoly = sum(geometry(:,geom_numSegs)) 
+;;  poly  = new(npoly,graphic)
+;;
+;;;---Section to attach polygons to plot.
+;;  lon = f->x
+;;  lat = f->y
+;;  npl = 0     ; polyline counter
+;;;
+;;; Special check for minlat/maxlat/minlon/maxlon attributes.
+;;;
+;;; If set, then each lat/lon segment will be checked if it's
+;;; in the range.  This can speed up plotting, but I need to
+;;; verify this!
+;;; 
+;;  if(isatt(gnres,"minlon").and.isatt(gnres,"maxlon").and.\
+;;     isatt(gnres,"minlat").and.isatt(gnres,"maxlat")) then
+;;    do i=0, numFeatures-1  
+;;       startSegment = geometry(i, geom_segIndex)
+;;       numSegments  = geometry(i, geom_numSegs)
+;;       do seg=startSegment, startSegment+numSegments-1
+;;          startPT = segments(seg, segs_xyzIndex)
+;;          endPT   = startPT + segments(seg, segs_numPnts) - 1
+;;          lat_sub = lat(startPT:endPT)
+;;          lon_sub = lon(startPT:endPT) 
+;;          if(set_fill_color) then
+;;;---Pick a random color 
+;;            gnres@gsFillColor = toint(random_uniform(2,cmap_len-2,1))
+;;          end if
+;;          if(.not.(all(lon_sub.lt.gnres@minlon).or. \
+;;                   all(lon_sub.gt.gnres@maxlon).or. \
+;;                   all(lat_sub.lt.gnres@minlat).or. \
+;;                   all(lat_sub.gt.gnres@maxlat))) then
+;;;---Attach the line segment
+;;            poly(npl) = gsn_add_polygon(wks, plot, lon_sub, lat_sub, gnres)
+;;            npl = npl + 1
+;;          end if
+;;          delete([/lat_sub,lon_sub/])
+;;       end do
+;;    end do
+;;  else
+;;    do i=0, numFeatures-1  
+;;       startSegment = geometry(i, geom_segIndex)
+;;       numSegments  = geometry(i, geom_numSegs)
+;;       do seg=startSegment, startSegment+numSegments-1
+;;          startPT = segments(seg, segs_xyzIndex)
+;;          endPT   = startPT + segments(seg, segs_numPnts) - 1
+;;          if(set_fill_color) then
+;;;---Pick a random color 
+;;            gnres@gsFillColor = toint(random_uniform(2,cmap_len-2,1))
+;;          end if
+;;;---Attach the line segment
+;;          poly(npl) = gsn_add_polygon(wks, plot, lon(startPT:endPT),  \
+;;                                      lat(startPT:endPT), gnres)
+;;          npl = npl + 1
+;;       end do
+;;    end do
+;;  end if
+;;  return(poly)
 
-;---Read global attributes  
-  geom_segIndex = f@geom_segIndex
-  geom_numSegs  = f@geom_numSegs
-  segs_xyzIndex = f@segs_xyzIndex
-  segs_numPnts  = f@segs_numPnts
-  numFeatures   = geomDims(0)
-
-;---Create array to hold all polylines
-  npoly = sum(geometry(:,geom_numSegs)) 
-  poly  = new(npoly,graphic)
-
-;---Section to attach polygons to plot.
-  lon = f->x
-  lat = f->y
-  npl = 0     ; polyline counter
-;
-; Special check for minlat/maxlat/minlon/maxlon attributes.
-;
-; If set, then each lat/lon segment will be checked if it's
-; in the range.  This can speed up plotting, but I need to
-; verify this!
-; 
-  if(isatt(gnres,"minlon").and.isatt(gnres,"maxlon").and.\
-     isatt(gnres,"minlat").and.isatt(gnres,"maxlat")) then
-    do i=0, numFeatures-1  
-       startSegment = geometry(i, geom_segIndex)
-       numSegments  = geometry(i, geom_numSegs)
-       do seg=startSegment, startSegment+numSegments-1
-          startPT = segments(seg, segs_xyzIndex)
-          endPT   = startPT + segments(seg, segs_numPnts) - 1
-          lat_sub = lat(startPT:endPT)
-          lon_sub = lon(startPT:endPT) 
-          if(set_fill_color) then
-;---Pick a random color 
-            gnres@gsFillColor = toint(random_uniform(2,cmap_len-2,1))
-          end if
-          if(.not.(all(lon_sub.lt.gnres@minlon).or. \
-                   all(lon_sub.gt.gnres@maxlon).or. \
-                   all(lat_sub.lt.gnres@minlat).or. \
-                   all(lat_sub.gt.gnres@maxlat))) then
-;---Attach the line segment
-            poly(npl) = gsn_add_polygon(wks, plot, lon_sub, lat_sub, gnres)
-            npl = npl + 1
-          end if
-          delete([/lat_sub,lon_sub/])
-       end do
-    end do
-  else
-    do i=0, numFeatures-1  
-       startSegment = geometry(i, geom_segIndex)
-       numSegments  = geometry(i, geom_numSegs)
-       do seg=startSegment, startSegment+numSegments-1
-          startPT = segments(seg, segs_xyzIndex)
-          endPT   = startPT + segments(seg, segs_numPnts) - 1
-          if(set_fill_color) then
-;---Pick a random color 
-            gnres@gsFillColor = toint(random_uniform(2,cmap_len-2,1))
-          end if
-;---Attach the line segment
-          poly(npl) = gsn_add_polygon(wks, plot, lon(startPT:endPT),  \
-                                      lat(startPT:endPT), gnres)
-          npl = npl + 1
-       end do
-    end do
-  end if
+;---This is all that's needed in V6.2.0.
+  gnres2@gsSegments = f->segments(:,0)
+  poly = gsn_add_polygon(wks, plot, f->x, f->y, gnres2)
   return(poly)
 end
 
@@ -4853,17 +5059,23 @@ begin
   end if
 
 ;---Read data off the shapefile
+  geomDims    = getfilevardimsizes(f,"geometry")
+  numFeatures = geomDims(0)
+  if(numFeatures.eq.0) then
+    print("Error: gsn_add_shapefile_polymarkers: the number of features in this file is 0.")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
   segments = f->segments
   geometry = f->geometry
   segsDims = dimsizes(segments)
-  geomDims = dimsizes(geometry)
 
 ;---Read global attributes  
   geom_segIndex = f@geom_segIndex
   geom_numSegs  = f@geom_numSegs
   segs_xyzIndex = f@segs_xyzIndex
   segs_numPnts  = f@segs_numPnts
-  numFeatures   = geomDims(0)
 
 ;---Create array to hold all polymarkers
   npoly = sum(geometry(:,geom_numSegs)) 
@@ -4953,10 +5165,17 @@ begin
   end if
 
 ;---Read data off the shapefile
+  geomDims    = getfilevardimsizes(f,"geometry")
+  numFeatures = geomDims(0)
+  if(numFeatures.eq.0) then
+    print("Error: gsn_add_shapefile_text: the number of features in this file is 0.")
+    print("       No shapefile information will be added.")
+    return(new(1,graphic))
+  end if
+
   segments = f->segments
   geometry = f->geometry
   segsDims = dimsizes(segments)
-  geomDims = dimsizes(geometry)
 
 ;---Read global attributes  
   geom_segIndex = f@geom_segIndex
@@ -5973,6 +6192,24 @@ begin
     else
       ycoord_1d = ndtooned(data@lat2d)
     end if
+  end if
+
+;---Check if "data" contains "lat1d", "lon1d" attributes
+  if(type_xcoord.eq."".and.isatt(data,"lon1d")) then
+    if(draw_lines) then
+      print("gsn_coordinates: cannot draw an unstructured grid using lines")
+      return
+    end if
+    type_xcoord = "data_att"
+    xcoord_1d   = data@lon1d
+  end if
+  if(type_ycoord.eq."".and.isatt(data,"lat1d")) then
+    if(draw_lines) then
+      print("gsn_coordinates: cannot draw an unstructured grid using lines")
+      return
+    end if
+    type_ycoord = "data_att"
+    ycoord_1d   = data@lat1d
   end if
 
 ;---Error checking
@@ -8233,8 +8470,9 @@ end
 undef("hist_columns")
 function hist_columns(wks[1]:graphic,xy[1]:graphic,binvalues:numeric, \
                       barlocs[*][*]:numeric, barwidth[*]:numeric, \
-                      colors[*], compare:logical, gsres:logical)
-local i, nbins, dims, nbinvalues, gsres, xpoints, ypoints, multibars
+                      colors, compare:logical, gsres:logical)
+local i, nbins, dims, nbinvalues, gsres, xpoints, ypoints, multibars,\
+col_dims, col_rank
 begin
   dims       = dimsizes(barlocs)
   nbarsinbin = dims(0)
@@ -8329,10 +8567,15 @@ begin
 ;
 ;  fillindex = min((/max((/max(fillindex),0/)),17/))
 
-  ncolors = dimsizes(colors)
+  col_dims = dimsizes(colors)
+  col_rank = dimsizes(col_dims)
+  ncolors = col_dims(0)
   do i = 0, nbars - 1
-    gsres@gsFillColor = colors(i % ncolors)
-
+    if(col_rank.eq.1) then
+      gsres@gsFillColor = colors(i % ncolors)
+    else
+      gsres@gsFillColor = colors(i % ncolors,:)
+    end if
     if(multibars) 
 ;
 ; Add the remaining histogram bars first, so that they will be drawn
@@ -12041,11 +12284,14 @@ end
 ; using colors or patterns.                                             ;
 ;                                                                       ;
 ; This function was written by Adam Phillips, 2006                      ;
+;                                                                       ;
+; This function was updated July 2013 to allow any combination of       ;
+; gsnShadeLow, gsnShadeMid, and gsnShadeHigh to be set.                 ;
 ;***********************************************************************;
 undef("gsn_contour_shade")
-function gsn_contour_shade(plot:graphic,nval:numeric,pval:numeric,opt:logical) 
-
-local cnlvls, colist, i, N, shaden, shadep, shadem
+function gsn_contour_shade(plot:graphic,lowval:numeric,highval:numeric,\
+                           opt:logical) 
+local cnlvls, colist, i, N, shaden, shadep, shadem, ovrly_ids, idstring
 begin
 
    getvalues plot
@@ -12067,6 +12313,8 @@ begin
 	    print(cnlvls)
 	 end if
    end if
+
+;---Make sure we have contour levels
    N = dimsizes(cnlvls)
    if (ismissing(N) .or. N.le.0) then
        print ("gsn_contour_shade: dimsizes(cnlvls)="+N+" return (non-fatal)")
@@ -12077,119 +12325,87 @@ begin
       print("gsn_contour_shade: Options list must be used as one of the following option resources must be set: opt@gsnShadeLow, opt@gsnShadeHigh, opt@gsnShadeMid. return (non-fatal)")
    end if
 
-   CC = 0
+;---Error checking on the gsnShadeL/M/H resources
    if (opt.and.(isatt(opt,"gsnShadeLow"))) then
-      shaden = opt@gsnShadeLow
-	 if (typeof(shaden).eq."string") then
-	    CC = 1
-	 end if
+      shaden   = opt@gsnShadeLow
+      col_type = typeof(shaden)
    end if
    if (opt.and.(isatt(opt,"gsnShadeMid"))) then
       shadem = opt@gsnShadeMid
-	 if (typeof(shadem).eq."string") then
-	    CC = 1
-	 end if
+      if(isvar("col_type").and.typeof(shadem).ne.col_type) then
+        print("gsn_contour_shade: the gsnShadeLow/Mid/High resources must all be the same type (a color name or color index value)")
+       return (plot)
+      else
+        col_type = typeof(shadem)
+      end if
    end if
    if (opt.and.(isatt(opt,"gsnShadeHigh"))) then
       shadep = opt@gsnShadeHigh
-	 if (typeof(shadep).eq."string") then
-	    CC = 1
-	 end if
+      if(isvar("col_type").and.typeof(shadep).ne.col_type) then
+        print("gsn_contour_shade: the gsnShadeLow/Mid/High resources must all be the same type (a color name or color index value)")
+       return (plot)
+      else
+        col_type = typeof(shadep)
+      end if
    end if
 
+;---Make sure user actually set one of these resources
+   if (.not.any(isvar((/"shaden","shadep","shadem"/)))) then
+      print("gsn_contour_shade: one or more of the following option resources must be set: opt@gsnShadeLow, opt@gsnShadeHigh, opt@gsnShadeMid. return (non-fatal)")
+      return(plot)
+   end if
+
+;---Error checking on the gsnShadeFillType resource
    if (opt.and.(isatt(opt,"gsnShadeFillType"))) then
-       if (lower_case(opt@gsnShadeFillType).eq."pattern".and.CC.eq.1) 
-	     print("You may not use strings in the option resources opt@gsnShadeLow, opt@gsnShadeHigh, and opt@gsnShadeMid when pattern filling. Please change to integers. return (non-fatal)")
-		return(plot)
+       if (lower_case(opt@gsnShadeFillType).eq."pattern".and.\
+           col_type.eq."string") 
+	     print("gsn_contour_shade: You may not use strings in the option resources opt@gsnShadeLow, opt@gsnShadeHigh, and opt@gsnShadeMid when pattern filling. Please change to integers.")
+             return(plot)
 	  end if
    end if
 
-   if (isvar("shaden").eq.False.and.isvar("shadep").eq.False.and.isvar("shadem").eq.False) then 
-      print("gsn_contour_shade: one or more of the following option resources must be set: opt@gsnShadeLow, opt@gsnShadeHigh, opt@gsnShadeMid. return (non-fatal)")
-	 return(plot)
-   end if
-
-   if (CC.eq.1) then
-       colist  = new(dimsizes(cnlvls)+1,string)  ; Create array for fill 
+;---Create array for fill, , set all to transparent
+   colist = new(N+1,col_type)  
+   if(col_type.eq."string") then
+     colist = "transparent"
    else
-	  colist  = new(dimsizes(cnlvls)+1,integer)  ; Create array for fill 
-   end if
-   colist(:)  = -1    ; color and intitialize, set all to transparent
-
-   if (isvar("shaden").and.isvar("shadep").eq.False.and.isvar("shadem").eq.False) then   ; =~"ShadeLeContour"
-      if (any(cnlvls.le.nval)) then     
-         do i=0,N-1                                ; Fill contour levels 
-	       if (cnlvls(i).le.nval) then   
-               colist(i)   = shaden
-            end if
-         end do
-	    delete(shaden)
-	 end if   
+     colist = -1    
    end if
 
-   if (isvar("shadep").and.isvar("shaden").eq.False.and.isvar("shadem").eq.False) then   ; =~"ShadeGeContour"
-      if (any(cnlvls.ge.pval)) then     
-         do i=0,N-1                                ; Fill contour levels 
-            if (cnlvls(i).ge.pval ) then
-	          colist(i+1) = shadep
-	       end if
-         end do
-	    delete(shadep)
-	 end if
+;---Start filling colist
+   if (isvar("shaden").and.any(cnlvls.le.lowval)) then
+     ii := ind(cnlvls.le.lowval)
+     colist(ii) = shaden
    end if
 
-   if (isvar("shadem").and.isvar("shadep").eq.False.and.isvar("shaden").eq.False) then   ; =~"ShadeGeLeContour"
-      if (any(cnlvls.ge.pval) .or. any(cnlvls.le.nval)) then     
-	    crn = 0
-         do i=0,N-1                                ; Fill contour levels 
-            if (cnlvls(i).ge.nval.and.cnlvls(i).le.pval) then
-		     if (crn.eq.0) then
-	             colist(i+1) = shadem
-			   crn = 1
-			else 
-			   colist(i) = shadem
-			end if
-	       end if
-         end do
-	    delete(crn)
-	    delete(shadem)
-	 end if
+   if (isvar("shadep").and.any(cnlvls.ge.highval)) then     
+     ii := ind(cnlvls.ge.highval)+1
+     colist(ii) = shadep
    end if
 
-   if (isvar("shaden").and.isvar("shadep").and.isvar("shadem").eq.False) then   ; =~"ShadeLeGeContour"   
-      if (any(cnlvls.ge.pval) .or. any(cnlvls.le.nval)) then     
-         do i=0,N-1                                ; Fill contour levels 
-            if (cnlvls(i).ge.pval ) then
-	          colist(i+1) = shadep
-	       end if
-	       if (cnlvls(i).le.nval) then   
-               colist(i)   = shaden
-            end if
-         end do
-	    delete(shadep)
-	    delete(shaden)
-	 end if
+   if (isvar("shadem").and.any(cnlvls.ge.lowval.and.cnlvls.le.highval)) then
+     ii := ind(cnlvls.ge.lowval.and.cnlvls.le.highval)
+     colist(ii(1:)) = shadem    ; Don't include the first value in ii
    end if
 
    if (.not.(isatt(opt,"gsnShadeFillType")).or. \
         lower_case(opt@gsnShadeFillType).eq."color") then
 	 setvalues idstring               
 	    "cnFillOn"          : True
-         "cnMonoFillPattern" : True
-         "cnMonoFillColor"   : False
-         "cnFillColors"      : colist			   
+            "cnMonoFillPattern" : True
+            "cnMonoFillColor"   : False
+            "cnFillColors"      : colist			   
 	 end setvalues
    else
 	 setvalues idstring               
 	    "cnFillOn"          : True
-         "cnMonoFillColor"   : True
-         "cnMonoFillPattern" : False
-         "cnFillPatterns"    : colist	   
+            "cnMonoFillColor"   : True
+            "cnMonoFillPattern" : False
+            "cnFillPatterns"    : colist	   
 	 end setvalues
    end if
    return (plot)
 end
-
 undef("fill_res")
 procedure fill_res(res1:logical,res2:logical,ncr[2]:integer,attnames[*]:string)
 local natts, i, dsizes, rank, success, nrows, ncols
@@ -12503,173 +12719,3 @@ begin
     end do
   end if
 end
-
-;***********************************************************************;
-; Function : read_colormap_file                                         ;
-;               colorMapName : either the name of an NCL-standard       ;
-;                              colormap, or the filename of a           ;
-;                              user-supplied colormap.                  ;
-;                                                                       ;
-; This function either reads an NCL-standard colormap, given is name,   ;
-; or expects to read a colormap from a given file.  It supports reading ;
-; either RGB-tuples or RGBA-tuples (or a mixture); it always returns a  ;
-; colormap comprised of RGBA-tuples.                                    ;
-;***********************************************************************;
-undef("read_colormap_file")
-function read_colormap_file(colorMapName:string)
-local pathname, lines, tokens, cmap, tmpCmap, i, numColors, \
-      red, green, blue, alpha, maxValue, MAXCOLORS
-begin
-
-  MAXCOLORS = 256     ; symbolic constant, used below
-
-  ; ----------------------------------------------------------
-  ; Inner convenience function to test string as suitable for 
-  ; conversion to numeric.
-  function isNumerical(s:string)
-  local seenDecimal, charS, len, i
-  begin
-    seenDecimal = False
-    charS = stringtocharacter(s)
-    len = strlen(s)
-    do i=0, len-1
-      if (charS(i).eq.".") then
-        if (seenDecimal) then
-          return False
-        else
-          seenDecimal = True
-        end if
-      else
-        if (charS(i).lt."0" .or. charS(i).gt."9") then
-          return False
-        end if
-      end if
-    end do
-    return True
-  end
-
-  ; ------------------------------------------------------------
-  ; Inner convenience function to find appropriate pathname for 
-  ; the given filename.
-  function getFilePath(colorMapName:string)
-  local suffixes, paths, path1, path2, i, j, tmp
-  begin
-
-    ; Is this one of our standard named colormaps? There are several well-defined
-    ; locations and suffixes to try...
-    tmp = getenv("NCARG_COLORMAPS")
-    if (.not.ismissing(tmp)) then
-        paths = str_split(tmp, ":")
-    else 
-        paths = (/ ncargpath("ncarg") + "/colormaps" /)
-    end if
-
-    suffixes = (/ ".rgb", ".gp", ".ncmap" /)
-
-    ; loop over the product of possible paths and possible suffixes...
-    do i=0, dimsizes(paths)-1
-        path1 = paths(i) + "/" + colorMapName
-        do j=0, dimsizes(suffixes)-1
-            path2 = path1 + suffixes(j)
-            if (isfilepresent(path2)) then
-              return path2
-            end if
-          end do
-    end do
-
-    ; if still here, just return colorMapName literally; presumably is a 
-    ; filename for a user-managed colormap...
-    return colorMapName
-  end
-
-  ; get an appropriate pathname for the given colortable name and load it..
-  pathname = getFilePath(colorMapName)
-  lines = asciiread(pathname, -1, "string")
-  lines = str_squeeze(lines)
-
-  ; parse upto MAXCOLORS rgba tuples from the file just read...
-  tmpCmap = new((/ MAXCOLORS, 4 /), "float")
-  numColors = 0
-  maxValue = -1.0
-  i = 0
-  do while (i.lt.dimsizes(lines) .and. numColors.lt.MAXCOLORS)
-      if (strlen(lines(i)).eq.0) then  
-          lines(i) = "#"  ; zero-lengthed lines cause us grief...
-      end if 
-      tokens = str_split(lines(i), " ")
-      if (dimsizes(tokens).ge.3) then
-          red = -1.0
-          green = -1.0
-          blue = -1.0
-          if (isNumerical(tokens(0))) then
-              red = stringtofloat(tokens(0))
-          end if
-          if (isNumerical(tokens(1))) then
-              green = stringtofloat(tokens(1))
-          end if
-          if (isNumerical(tokens(2))) then
-              blue = stringtofloat(tokens(2))
-          end if
-          if (dimsizes(tokens).gt.3 .and. isNumerical(tokens(3))) then
-              alpha = stringtofloat(tokens(3))
-          else
-              alpha = -1.0  ; used a marker, replaced appropriately below...
-          end if
-
-          ; were we able to get a rgba-tuple?
-          ;
-          if (red.ge.0 .and. green.ge.0 .and. blue.ge.0) then
-              ; yes, add it to our colormap...
-              tmpCmap(numColors,0) = red
-              tmpCmap(numColors,1) = green
-              tmpCmap(numColors,2) = blue
-              tmpCmap(numColors,3) = alpha
-              numColors = numColors + 1
-              ; keep track of the magnitude of these values; used to rescale below...
-              if (red.gt.maxValue) then
-                  maxValue = red
-              end if
-              if (green.gt.maxValue) then
-                  maxValue = green
-              end if
-              if (blue.gt.maxValue) then
-                  maxValue = blue
-              end if
-          end if
-      end if
-      i = i + 1
-      delete(tokens)
-  end do
-
-  ; copy tmpCmap into appropriately sized array
-  cmap = new((/numColors, 4/), float)
-  cmap = tmpCmap(0:numColors-1,:)
-
-  ; normalize the values...(oh for true if-elseif!)
-  ; this logical taken directly from HLU code in "Palette.c"
-  if (maxValue.lt.256) then
-      cmap(:,3) = where(cmap(:,3).lt.0, 255., cmap(:,3))
-      cmap = cmap / 255.
-  else 
-      if (maxValue.eq.256) then
-          cmap(:,3) = where(cmap(:,3).lt.0, 256., cmap(:,3))
-          cmap = cmap / 256.
-      else 
-          if (maxValue.eq.65536) then
-              cmap(:,3) = where(cmap(:,3).lt.0, 65535., cmap(:,3))
-              cmap = cmap / 65535. 
-          else 
-              if (maxValue.eq.65536) then
-                  cmap(:,3) = where(cmap(:,3).lt.0, 65536., cmap(:,3))
-                  cmap = cmap / 65536.
-              else
-                  cmap(:,3) = where(cmap(:,3).lt.0, maxValue, cmap(:,3))
-                  cmap = cmap / maxValue
-              end if
-          end if 
-      end if
-  end if
-        
-  return cmap
-end
-

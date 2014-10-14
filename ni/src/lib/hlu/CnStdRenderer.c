@@ -841,28 +841,22 @@ static NhlErrorTypes UpdateFillInfo
 #if	NhlNeedProto
 (
 	NhlContourPlotLayer	cl,
-	NhlBoolean	*do_fill
+	NhlBoolean	*do_fill,
+	NhlBoolean      *almost_const
 )
 #else
-(cl,do_fill)
+	(cl,do_fill,almost_const)
         NhlContourPlotLayer	cl;
 	NhlBoolean	*do_fill;
+	NhlBoolean      *almost_const;
 #endif
 {
 	NhlErrorTypes		ret = NhlNOERROR;
 	NhlContourPlotLayerPart	*cnp = &(cl->contourplot);
-#if 0
- 	NhlBoolean	color_fill, pattern_fill;
+	float *levels = (float *) cnp->levels->data;
+	int i;
 
-	color_fill = (cnp->mono_fill_color && 
-		      cnp->fill_color == NhlTRANSPARENT) ? False : True;
-	pattern_fill = (cnp->mono_fill_pattern && 
-			cnp->fill_pattern == NhlHOLLOWFILL) ? False : True;
-
-	if (color_fill &&  pattern_fill &&  
-	    (cnp->fill_on || cnp->raster_mode_on)) {
-	}
-#endif 
+        _NhlSetFillOpacity(cl, cnp->fill_opacity);
 /*
  * Since the missing value fill resources are not supposed to be affected
  * by the mono flags, you cannot optimize the fill away if mono fill color is
@@ -870,12 +864,21 @@ static NhlErrorTypes UpdateFillInfo
  * fill pattern is hollow. So just keep it simple.
  * 
  */
-	if (cnp->fill_on) {
-		*do_fill = True;
+	if (! cnp->fill_on) {
+		*do_fill = False;
 		return ret;
 	}
 
-	*do_fill = False;
+	*do_fill = True;
+
+	*almost_const = False;
+	for (i = 0; i< cnp->level_count -1 ; i++) { 
+		if (cnp->zmin >= levels[i] &&
+		    cnp->zmax <= levels[i + 1]) {
+			*almost_const = True; 
+			return ret;
+		}
+	}
 	return ret;
 }
 
@@ -1469,6 +1472,79 @@ static NhlErrorTypes SetTransBoundsState
 }
 #endif
 
+static NhlErrorTypes DoConstFillHack(
+	NhlContourPlotLayerPart           *cnp,
+	NhlBoolean on
+	)
+{
+	int i,ix;
+	float *levels = (float *) cnp->levels->data;
+	static int save_fill_color = 0, save_fill_pattern = 0;
+	static float save_fill_scale = 0;
+	static NhlBoolean save_mono_fill_color = False, save_mono_fill_pattern = False,
+		save_mono_fill_scale;
+	float test_val;
+	static float save_test_val;
+
+	if (! on) {
+		cnp->mono_fill_color = save_mono_fill_color;
+		cnp->mono_fill_pattern = save_mono_fill_pattern;
+		cnp->mono_fill_scale = save_mono_fill_scale;
+		cnp->fill_color = save_fill_color;
+		cnp->fill_pattern = save_fill_pattern;
+		cnp->fill_scale = save_fill_scale;
+		cnp->data[0] = save_test_val;
+		return NhlNOERROR;
+	}
+
+	if (! cnp->data) {
+		printf("no data\n");
+		return NhlWARNING;
+	}
+	save_test_val = test_val = cnp->data[0];
+
+	ix = -1;
+	for (i = 0; i< cnp->level_count; i++) {
+                if (test_val >= levels[i])
+			continue;
+		ix = i;
+		break;
+		
+        }
+	if (ix == -1) {
+		ix = cnp->level_count;
+	}
+	if (ix > 1) {
+		cnp->data[0] = levels[0];
+	}
+	else {
+		cnp->data[0] = levels[cnp->level_count - 1];
+	}
+	
+	save_mono_fill_color = cnp->mono_fill_color;
+	save_mono_fill_pattern = cnp->mono_fill_pattern;
+	save_mono_fill_scale = cnp->mono_fill_scale;
+	save_fill_color = cnp->fill_color;
+	save_fill_pattern = cnp->fill_pattern;
+	save_fill_scale = cnp->fill_scale;
+	save_test_val = test_val;
+
+	if (! cnp->mono_fill_pattern)
+		cnp->fill_pattern = ((int *) cnp->fill_patterns->data)[ix];
+	if (! cnp->mono_fill_scale) 
+		cnp->fill_scale = ((float *) cnp->fill_scales->data)[ix];
+	if (! cnp->mono_fill_color)
+		cnp->fill_color = ((int *) cnp->fill_colors->data)[ix];
+
+	cnp->mono_fill_pattern = True;
+	cnp->mono_fill_color = True;
+	cnp->mono_fill_scale = True;
+
+	return NhlNOERROR;
+}
+
+	
+
 static NhlErrorTypes CnStdRender
 #if	NhlNeedProto
 (
@@ -1493,6 +1569,11 @@ static NhlErrorTypes CnStdRender
         NhlErrorTypes ret = NhlNOERROR,subret = NhlNOERROR;
         Gint            err_ind;
         Gclip           clip_ind_rect;
+	int            out_of_bounds;
+	NhlBoolean     almost_const;
+	int do_const_fill_hack = 0;
+	int do_fill;
+	int is_const;
 
 	Cnl = cnl;
 	Cnp = cnp;
@@ -1520,6 +1601,25 @@ static NhlErrorTypes CnStdRender
 			       NhlNtrOutOfRangeF, &cnp->out_of_range_val,
 			       NULL);
 		c_cpsetr("ORV",cnp->out_of_range_val);
+
+		out_of_bounds = MAX((double)fabs((double)tfp->data_xstart),(double)fabs((double)tfp->data_xend)) > 541 ||
+			MAX((double)fabs((double)tfp->data_ystart),(double)fabs((double)tfp->data_yend)) > 91;
+		if (out_of_bounds) {
+			if (cnp->fill_on && (cnp->fill_mode == NhlAREAFILL || cnp->fill_mode == NhlRASTERFILL)) {
+				char *mode = "AreaFill";
+				if (cnp->fill_mode == NhlRASTERFILL) {
+					mode = "RasterFill";
+				}
+				e_text =  "%s: coordinates are out of range for drawing over a map: standard %s rendering method will not work;\n consider setting the resource trGridType to \"TriangularMesh\" if coordinates contain missing values";
+				NhlPError(NhlFATAL,NhlEUNKNOWN,e_text,entry_name,cnp->fill_mode == NhlAREAFILL ? "AreaFill" : "RasterFill");
+				return(NhlFATAL);
+			}
+			else if (cnp->lines_on || cnp->line_lbls.on) {
+				e_text =  "%s: coordinates are out of range for drawing over a map: standard line or line label rendering method will not work;\n consider setting the resource trGridType to \"TriangularMesh\" if coordinates contain missing values";
+				NhlPError(NhlFATAL,NhlEUNKNOWN,e_text,entry_name);
+				return(NhlFATAL);
+			}
+		}
 	}
 
 	if (cnp->sfp->missing_value_set)
@@ -1550,6 +1650,7 @@ static NhlErrorTypes CnStdRender
         c_cpseti("RWC",500);
         c_cpseti("RWG",1500);
         c_cpseti("MAP",NhlcnMAPVAL);
+	c_cpsetc("CFT","");
 
 	c_cpsetr("PIT",MAX(0.0,cnp->max_point_distance));
 	
@@ -1569,11 +1670,15 @@ static NhlErrorTypes CnStdRender
 		return ret;
 	}
 
-	subret = UpdateFillInfo(cnl, &cnp->do_fill);
+	subret = UpdateFillInfo(cnl, &cnp->do_fill,&almost_const);
 	if ((ret = MIN(subret,ret)) < NhlWARNING) {
 		ContourAbortDraw(cnl);
 		gset_clip_ind(clip_ind_rect.clip_ind);
 		return ret;
+	}
+	if (cnp->fill_mode == NhlAREAFILL && (almost_const || (cnp->const_field  && cnp->do_constf_fill))) {
+		DoConstFillHack(cnp, True);
+		do_const_fill_hack = 1;
 	}
 
 
@@ -1602,6 +1707,8 @@ static NhlErrorTypes CnStdRender
 		gset_clip_ind(clip_ind_rect.clip_ind);
 		return ret;
 	}
+	c_cpgeti("CFF",&is_const);
+       
 #if 0
 	{ /* for debugging */
 		float flx,frx,fby,fuy,wlx,wrx,wby,wuy; int ll;
@@ -1611,10 +1718,15 @@ static NhlErrorTypes CnStdRender
   	}
 #endif
 
+	do_fill = cnp->do_fill;
+	if (cnp->const_field && ! cnp->do_constf_fill) {
+		do_fill = False;
+	}
+	if (do_fill && cnp->fill_order == order) {
+		NhlcnFillMode fill_mode = cnp->fill_mode;
+		int do_raster_smoothing = cnp->raster_smoothing_on;
 
-	if (cnp->do_fill && cnp->fill_order == order) {
-
-		if (cnp->fill_mode == NhlAREAFILL) {
+		if (fill_mode == NhlAREAFILL) {
 #if 0
 			subret = SetTransBoundsState
 				(cnl,False,&csrp->do_bounds);
@@ -1669,15 +1781,20 @@ static NhlErrorTypes CnStdRender
 			subret = _NhlIdleWorkspace(cnp->aws);
 			ret = MIN(subret,ret);
 			cnp->aws = NULL;
+			if (do_const_fill_hack) {
+				DoConstFillHack(cnp, False);
+				do_const_fill_hack = 0;
+			}
+			
 		}
-		else if (cnp->fill_mode == NhlCELLFILL) {
+		else if (fill_mode == NhlCELLFILL) {
 			subret = _NhlCellFill((NhlLayer)cnl,entry_name);
 			if ((ret = MIN(subret,ret)) < NhlWARNING) {
 				ContourAbortDraw(cnl);
 				return ret;
 			}
 		}
-		else if (cnp->fill_mode == NhlMESHFILL) { /* NhlMESHFILL */
+		else if (fill_mode == NhlMESHFILL) { /* NhlMESHFILL */
 			int msize,nsize;
 			float min_cell_size;
 			NhlBoundingBox bbox;
@@ -1699,7 +1816,7 @@ static NhlErrorTypes CnStdRender
 					    msize,msize,nsize,
 					    bbox.l,bbox.b,bbox.r,bbox.t,
 					    min_cell_size,
-					    cnp->raster_smoothing_on,
+					    do_raster_smoothing,
 					    True,
 					    entry_name);
  			if ((ret = MIN(subret,ret)) < NhlWARNING) {
@@ -1735,7 +1852,7 @@ static NhlErrorTypes CnStdRender
 					    msize,msize,nsize,
 					    bbox.l,bbox.b,bbox.r,bbox.t,
 					    min_cell_size,
-					    cnp->raster_smoothing_on,
+					    do_raster_smoothing,
 					    False,
 					    entry_name);
  			if ((ret = MIN(subret,ret)) < NhlWARNING) {
@@ -1891,6 +2008,7 @@ static NhlIsoLine *CnStdGetIsoLines
 	int             count;
 	int             i;
 	NhlIsoLine      *isolines, *ilp;
+	int             ezmap = 0;
 
 	Cnl = cnl;
 	Cnp = cnp;
@@ -1918,6 +2036,7 @@ static NhlIsoLine *CnStdGetIsoLines
 			       NhlNtrOutOfRangeF, &cnp->out_of_range_val,
 			       NULL);
 		c_cpsetr("ORV",cnp->out_of_range_val);
+		ezmap = 1;
 	}
 
 	if (cnp->sfp->missing_value_set)
@@ -2009,7 +2128,10 @@ static NhlIsoLine *CnStdGetIsoLines
 		float *xloc = NULL, *yloc = NULL;
 		int current_seg_alloc = 10;
 		int current_point_count = 0;
-		int current_seg = 0;
+		int current_seg = -1;
+		float save_xloc, save_yloc;
+		int same_segment;
+		int npoints_in_cur_segment;
 
 		flag = 0;
 /*
@@ -2019,6 +2141,8 @@ static NhlIsoLine *CnStdGetIsoLines
 		ilp->x = ilp->y = NULL;
 		ilp->start_point = ilp->n_points = NULL;
 		while (! done) {
+			float out_of_range = 1e30;
+			int mystatus;
 			subret = _NhlCpcltr(cnp->data,cnp->fws,cnp->iws,clvp[i],
 					    &flag,&xloc,&yloc,&npoints,entry_name);
 			if ((ret = MIN(subret,ret)) < NhlWARNING) {
@@ -2029,30 +2153,108 @@ static NhlIsoLine *CnStdGetIsoLines
 
 			if (flag == 0)
 				break;
-			if (current_seg == 0) {
+			if (current_seg == -1) {
 				ilp->x = NhlMalloc(sizeof(float) * npoints);
 				ilp->y = NhlMalloc(sizeof(float) * npoints);
+				save_xloc = xloc[npoints-1];
+				save_yloc = yloc[npoints-1];
+				same_segment = 0;
 			}
 			else {
 				ilp->x = NhlRealloc(ilp->x, sizeof(float) * (current_point_count + npoints));
 				ilp->y = NhlRealloc(ilp->y, sizeof(float) * (current_point_count + npoints));
+				if (xloc[0] == save_xloc && yloc[0] == save_yloc) {
+					same_segment = 1;
+					npoints_in_cur_segment += npoints;
+				}
+				else {
+					same_segment = 0;
+					npoints_in_cur_segment = npoints;
+				}
+				save_xloc = xloc[npoints-1];
+				save_yloc = yloc[npoints-1];
+			}
+			
+			if ( tfp->overlay_trans_obj && tfp->overlay_trans_obj != tfp->trans_obj && ! ezmap) {
+				if (tfp->overlay_trans_obj->base.layer_class->base_class.class_name ==
+				    NhlirregularTransObjClass->base_class.class_name) {
+					subret = _NhlCompcToData(tfp->overlay_trans_obj,xloc,yloc,npoints,xloc,yloc,
+								 &mystatus,&out_of_range,&out_of_range);
+				}
+				else {
+					subret = _NhlWinToData(tfp->overlay_trans_obj,xloc,yloc,npoints,xloc,yloc,
+							       &mystatus,&out_of_range,&out_of_range);
+				}
+			}
+			else {
+				subret = _NhlWinToData(tfp->trans_obj,xloc,yloc,npoints,xloc,yloc,
+						       &mystatus,&out_of_range,&out_of_range);
 			}
 			memcpy((char*)(ilp->x + current_point_count),xloc, npoints * sizeof(float)); 
 			memcpy((char*)(ilp->y + current_point_count),yloc, npoints * sizeof(float)); 
 
-			if (current_seg == 0) {
-				ilp->n_points = NhlMalloc(sizeof(int) * current_seg_alloc);
-				ilp->start_point = NhlMalloc(sizeof(int) * current_seg_alloc);
+			if (ezmap) { /* points need to be transformed back into map coordinates */
+				double xlon, ylat,last_xlon;
+				int mod_360 = 0;
+				int j, k = current_point_count;
+				int first = 1;
+				for (j = current_point_count; j < current_point_count + npoints; j++) {
+					c_mdptri((double)ilp->x[j],(double)ilp->y[j],&ylat,&xlon);
+					if (xlon > 1e10) 
+						continue;
+					if (first) {
+						last_xlon = xlon;
+						first = 0;
+					}
+					switch (mod_360) {
+					case 0:
+					default:
+						if (last_xlon - xlon < -180) {
+							mod_360 = -1;
+						}
+						else if (last_xlon - xlon > 180) {
+							mod_360 = 1;
+						}
+						break;
+					case 1:
+						if (xlon - last_xlon > 180) {
+							mod_360 = 0;
+						}
+						break;
+					case -1:
+						if (xlon - last_xlon < -180) {
+							mod_360 = 0;
+						}
+						break;
+					}
+					ilp->x[k] = (float)xlon + mod_360 * 360;
+					ilp->y[k] = (float)ylat;
+					last_xlon = xlon;
+					k++;
+				}
+				npoints = k - current_point_count;
 			}
-			else if (current_seg == current_seg_alloc) {
-				ilp->n_points = NhlRealloc(ilp->n_points,sizeof(int) * current_seg_alloc * 2);
-				ilp->start_point = NhlRealloc(ilp->start_point,sizeof(int) * current_seg_alloc * 2);
-				current_seg_alloc *= 2;
+			if (npoints == 0) 
+				continue;
+			if (same_segment) {
+				ilp->n_points[current_seg] += npoints;
 			}
-			ilp->n_points[current_seg] = npoints; 	
-			ilp->start_point[current_seg] = current_point_count; 	
+			else {
+				current_seg++;
+				if (current_seg == 0) {
+					ilp->n_points = NhlMalloc(sizeof(int) * current_seg_alloc);
+					ilp->start_point = NhlMalloc(sizeof(int) * current_seg_alloc);
+				}
+				else if (current_seg == current_seg_alloc) {
+					ilp->n_points = NhlRealloc(ilp->n_points,sizeof(int) * current_seg_alloc * 2);
+					ilp->start_point = NhlRealloc(ilp->start_point,sizeof(int) * current_seg_alloc * 2);
+					current_seg_alloc *= 2;
+				}
+				ilp->n_points[current_seg] = npoints;
+				ilp->start_point[current_seg] = current_point_count; 	
+			}
 			current_point_count += npoints;
-			current_seg++;
+			
 /*				
 			printf("\t%d points: ",npoints);
 			for (j = 0; j < npoints; j++) {
@@ -2062,7 +2264,7 @@ static NhlIsoLine *CnStdGetIsoLines
 */
 		}
 		ilp->point_count = current_point_count;
-		ilp->n_segments = current_seg;
+		ilp->n_segments = current_seg + 1;
 	}
 
 	if (cnp->fws != NULL) {
@@ -2142,6 +2344,7 @@ int (_NHLCALLF(hlucpfill,HLUCPFILL))
 	sclp = (float *) Cnp->fill_scales->data;
 	for (i = 0; i < *nai; i++) {
 		if (iag[i] == 3) {
+			/*if (iai[i] == 1) iai[i] += 100;*/
 			if (iai[i] > 99 && 
 			    iai[i] < 100 + Cnp->fill_count) {
 				int ix = iai[i] - 100;
@@ -2172,6 +2375,12 @@ int (_NHLCALLF(hlucpfill,HLUCPFILL))
 				pat_ix = reg_attrs->fill_pat;
 				fscale = reg_attrs->fill_scale;
 			}
+                        
+                        float fill_opacity;
+                        int ret  = NhlVAGetValues(Cnl->base.wkptr->base.id,
+                                        _NhlNwkFillOpacityF, &fill_opacity, 
+                                        NULL);
+                        
 			NhlVASetValues(Cnl->base.wkptr->base.id,
 				       _NhlNwkFillIndex, pat_ix,
 				       _NhlNwkFillColor, col_ix,
@@ -2185,6 +2394,11 @@ int (_NHLCALLF(hlucpfill,HLUCPFILL))
 			
 			_NhlSetFillInfo(Cnl->base.wkptr,(NhlLayer) Cnl);
 			_NhlWorkstationFill(Cnl->base.wkptr,xcs,ycs,*ncs);
+
+       			NhlVASetValues(Cnl->base.wkptr->base.id,
+                                _NhlNwkFillOpacityF, fill_opacity, 
+                                NULL);
+	
 		}
 	}
 	return 0;
@@ -2246,28 +2460,32 @@ void  (_NHLCALLF(hlucpscae,HLUCPSCAE))
 			 ind1,ind2,icaf,iaid);
 		return;
 	}
+
 	/* no support in cell arrays for transparent, so it's necessary
-	   to reset transparent color indexes to background */
+	 * to reset transparent color indexes to background.
+	 * 5-29-2013 - this is no longer true. Replace NhlTRANSPARENT with a transparent color index.
+	 */
+
 	   
 
 	if (*iaid > 99 && *iaid < 100 + Cnp->fill_count) {
 		col_ix = Cnp->gks_fill_colors[*iaid - 100];
-		if (col_ix < 0) col_ix = NhlBACKGROUND;
+		if (col_ix < 0) col_ix = NhlTRANSPARENT_CI;
 	}
 	else if (*iaid == 99) {
 		col_ix = Cnp->grid_bound.gks_fcolor;
-		if (col_ix < 0) col_ix = NhlBACKGROUND;
+		if (col_ix < 0) col_ix = NhlTRANSPARENT_CI;
 	}
 	else if (*iaid == 98) {
 		col_ix = Cnp->missing_val.gks_fcolor;
-		if (col_ix < 0) col_ix = NhlBACKGROUND;
+		if (col_ix < 0) col_ix = NhlTRANSPARENT_CI;
 	}
 	else if (*iaid == 97) {
 		col_ix = Cnp->out_of_range.gks_fcolor;
-		if (col_ix < 0) col_ix = NhlBACKGROUND;
+		if (col_ix < 0) col_ix = NhlTRANSPARENT_CI;
 	}
 	else {
-		col_ix = NhlBACKGROUND;
+		col_ix = NhlTRANSPARENT_CI;
 	}
 	*(icra + ((*ind2 - 1) * *ica1 + (*ind1 - 1))) = col_ix;
 
@@ -3517,7 +3735,7 @@ NhlErrorTypes _NhlMeshFill
  *      initialize cell array with the missing value.
  */      
 	grid_fill_ix = Cnp->grid_bound.gks_fcolor;
-	grid_fill_ix = grid_fill_ix < 0 ? NhlBACKGROUND : grid_fill_ix;
+	grid_fill_ix = grid_fill_ix < 0 ? NhlTRANSPARENT_CI : grid_fill_ix;
 	for (j = 0; j < ican; j++) {
 		for (i = 0; i < icam; i++) {
 			*(cell + j * ica1 + i) = grid_fill_ix;
@@ -3525,44 +3743,6 @@ NhlErrorTypes _NhlMeshFill
 	
 	}
 
-
-#if 0
-/*
- * Now overwrite out-of-range areas with the out-of-range color
- */
-	grid_fill_ix = Cnp->out_of_range.gks_fcolor < 0 ? NhlBACKGROUND : Cnp->out_of_range.gks_fcolor;
-	if (Tmp->ezmap) {
-		imap = -map;
-		zval = 0;
-		for (j = 0; j < ican; j++) {
-			if (j == 0)
-				yccf = ycpf + ysoff * cystep;
-			else if (j == ican - 1)
-				yccf = ycpf + (ican - yeoff) * cystep;
-			else
-				yccf = ycpf + (j + ysoff) * cystep;
-			yccd = c_cfuy(yccf);
-			for (i = 0; i < icam; i++) {
-				if (i == 0)
-					xccf = xcpf + xsoff * cxstep;
-				else if (i == icam - 1)
-					xccf = xcpf + (icam - xeoff) * cxstep; 
-				else
-					xccf = xcpf + (i+xsoff) * cxstep;
-				xccd = c_cfux(xccf);
-				(_NHLCALLF(hlucpmpxy,HLUCPMPXY))
-					(&imap,&xccd,&yccd,&zval,&xcci,&ycci);
-				if (xcci == orv) {
-					*(cell + j * ica1 + i) = grid_fill_ix;
-				}
-			}
-		}
-	}
-
-#endif
-
-	/*dcell_loc = (DataCellLoc *) NhlMalloc(sizeof(DataCellLoc) * icam * ican);
-	  memset(dcell_loc,0,sizeof(DataCellLoc) * icam * ican);*/
 #if 0
 	c_getset(&flx,&frx,&fby,&fuy,&wlx,&wrx,&wby,&wuy,&ll);
 #if 0
@@ -3769,7 +3949,6 @@ NhlErrorTypes _NhlMeshFill
 					}
 					if (p0 > 0)
 						continue;
-					/*iplus = icv % icam;*/
 					iplus = MIN(icv, icam);
 					jplus = jcv;
 					fvali = zdat[ix]; 
@@ -3788,6 +3967,11 @@ NhlErrorTypes _NhlMeshFill
 					if (iaid == -1)
 						iaid = NhlcnAREAID_OFFSET +
 							Cnp->level_count;     
+
+					/* hlucpscae uses 1-based indexing */
+
+					iplus += 1;
+					jplus += 1;
 
 					(_NHLCALLF(hlucpscae,HLUCPSCAE))
 						(cell,&ica1,&icam,&ican,

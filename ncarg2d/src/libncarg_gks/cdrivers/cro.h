@@ -130,12 +130,21 @@
 #define NCAR_WEATHER2_O                 -137
 
 /* cairo workstation types */
-#define CPS 				40  /* cairo Postscript  */
-#define CPNG				41  /* cairo PNG         */
+#define CPS                 40  /* cairo Postscript  */
+#define CPNG                41  /* cairo PNG         */
 #define CPDF                42  /* cairo PDF         */
 #define CTIFF               43  /* cairo (geo)TIFF   */
 #define CX11                44  /* cairo x11 surface */
 #define CEPS                45  /* cairo EPS */
+#define CQT                 46  /* cairo Qt */
+#define CSVG                47  /* cairo SVG */
+
+#include <cairo/cairo.h>
+#include <cairo/cairo-ps.h>
+#include <cairo/cairo-pdf.h>
+#include <cairo/cairo-xlib.h>
+#include <cairo/cairo-svg.h>
+#include <cairo/cairo-ft.h>
 
 typedef enum {MONO, COLOR} cro_color;
 
@@ -243,7 +252,20 @@ typedef enum {MITER,ROUND, BEVEL} linejoin_type;
 
 #endif  /* NGCALLF */
 
+#ifdef BuildQtEnabled
+extern cairo_surface_t *qt_surface;
+extern cairo_t         *qt_context;
+extern int qt_screen_width;
+extern int qt_screen_height;
+#endif
+
+cairo_t* getContext(int wksId);
 
 void reverse_chars(char *);
+
+#ifdef BuildQtEnabled
+void setCairoQtSurface(cairo_surface_t *surface);
+void setCairoQtWinSize(int width, int height);
+#endif
 
 #endif  /* _cro_driver_ */

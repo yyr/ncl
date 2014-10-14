@@ -202,6 +202,7 @@ static void SetUpOpsStrings() {
 	ops_strings[REASSIGN_VAR_VAR_OP]= "REASSIGN_VAR_VAR_OP";
 
 	ops_strings[REASSIGN_VARATT_OP] = "REASSIGN_VARATT_OP";
+	ops_strings[REASSIGN_VAR_COORD_OP] = "REASSIGN_VAR_COORD_OP";
 }
 
 static NhlErrorTypes IncreaseStackSize
@@ -490,6 +491,32 @@ NhlErrorTypes _NclInitMachine
 	for (i = 0; i < current_level_1_size; i++) {
 		level_1_vars[i] = &(stack_entry[i]);
 	}
+	return(NhlNOERROR);
+}
+
+NhlErrorTypes _NclFinalizeMachine()
+{
+	_NclMachineRec* machrec;
+#if 0
+	int i;
+
+	for (i = 0; i < current_level_1_size; i++)
+	{
+		if(NULL != level_1_vars[i])
+			NclFree(level_1_vars[i]);
+	}
+#endif
+
+	NclFree(level_1_vars);
+
+	NclFree(mstk->the_rec->themachine);
+	NclFree(mstk->the_rec->thefiles);
+	NclFree(mstk->the_rec->thelines);
+	NclFree(mstk->the_rec);
+	NclFree(mstk);
+
+	NclFree(thestack);
+
 	return(NhlNOERROR);
 }
 
@@ -800,20 +827,18 @@ static int SetNextFramePtrNLevel
 {
 	struct _NclFrameList *tmp;
 	int tmp_level;
-	int tmp_fp;
 
 	tmp_level = current_scope_level;
 	tmp = flist.next;
 	if(tmp != NULL) {
 		flist.next = flist.next->next;
-		tmp_fp = framepntr;
 		framepntr = tmp->fp;
 		sb_off = tmp->sb + 5;
 		current_scope_level = tmp->level;
 		NclFree(tmp);
 	}
-	return(tmp_level);
 	
+	return(tmp_level);
 }
 
 void _NclPopFrame
@@ -1338,6 +1363,7 @@ void _NclPrintMachine
 			case VARVAL_COORD_OP:
 			case ASSIGN_VAR_COORD_OP:
 			case PARAM_VAR_COORD_OP:
+			case REASSIGN_VAR_COORD_OP:
 				fprintf(fp,"%s\n",ops_strings[*ptr]);
 				ptr++;lptr++;fptr++;
 				fprintf(fp,"\t");

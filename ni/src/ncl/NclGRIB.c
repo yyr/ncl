@@ -72,8 +72,12 @@
 #include "fsl2_gtb.h"
 #include "fnmoc_gtb.h"
 #include "jma_3_gtb.h"
+#include "jra55_gtb.h"
+#include "mpi_128_gtb.h"
+#include "mpi_180_gtb.h"
+#include "mpi_181_gtb.h"
+#include "mpi_199_gtb.h"
 
-#define NCL_GRIB_CACHE_SIZE  150
 /* 
  * These are the codes in ON388 - Table 4 - for time units arranged in order from 
  * short to long duration. The convert table below is the conversion from
@@ -265,14 +269,11 @@ GribRecordInqRec *current_rec;
         int tg;
         void *val;
         int nvar_dims;
+	int cache_size = MAX(1,(int)(therec->options[GRIB_CACHE_SIZE_OPT].values));
 
         thelist = therec->grib_grid_cache;
         nvar_dims = step->var_info.num_dimensions;
         while(thelist != NULL) {
-		/*      
-                if((thelist->grid_number == step->grid_number)&&(thelist->has_gds ==step->has_gds)
-		   &&(thelist->grid_gds_tbl_index == step->grid_gds_tbl_index)) {
-		*/
                 if (step->var_info.doff == 2) {
                         if (thelist->n_dims != 3 ||
                             thelist->dim_ids[1] != step->var_info.file_dim_num[nvar_dims-2] ||
@@ -288,17 +289,27 @@ GribRecordInqRec *current_rec;
 			continue;
                 }
 
-                if(thelist->n_entries == NCL_GRIB_CACHE_SIZE) {
-                        tmp = thelist->tail;
-                        tmp->rec->the_dat = NULL;
-                        tmp->rec = current_rec;
-                        tmp->prev->next = NULL;
-                        thelist->tail = tmp->prev;
-                        tmp->prev = NULL;
-                        tmp->next = thelist->thelist;
-                        tmp->next->prev = tmp;
-                        thelist->thelist = tmp;
-                        return(tmp->thevalue);
+		while (thelist->n_entries > cache_size) {
+			tmp = thelist->tail;
+			thelist->tail = tmp->prev;
+			if (thelist->tail)
+				thelist->tail->next = NULL;
+			NclFree(tmp);
+			thelist->n_entries--;
+		}
+		if(thelist->n_entries == cache_size) {
+			tmp = thelist->tail;
+			tmp->rec->the_dat = NULL;
+			tmp->rec = current_rec;
+			if (tmp->prev) {
+				tmp->prev->next = NULL;
+				thelist->tail = tmp->prev;
+				tmp->prev = NULL;
+				tmp->next = thelist->thelist;
+				tmp->next->prev = tmp;
+				thelist->thelist = tmp;
+			}
+			return(tmp->thevalue);
                 }
                 if(thelist->n_entries == 0) {
                         thelist->thelist = NclMalloc(sizeof(NclGribCacheRec));
@@ -1260,6 +1271,66 @@ static NrmQuark ForecastTimeUnitsToQuark
 	}
 }
 
+static void SetTimePeriodString
+#if 	NhlNeedProto
+(char *buf, int period, int indicator)
+#else
+(buf,period,indicator)
+char *buf;
+int period;
+int indicator;
+#endif
+{
+	switch (indicator) {
+	case 0:
+		sprintf(buf,"%d minutes",period);
+		return;
+	case  1:
+		sprintf(buf,"%d hours",period);
+		return;
+	case  2:
+		sprintf(buf,"%d days",period);
+		return;
+	case  3:
+		sprintf(buf,"%d months",period);
+		return;
+	case  4:
+		sprintf(buf,"%d years",period);
+		return;
+	case  5:
+		sprintf(buf,"%d decades",period);
+		return;
+	case  6:
+		sprintf(buf,"%d decades",period * 3);
+		return;
+	case  7:
+		sprintf(buf,"%d centuries",period);
+		return;
+	case  10:
+		sprintf(buf,"%d hours",period * 3);
+		return;
+	case  11:
+		sprintf(buf,"%d hours",period * 6);
+		return;
+	case  12:
+		sprintf(buf,"%d hours",period * 12);
+		return;
+	case  13:
+		sprintf(buf,"%d minutes",period * 15);
+		return;
+	case  14:
+		sprintf(buf,"%d minutes",period * 30);
+		return;
+	case  254:
+		sprintf(buf,"%d seconds",period);
+		return;
+	default:
+		sprintf(buf,"%d (unknown units)",period);
+		return;
+	}
+
+}
+
 static void _SetAttributeLists
 #if 	NhlNeedProto
 (GribFileRecord *therec)
@@ -1292,7 +1363,281 @@ GribFileRecord *therec;
 				break;
 			}
 		}
+		if (step->time_range_indicator > 50) { /* climatological and other statistically processed data - not including simple averages and accumulations, etc. */
+			int tr_ix = -1;
+			int num, test_num, need_array = 0;
+			int j, num_found;
+			if (grib_rec->center_ix == 32 && grib_rec->ptable_version == 200) {
+				for (i = 0; i < sizeof(jra55_local_time_range_indicator) / sizeof(int); i++) {
+					if (jra55_local_time_range_indicator[i] == step->time_range_indicator) {
+						tr_ix = jra55_local_time_range_indicator_start + i;
+						break;
+					}
+				}
+			}
+			if (tr_ix == -1) {
+				for (i = 0; i < sizeof(time_range_indicator) /sizeof(int); i++) {
+					if (time_range_indicator[i] == step->time_range_indicator) {
+						tr_ix = i;
+						break;
+					}
+				}
+			}
+			/* r in average -- AKA 'N" in the statistical process descriptors -- assumes that N may be different for different time periods, but that e.g. different levels will have the same N 
+			   this may be proved wrong eventually */
+			att_list_ptr = (GribAttInqRecList*)NclMalloc((unsigned)sizeof(GribAttInqRecList));
+			att_list_ptr->next = step->theatts;
+			att_list_ptr->att_inq = (GribAttInqRec*)NclMalloc((unsigned)sizeof(GribAttInqRec));
+			att_list_ptr->att_inq->name = NrmStringToQuark("N");
+			num = CnvtToDecimal(2,&grib_rec->pds[21]);
+			for (i = 0; i < step->n_entries; i++) {
+				test_num = CnvtToDecimal(2,&step->thelist[i].rec_inq->pds[21]);
+				if (test_num != num) {
+					need_array = 1;
+					break;
+				}
+			}
+			if (! need_array) {
+				tmp_int = (int*)NclMalloc(sizeof(int));
+				*tmp_int=  num;
+				att_list_ptr->att_inq->thevalue = (NclMultiDValData)_NclCreateVal( NULL, NULL, Ncl_MultiDValData, 0, (void*)tmp_int, NULL, 1 , &tmp_dimsizes, PERMANENT, NULL, nclTypeintClass);
+				step->theatts = att_list_ptr;
+				step->n_atts++;
+			}
+			else {
+				int count = 1;
+				int found = 0;
+				int it_count = 0, ft_count = 0;
+				GIT it_cmp;
+				int ft_cmp;
+				GribDimInqRecList *dstep;
 
+				/* how many ? 1 for each initial_time * each forecast time */ 
+				if (! step->yymmddhh_isatt) {
+					dstep = therec->it_dims;
+					while (dstep != NULL) {
+						for (j = 0; j < step->var_info.num_dimensions; j++) {
+							if (dstep->dim_inq->dim_number == step->var_info.file_dim_num[j]) {
+								it_count =  step->var_info.dim_sizes[j];
+								found = 1;
+								break;
+							}
+						}
+						if (found) break;
+						dstep = dstep->next;
+					}
+				}
+				if (! step->forecast_time_isatt) {
+					found = 0;
+					dstep = therec->ft_dims;
+					while (dstep != NULL) {
+						for (j = 0; j < step->var_info.num_dimensions; j++) {
+							if (therec->ft_dims->dim_inq->dim_number == step->var_info.file_dim_num[j]) {
+								ft_count =  step->var_info.dim_sizes[j];
+								found = 1; 
+								break;
+							}
+						}
+						if (found) break;
+						dstep = dstep->next;
+					}
+				}
+				it_cmp = grib_rec->initial_time;
+				ft_cmp = grib_rec->time_offset;
+				if (it_count > 0) count = it_count;
+				if (ft_count > 0) count *= ft_count;
+				tmp_int = (int*)NclMalloc(count * sizeof(int));
+				tmp_int[0] = num;
+				found = 1;
+				for (i = 1; i < step->n_entries; i++) {
+					if (!memcmp(&it_cmp,&step->thelist[i].rec_inq->initial_time,sizeof(GIT)) && ft_cmp == step->thelist[i].rec_inq->time_offset)
+						continue;
+					tmp_int[found] = CnvtToDecimal(2,&step->thelist[i].rec_inq->pds[21]);
+					it_cmp = step->thelist[i].rec_inq->initial_time;
+					ft_cmp = step->thelist[i].rec_inq->time_offset;
+					found++;
+				}
+				tmp_dimsizes = found;
+				att_list_ptr->att_inq->thevalue = (NclMultiDValData)
+					_NclCreateVal(NULL, NULL,
+						      Ncl_MultiDValData, 0, (void *) tmp_int, NULL, 1, &tmp_dimsizes, 
+						      PERMANENT, NULL, nclTypeintClass);
+				step->theatts = att_list_ptr;
+				step->n_atts++;
+				tmp_dimsizes = 1;
+			}
+			/* statistical_process_duration gives the length, starting point, and interval between products for each procuct making up the N products that are proecessed into the end product */
+#if 0
+			for(i = 0; i < step->n_entries; i++) {
+				if(step->thelist[i].rec_inq != NULL) {
+					grib_rec = step->thelist[i].rec_inq;
+					printf("p1 %d p2 %d\n",(int)grib_rec->pds[18],(int)grib_rec->pds[19]);
+				}
+			}
+#endif
+			
+			att_list_ptr = (GribAttInqRecList*)NclMalloc((unsigned)sizeof(GribAttInqRecList));
+			att_list_ptr->next = step->theatts;
+			att_list_ptr->att_inq = (GribAttInqRec*)NclMalloc((unsigned)sizeof(GribAttInqRec));
+			att_list_ptr->att_inq->name = NrmStringToQuark("statistical_process_duration");
+			tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
+			buffer[0] = '\0';
+			if  (grib_rec->center_ix == 32 && grib_rec->ptable_version == 200 && step->time_range_indicator > 127 && step->time_range_indicator < 133) {
+				switch (step->time_range_indicator) {
+				case 128:
+				case 129:
+					if (step->time_period == 0) 
+						sprintf(&buffer[strlen(buffer)],"instantaneous");
+					else
+						SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					if ((int)grib_rec->pds[18] == 0) 
+						sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of 24 hours)");
+					else {
+						sprintf(&buffer[strlen(buffer)]," (beginning ");
+						SetTimePeriodString(&buffer[strlen(buffer)],(int)grib_rec->pds[18],step->time_unit_indicator);
+						sprintf(&buffer[strlen(buffer)]," from reference time at intervals of 24 hours)");
+					}
+					break;
+				case 130:
+				case 131:
+					if (step->time_period == 0) 
+						sprintf(&buffer[strlen(buffer)],"instantaneous");
+					else
+						SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					if ((int)grib_rec->pds[18] == 0) 
+						sprintf(&buffer[strlen(buffer)]," (beginning at reference time)");
+					else {
+						sprintf(&buffer[strlen(buffer)]," (beginning ");
+						SetTimePeriodString(&buffer[strlen(buffer)],(int)grib_rec->pds[18],step->time_unit_indicator);
+						sprintf(&buffer[strlen(buffer)]," from reference time)");
+					}
+					break;
+				case 132:
+					sprintf(&buffer[strlen(buffer)],"instantaneous");
+					if ((int)grib_rec->pds[18] == 0) {
+						sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of ");
+					}
+					else {
+						sprintf(&buffer[strlen(buffer)]," (beginning ");
+						SetTimePeriodString(&buffer[strlen(buffer)],(int)grib_rec->pds[18],step->time_unit_indicator);
+						sprintf(&buffer[strlen(buffer)]," from reference time at intervals of ");
+					}
+					SetTimePeriodString(&buffer[strlen(buffer)],(int)grib_rec->pds[19],step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)],")");
+					break;
+				}
+			}
+			else {
+				switch (step->time_range_indicator) {
+				case 51:
+					SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of 1 year)");
+					break;
+					
+				case 113:
+				case 114:
+				case 115:
+				case 116:
+					if (step->time_period == 0) {
+						sprintf(buffer,"instantaneous (intervals of ");
+					}
+					else {
+						SetTimePeriodString(buffer,step->time_period,step->time_unit_indicator);
+						sprintf(&buffer[strlen(buffer)]," (at intervals of ");
+					}
+					SetTimePeriodString(&buffer[strlen(buffer)],(int)grib_rec->pds[19],step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)],")");
+					break;
+				case 117:
+					SetTimePeriodString(buffer,step->time_period,step->time_unit_indicator);
+					sprintf(buffer,"(first period: subsequent periods of decreasing length at intervals of ");
+					SetTimePeriodString(buffer,grib_rec->pds[19],step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)]," such that all end at the same time");
+					break;
+				case 118:
+				case 119:
+				case 123:
+				case 124:
+				case 125:
+					if (step->time_period == 0) 
+						sprintf(&buffer[strlen(buffer)],"instantaneous");
+					else
+						SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of ");
+					SetTimePeriodString(&buffer[strlen(buffer)],(int)grib_rec->pds[19],step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)],")");
+					break;
+				case 128:
+				case 130:
+					SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of 24 hours)");
+					break;
+				case 137:
+				case 138:
+					SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of 6 hours)");
+					break;
+				case 139:
+				case 140:
+					SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of 12 hours)");
+					break;
+				case 129:
+				case 131:
+					SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)]," (beginning at reference time at intervals of ");
+					SetTimePeriodString(&buffer[strlen(buffer)],step->time_period,step->time_unit_indicator);
+					sprintf(&buffer[strlen(buffer)],")");
+					break;
+				case 132:
+				case 133:
+				case 134:
+				case 135:
+				case 136:
+					SetTimePeriodString(buffer,step->time_period,step->time_unit_indicator);
+					if ((int)grib_rec->pds[18] == 0) {
+						sprintf(&buffer[strlen(buffer)]," (beginnng at reference time at intervals of 1 year)");
+					}
+					else {
+						sprintf(&buffer[strlen(buffer)]," (beginning ");
+						SetTimePeriodString(&buffer[strlen(buffer)],grib_rec->pds[18],step->time_unit_indicator);
+						sprintf(&buffer[strlen(buffer)]," after reference time at intervals of 1 year)");
+					}
+				}
+			}
+
+			tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
+			*tmp_string = NrmStringToQuark(buffer);
+			att_list_ptr->att_inq->thevalue = (NclMultiDValData)
+				_NclCreateVal(NULL, NULL,
+					      Ncl_MultiDValData, 0, (void *) tmp_string, NULL, 1, &tmp_dimsizes, 
+					      PERMANENT, NULL, nclTypestringClass);
+			step->theatts = att_list_ptr;
+			step->n_atts++;
+
+			/* statistical process descriptor -- the text is modified from the GRIB documentation to remove references to P1 and P2 -- these should be accounted for dynamically with
+			   the  statistical_process_duration attribute */
+
+			att_list_ptr = (GribAttInqRecList*)NclMalloc((unsigned)sizeof(GribAttInqRecList));
+			att_list_ptr->next = step->theatts;
+			att_list_ptr->att_inq = (GribAttInqRec*)NclMalloc((unsigned)sizeof(GribAttInqRec));
+			att_list_ptr->att_inq->name = NrmStringToQuark("statistical_process_descriptor");
+			tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
+			if (tr_ix != -1) {
+				sprintf(buffer,"%s",time_range_descriptor[tr_ix]);
+				*tmp_string = NrmStringToQuark(buffer);
+			}
+			else {
+				sprintf(buffer,"statistical process %d (see GRIB table 5)",step->time_range_indicator);
+				*tmp_string = NrmStringToQuark(buffer);
+			}
+			att_list_ptr->att_inq->thevalue = (NclMultiDValData)
+				_NclCreateVal(NULL, NULL,
+					      Ncl_MultiDValData, 0, (void *) tmp_string, NULL, 1, &tmp_dimsizes, 
+					      PERMANENT, NULL, nclTypestringClass);
+			step->theatts = att_list_ptr;
+			step->n_atts++;
+		}
 
 /*
 * Handle coordinate attributes,  ensemble, level, initial_time, forecast_time
@@ -1608,36 +1953,57 @@ GribFileRecord *therec;
 /*
 * center
 */
+		
+		att_list_ptr = (GribAttInqRecList*)NclMalloc((unsigned)sizeof(GribAttInqRecList));
+		att_list_ptr->next = step->theatts;
+		att_list_ptr->att_inq = (GribAttInqRec*)NclMalloc((unsigned)sizeof(GribAttInqRec));
+		att_list_ptr->att_inq->name = NrmStringToQuark("center");
+		tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
 		for( i = 0; i < sizeof(centers)/sizeof(GribTable);i++) {
 			if(centers[i].index == (int)grib_rec->pds[4]) {
-				att_list_ptr = (GribAttInqRecList*)NclMalloc((unsigned)sizeof(GribAttInqRecList));
-				att_list_ptr->next = step->theatts;
-				att_list_ptr->att_inq = (GribAttInqRec*)NclMalloc((unsigned)sizeof(GribAttInqRec));
-				att_list_ptr->att_inq->name = NrmStringToQuark("center");
-				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				*tmp_string = NrmStringToQuark(centers[i].name);		
-				att_list_ptr->att_inq->thevalue = (NclMultiDValData)_NclCreateVal( NULL, NULL, Ncl_MultiDValData, 0, (void*)tmp_string, NULL, 1 , &tmp_dimsizes, PERMANENT, NULL, nclTypestringClass);
-				step->theatts = att_list_ptr;
-				step->n_atts++;
+				break;
 			}
 		}
+		if (i < sizeof(centers)/sizeof(GribTable)) {
+				*tmp_string = NrmStringToQuark(centers[i].name);		
+		}
+		else {
+			*tmp_string = NrmStringToQuark("unknown");
+		}
+		att_list_ptr->att_inq->thevalue = (NclMultiDValData)_NclCreateVal( NULL, NULL, Ncl_MultiDValData, 0, (void*)tmp_string, NULL, 1 , &tmp_dimsizes, PERMANENT, NULL, nclTypestringClass);
+		step->theatts = att_list_ptr;
+		step->n_atts++;
 /*
 *  sub_center
 */
-		for( i = 0; i < sizeof(sub_centers)/sizeof(GribTable);i++) {
-			if(sub_centers[i].index == (int)grib_rec->pds[25]) {
-				att_list_ptr = (GribAttInqRecList*)NclMalloc((unsigned)sizeof(GribAttInqRecList));
-				att_list_ptr->next = step->theatts;
-				att_list_ptr->att_inq = (GribAttInqRec*)NclMalloc((unsigned)sizeof(GribAttInqRec));
-				att_list_ptr->att_inq->name = NrmStringToQuark("sub_center");
-				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				*tmp_string = NrmStringToQuark(sub_centers[i].name);		
-				att_list_ptr->att_inq->thevalue = (NclMultiDValData)_NclCreateVal( NULL, NULL, Ncl_MultiDValData, 0, (void*)tmp_string, NULL, 1 , &tmp_dimsizes, PERMANENT, NULL, nclTypestringClass);
-				step->theatts = att_list_ptr;
-				step->n_atts++;
+		if (grib_rec->pds[25] != 0 && grib_rec->pds[25] != 255) {
+			att_list_ptr = (GribAttInqRecList*)NclMalloc((unsigned)sizeof(GribAttInqRecList));
+			att_list_ptr->next = step->theatts;
+			att_list_ptr->att_inq = (GribAttInqRec*)NclMalloc((unsigned)sizeof(GribAttInqRec));
+			att_list_ptr->att_inq->name = NrmStringToQuark("sub_center");
+			/* if we can find a name for the sub_center, use it -- otherwise just give the number */
+			if (grib_rec->pds[4] == 7) { 
+				for( i = 0; i < sizeof(sub_centers)/sizeof(GribTable);i++) {
+					if(sub_centers[i].index == (int)grib_rec->pds[25]) {
+						tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
+						*tmp_string = NrmStringToQuark(sub_centers[i].name);		
+						break;
+					}
+				}
 			}
+			else if (grib_rec->pds[4] == 98 && grib_rec->pds[25] == 232) {
+				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
+				*tmp_string = NrmStringToQuark("Max Plank Institute for Meteorology");
+			}
+			else {
+				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
+				sprintf(buffer,"%d",(int)grib_rec->pds[25]);
+				*tmp_string = NrmStringToQuark(buffer);
+			}
+			att_list_ptr->att_inq->thevalue = (NclMultiDValData)_NclCreateVal( NULL, NULL, Ncl_MultiDValData, 0, (void*)tmp_string, NULL, 1 , &tmp_dimsizes, PERMANENT, NULL, nclTypestringClass);
+			step->theatts = att_list_ptr;
+			step->n_atts++;
 		}
-
 		step = step->next;
 	}
 }
@@ -1669,6 +2035,8 @@ GribFileRecord *therec;
 
 			for (i = 0; i < tstep->n_entries; i++) {
 				GribRecordInqRec *rec = tstep->thelist[i].rec_inq;
+				if (! rec)
+					continue;
 				NclFree(rec->var_name);
 				rec->var_name = (char*)NclMalloc((unsigned)strlen((char*)buffer) + 1);
 				strcpy(rec->var_name,(char*)buffer);
@@ -1761,10 +2129,17 @@ int GdsCompare(unsigned char *gds1,int gds_size1,unsigned char *gds2,int gds_siz
 	}
 	if (gds1[3] > 0 || gds2[3] > 0) {
 		int top1,top2;
-		if ((gds_size1 - (int)gds1[3] * 4  != gds_size2 - (int)gds2[3] * 4) ||
-		    (gds1[4] != gds2[4])) 
+		int size;
+		if ((gds_size1 - (int)gds1[3] * 4  != gds_size2 - (int)gds2[3] * 4))
 			return 0;
-		for( i = 4; i < (int)gds1[4] - 1 ; i++) {
+		/* we only need to compare up to the beginning of the level values */
+		/* gds[4] (octet 5) does not need to be the same */
+		/* 2014-03-03: Just compare to the minimum value given by gds[4]: the end of the "regular" part of the GDS.
+		 * (unless gds[4] is 0 or less than the size of the minimum regular GDS size)
+		 */
+		size = MIN(gds1[4],gds2[4]) - 1;
+		if (size < 32) size = 32;
+		for( i = 5; i < size ; i++) {
 			switch (i) {
 			case 16:
 				break;
@@ -1775,6 +2150,8 @@ int GdsCompare(unsigned char *gds1,int gds_size1,unsigned char *gds2,int gds_siz
 				break;
 			}
 		}
+/*
+                I don't think this is needed.
 		top1 = gds1[4] + gds1[3] * 4;
 		top2 = gds2[4] + gds2[3] * 4;
 		if (top1 < gds_size1) {
@@ -1785,6 +2162,7 @@ int GdsCompare(unsigned char *gds1,int gds_size1,unsigned char *gds2,int gds_siz
 					return(0);
 				}
 		}
+*/
 		return(1);
 	}
 	return 0;
@@ -1847,13 +2225,13 @@ void _Do109(GribFileRecord *therec,GribParamList *step) {
 	if (! ok)
 		return;
 
-	nv = (int)step->thelist->rec_inq->gds[3];
+	nv = (int)step->ref_rec->gds[3];
 	if(nv == 0) {
 		return;
 	}
-	ix = step->thelist->rec_inq->center_ix;
+	ix = step->ref_rec->center_ix;
 	sprintf(buffer,"lv_HYBL%d_a",tmp_file_dim_number);
-	if ((centers[ix].index == 98 || step->thelist->rec_inq->eff_center == 98) && 
+	if ((centers[ix].index == 98 || step->ref_rec->eff_center == 98) && 
 	    (nv / 2 > dimsizes_level)) {
 		/* 
 		 * ECMWF data - we know that ERA 40 and ERA 15 use level interfaces for A and B 
@@ -1876,13 +2254,13 @@ void _Do109(GribFileRecord *therec,GribParamList *step) {
 	}
 
 	if((_GribGetInternalVar(therec,NrmStringToQuark(buffer),&test) ==NULL)) {
-		pl = (int)step->thelist->rec_inq->gds[4];
+		pl = (int)step->ref_rec->gds[4];
 		tmpf = (float*)NclMalloc(nv*sizeof(float));
 		the_start_off = 4*nv+(pl-1);
 		for(i = pl-1;i< the_start_off; i+=4) {
-			sign  = (step->thelist->rec_inq->gds[i] & (char) 0200)? 1 : 0;
-			tmpa = (float)(step->thelist->rec_inq->gds[i] & (char)0177);
-			tmpb = (float)CnvtToDecimal(3,&(step->thelist->rec_inq->gds[i+1]));
+			sign  = (step->ref_rec->gds[i] & (char) 0200)? 1 : 0;
+			tmpa = (float)(step->ref_rec->gds[i] & (char)0177);
+			tmpb = (float)CnvtToDecimal(3,&(step->ref_rec->gds[i+1]));
 			tmpf[(i-(pl-1))/4] = tmpb;
 			tmpf[(i-(pl-1))/4] *= (float)pow(2.0,-24.0);
 			tmpf[(i-(pl-1))/4] *= (float)pow(16.0,(double)(tmpa - 64));
@@ -2468,10 +2846,10 @@ GribFileRecord *therec;
 	last = NULL;
 
 	while(step != NULL) {
-
+		step->ref_rec = NULL;
 		for(i = 0; i < step->n_entries; i++) {
 			if(step->thelist[i].rec_inq != NULL) {
-				grib_rec = step->thelist[i].rec_inq;
+				grib_rec = step->ref_rec = step->thelist[i].rec_inq;
 				break;
 			}
 		}
@@ -2900,13 +3278,9 @@ GribFileRecord *therec;
 				tmp->sub_type_id = step->level_indicator;
 				tmp->is_gds = -1;
 				tmp->size = step->levels->multidval.dim_sizes[0];
-				for(i = 0; i < sizeof(level_index)/sizeof(int); i++) {
-					if(level_index[i] == step->level_indicator) {
-						break;
-					}
-				}
-				if(i < sizeof(level_index)/sizeof(int)) {
-					sprintf(buffer,"lv_%s%d",level_str[i],therec->total_dims);
+
+				if(grib_rec->level_index != -1) {
+					sprintf(buffer,"lv_%s%d",level_str[grib_rec->level_index],therec->total_dims);
 				} else {
 					sprintf(buffer,"levels%d",therec->total_dims);
 				}
@@ -2921,16 +3295,16 @@ GribFileRecord *therec;
 				step->var_info.file_dim_num[current_dim] = tmp->dim_number;
 
 				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				if(i < sizeof(level_index)/sizeof(int)) {
-					*tmp_string = NrmStringToQuark(level_units_str[i]);
+				if(grib_rec->level_index != -1) {
+					*tmp_string = NrmStringToQuark(level_units_str[grib_rec->level_index]);
 				} else {
 					*tmp_string = NrmStringToQuark("unknown");
 				}
 				GribPushAtt(&att_list_ptr,"units",tmp_string,1,nclTypestringClass); 
 
 				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				if(i < sizeof(level_index)/sizeof(int)) {
-					*tmp_string = NrmStringToQuark(level_str_long_name[i]);
+				if(grib_rec->level_index != -1) {
+					*tmp_string = NrmStringToQuark(level_str_long_name[grib_rec->level_index]);
 				} else {
 					*tmp_string = NrmStringToQuark("unknown");
 				}
@@ -2990,13 +3364,8 @@ GribFileRecord *therec;
 				tmp->dim_number = therec->total_dims;
 				tmp->is_gds = -1;
 				tmp->size = step->levels0->multidval.dim_sizes[0];
-				for(i = 0; i < sizeof(level_index)/sizeof(int); i++) {
-					if(level_index[i] == step->level_indicator) {
-						break;
-					}
-				}
-				if(i < sizeof(level_index)/sizeof(int)) {
-					sprintf(buffer,"lv_%s%d",level_str[i],therec->total_dims);
+				if(grib_rec->level_index != -1) {
+					sprintf(buffer,"lv_%s%d",level_str[grib_rec->level_index],therec->total_dims);
 				} else {
 					sprintf(buffer,"levels%d",therec->total_dims);
 				}
@@ -3012,16 +3381,16 @@ GribFileRecord *therec;
 				sprintf(name_buffer,"%s%s",buffer,"_l0");
 
 				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				if(i < sizeof(level_index)/sizeof(int)) {
-					*tmp_string = NrmStringToQuark(level_units_str[i]);
+				if(grib_rec->level_index != -1) {
+					*tmp_string = NrmStringToQuark(level_units_str[grib_rec->level_index]);
 				} else {
 					*tmp_string = NrmStringToQuark("unknown");
 				}
 				GribPushAtt(&att_list_ptr,"units",tmp_string,1,nclTypestringClass); 
 
 				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				if(i < sizeof(level_index)/sizeof(int)) {
-					*tmp_string = NrmStringToQuark(level_str_long_name[i]);
+				if(grib_rec->level_index != -1) {
+					*tmp_string = NrmStringToQuark(level_str_long_name[grib_rec->level_index]);
 				} else {
 					*tmp_string = NrmStringToQuark("unknown");
 				}
@@ -3033,16 +3402,16 @@ GribFileRecord *therec;
 
 				sprintf(name_buffer,"%s%s",buffer,"_l1");
 				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				if(i < sizeof(level_index)/sizeof(int)) {
-					*tmp_string = NrmStringToQuark(level_units_str[i]);
+				if(grib_rec->level_index != -1) {
+					*tmp_string = NrmStringToQuark(level_units_str[grib_rec->level_index]);
 				} else {
 					*tmp_string = NrmStringToQuark("unknown");
 				}
 				GribPushAtt(&att_list_ptr,"units",tmp_string,1,nclTypestringClass); 
 
 				tmp_string = (NclQuark*)NclMalloc(sizeof(NclQuark));
-				if(i < sizeof(level_index)/sizeof(int)) {
-					*tmp_string = NrmStringToQuark(level_str_long_name[i]);
+				if(grib_rec->level_index != -1) {
+					*tmp_string = NrmStringToQuark(level_str_long_name[grib_rec->level_index]);
 				} else {
 					*tmp_string = NrmStringToQuark("unknown");
 				}
@@ -4839,140 +5208,156 @@ int *version;
 	}
 }
 
-static int _GetLevels
+static void SetLevelInfo
 #if NhlNeedProto
-(int *l0,int *l1,int indicator,unsigned char* lv)
+(GribRecordInqRec *grib_rec)
 #else
-(l0,l1,indicator,lv)
-int *l0;
-int *l1;
-int indicator;
-unsigned char *lv;
+(grib_rec)
 #endif
 {
-	if(indicator  < 100) {
-		*l0 = -1;
-		*l1 = -1;
+	int l0;
+	int l1;
+	unsigned char *lv = &(grib_rec->pds[10]);
+
+	grib_rec->level_indicator = (int)grib_rec->pds[9];
+	
+	if(grib_rec->level_indicator  < 100) {
+		l0 = -1;
+		l1 = -1;
 	}
-	switch(indicator) {
+
+	switch(grib_rec->level_indicator) {
 	case 100:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
-		return(1);
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
+		break;
 	case 101:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 102:
-		*l0 = -1;
-		*l1 = -1;
-		return(1);
+		l0 = -1;
+		l1 = -1;
+		break;
 	case 103:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 104:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 105:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 106:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 107:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
+		l1 = -1;
 		break;
 	case 108:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 109:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 110:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 111:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 112:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 113:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 114:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 115:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 116:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 117:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 119:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 120:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 121:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 125:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 128:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 141:
-		*l0 = (int)lv[0];
-		*l1 = (int)lv[1];
+		l0 = (int)lv[0];
+		l1 = (int)lv[1];
 		break;
 	case 160:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 200:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 201:
-		*l0 = CnvtToDecimal(2,lv);
-		*l1 = -1;
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
 		break;
 	case 1:
-		*l0 = -1;
-		*l1 = -1;
-		return(1);
+		l0 = -1;
+		l1 = -1;
+		break;
 	default: 
-		*l0 = -1;
-		*l1 = -1;
+		l0 = -1;
+		l1 = -1;
 	}
-	return(0);
+	/* JRA55 reanalysis has some special indexes */
+	if (grib_rec->center_ix == 32 && grib_rec->ptable_version == 200 && grib_rec->level_indicator == 213) {
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
+	}
+	else if (grib_rec->center_ix == 98 && grib_rec->level_indicator == 210) {
+		l0 = CnvtToDecimal(2,lv);
+		l1 = -1;
+	}
+		
+	grib_rec->level0 = l0;
+	grib_rec->level1 = l1;
+
+	return;
 }
 
 static void _SetCommonTimeUnit
@@ -5060,6 +5445,20 @@ unsigned char *offset;
 		return 0;
 	case 117:
 		return((int)offset[0]);
+	case 128:
+	case 129:
+	case 130:
+	case 131:
+	case 132:
+	case 133:
+	case 134:
+	case 135:
+	case 136:
+	case 137:
+	case 138:
+	case 139:
+	case 140:
+		return(0); /* for now at least */
 	default:
 		NhlPError(NhlWARNING,NhlEUNKNOWN,"NclGRIB: Unknown or unsupported time range indicator detected, continuing");
 		return(-1);
@@ -5528,8 +5927,14 @@ GribRecordInqRec *grib_rec;
 
 	if (compare_rec->gds_type != grib_rec->gds_type)
 		return compare_rec->gds_type - grib_rec->gds_type;
-	if (compare_rec->gds_size != grib_rec->gds_size)
-		return compare_rec->gds_size - grib_rec->gds_size;
+	if (compare_rec->gds_size != grib_rec->gds_size) {
+		/* we need to subtract out any difference due to vertical levels */
+		int diff = 0;
+		if (compare_rec->gds[3] != grib_rec->gds[3]) {
+			diff = 4 * (compare_rec->gds[3] - grib_rec->gds[3]);
+		}
+		return compare_rec->gds_size - grib_rec->gds_size - diff;
+	}
 	if (grib_rec->gds_type >= 50 && grib_rec->gds_type < 90)
 		return 0;
 	/* 
@@ -5561,7 +5966,7 @@ GribRecordInqRec *grib_rec;
 	var_time_ind = node->time_range_indicator == 10 ? 0 : node->time_range_indicator;
 	rec_time_ind = (int) grib_rec->pds[20] == 10 ? 0 : (int)grib_rec->pds[20];
 
-	if (var_time_ind < 2 && rec_time_ind < 2) {
+	if (! (var_time_ind < 2 && rec_time_ind < 2)) {
 		if (var_time_ind != rec_time_ind) {
 			return var_time_ind - rec_time_ind;
 		}
@@ -5737,9 +6142,10 @@ char * buf;
 #endif
 {
 	int days_per_month[12] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
-	int month, month_days;
+	int month, year;
 	int is_leap = 0;
 	int ix;
+	int use_months = 0;
 	/*
 	 * Negative time periods are considered to be modular values, and converted to
 	 * positive values depending on the units. This is difficult for days, as well
@@ -5758,20 +6164,121 @@ char * buf;
 		break;
 	case 2: /*Day*/
 		/* this oversimplifies and may need attention when there are users of such time periods */
-		/* if time period in days == a month, then switch to months */
+		/* if time period in days == a month, then switch to months in order to allow arrays of like elements */
+		/* may contain unfounded assumptions -- such as that P1 and P2 (pds[18] and pds[19] are always positive values */
 		month = (int) grec->pds[13];
-		month_days = days_per_month[month-1];
-		if (month == 2 && HeisLeapYear(grec->initial_time.year)) {
-			month_days++;
+		ix = month - 1;
+		year = grec->initial_time.year;
+		if (HeisLeapYear(year)) {
+			days_per_month[1] = 29;
 			is_leap = 1;
 		}
-		if (grec->pds[20] == 7 && grec->pds[14] - grec->pds[18] == 1 && grec->pds[14] + grec->pds[19] == month_days) {
-			/* special processing for GODAS -- although maybe it should be universal --
-			   see if we're really talking about a monthly average */
-			sprintf(buf,"1m");
-			time_period = 1;
+		switch ((int) grec->pds[20]) {
+			int start_day, end_day;
+			int start_month_ix, end_month_ix;
+		case 7:
+			start_day = grec->pds[14] - grec->pds[18];
+			end_day = grec->pds[14] + grec->pds[19];
+			start_month_ix = end_month_ix = ix;
+			while (start_day < 0) {
+				if (--start_month_ix < 0) {
+					start_month_ix += 12;
+					year--;
+					days_per_month[1] = HeisLeapYear(year) ? 29 : 28;
+				}
+				start_day += days_per_month[start_month_ix];
+			}
+			year = grec->initial_time.year;
+			while (end_day > days_per_month[end_month_ix]) {
+				end_day -= days_per_month[end_month_ix++];
+				if (end_month_ix == 12) {
+					end_month_ix = 0;
+					year++;
+					days_per_month[1] = HeisLeapYear(year) ? 29 : 28;
+				}
+				end_day -= days_per_month[end_month_ix];
+			}
+			if (end_day - start_day + 1 == days_per_month[ix] ||
+			    (end_day - start_day == 0 && end_month_ix == start_month_ix + 1)) {
+				/* period is equal to the length of the month */
+				sprintf(buf,"1m");
+				time_period = 1;
+				use_months = 1;
+			}
+			break;
+		case 6:
+			start_day = grec->pds[14] - grec->pds[18];
+			end_day = grec->pds[14] - grec->pds[19];
+			start_month_ix = end_month_ix = ix;
+			while (start_day < 0) {
+				if (--start_month_ix < 0) {
+					start_month_ix += 12;
+					year--;
+					days_per_month[1] = HeisLeapYear(year) ? 29 : 28;
+				}
+				start_day += days_per_month[start_month_ix];
+			}
+			year = grec->initial_time.year;
+			while (end_day < 0) {
+				if (--end_month_ix < 0) {
+					end_month_ix += 12;
+					year--;
+					days_per_month[1] = HeisLeapYear(year) ? 29 : 28;
+				}
+				end_day += days_per_month[start_month_ix];
+			}
+			if (end_day - start_day + 1 == days_per_month[ix] ||
+			    (end_day - start_day == 0 && end_month_ix == start_month_ix + 1)) {
+				/* period is equal to the length of the month */
+				sprintf(buf,"1m");
+				time_period = 1;
+				use_months = 1;
+			}
+			break;
+		case 2:
+		case 3:
+		case 4:
+		case 5:
+			start_day = grec->pds[14] + grec->pds[18];
+			end_day = grec->pds[14] + grec->pds[19];
+			start_month_ix = -1;
+			end_month_ix = -1;
+			for (ix = month - 1; ; ix++ ) {
+				if (ix == 12) {
+					ix %= 12;
+					year++;
+					days_per_month[1] = HeisLeapYear(year) ? 29 : 28;
+				}
+				if (start_month_ix < 0) {
+					if (start_day <=  days_per_month[ix]) {
+						start_month_ix = ix;
+					}
+					else {
+						start_day -= days_per_month[ix];
+					}
+				}
+				if (end_month_ix < 0) {
+					if (end_day <=  days_per_month[ix]) {
+						end_month_ix = ix;
+					}
+					else {
+						end_day -= days_per_month[ix];
+					}
+				}
+				if (start_month_ix > -1 && end_month_ix > -1)
+					break;
+			}
+			if (end_day - start_day + 1 == days_per_month[ix] ||
+			    (end_day - start_day == 0 && end_month_ix == start_month_ix + 1)) {
+				sprintf(buf,"1m");
+				time_period = 1;
+				use_months = 1;
+			}
+			break;
+		default:
+			break;
 		}
-		else {
+		if (! use_months)  {
 			ix = month - 1;
 			while (time_period < 0) {
 				if (ix == 1 && is_leap) {
@@ -6014,6 +6521,10 @@ char *name;
 			/* ignore */
 			continue;
 		}
+		else if (! ptable) {
+			/* no header line found yet -- ignore parameter */
+			continue;
+		}
 		param = &(ptable->table[ptable->pcount++]);
 		param->num = index;
 		TOKENSTART(cp);
@@ -6056,8 +6567,12 @@ char *name;
 	if (ptable) {
 		ptable->next = ptables;
 		ptables = ptable;
-		ptable->table = NclRealloc(ptable->table, ptable->pcount * sizeof(TBLE2));
+		ptable->table = NclRealloc(ptable->table, ptable->pcount * sizeof(TBLE2)); /* this might make the table smaller -- never bigger */
 	}
+	else if (table_count == 0) {
+		NhlPError(NhlWARNING,NhlEUNKNOWN,"NclGRIB: %s contains no valid parameter table header row",name);
+	}
+
 	return ptables;
 	
 }
@@ -6147,7 +6662,7 @@ static void InitPtables
 }
 
 
-static int InitializeOptions 
+static int g1InitializeOptions 
 #if	NhlNeedProto
 (GribFileRecord *tmp)
 #else
@@ -6188,6 +6703,10 @@ GribFileRecord *tmp;
 	options[GRIB_TIME_PERIOD_SUFFIX_OPT].n_values = 1;
 	options[GRIB_TIME_PERIOD_SUFFIX_OPT].values = (void *) 1;
 
+	options[GRIB_CACHE_SIZE_OPT].data_type = NCL_int;
+	options[GRIB_CACHE_SIZE_OPT].n_values = 1;
+	options[GRIB_CACHE_SIZE_OPT].values = (void *) 0;
+
 	tmp->options = options;
 	return 1;
 }
@@ -6207,7 +6726,7 @@ NclFileFormatType *format;
 		NhlPError(NhlFATAL,ENOMEM,NULL);
 		return NULL;
 	}
-	InitializeOptions(therec);
+	g1InitializeOptions(therec);
 	*format = _NclGRIB;
 	return (void *) therec;
 }
@@ -6490,114 +7009,136 @@ int wr_status;
 
 					switch(lcenter) {
 					case 98:           /* ECMWF */
-						switch (ptable_version) {
-						case 0:
-						case 128:
-							ptable = &ecmwf_128_params[0];
-							ptable_count = sizeof(ecmwf_128_params)/sizeof(TBLE2);
-							break;
-						case 129:
-							ptable = &ecmwf_129_params[0];
-							ptable_count = sizeof(ecmwf_129_params)/sizeof(TBLE2);
-							break;
-						case 130:
-							ptable = &ecmwf_130_params[0];
-							ptable_count = sizeof(ecmwf_130_params)/sizeof(TBLE2);
-							break;
-						case 131:
-							ptable = &ecmwf_131_params[0];
-							ptable_count = sizeof(ecmwf_131_params)/sizeof(TBLE2);
-							break;
-						case 132:
-							ptable = &ecmwf_132_params[0];
-							ptable_count = sizeof(ecmwf_132_params)/sizeof(TBLE2);
-							break;
-						case 133:
-							ptable = &ecmwf_133_params[0];
-							ptable_count = sizeof(ecmwf_133_params)/sizeof(TBLE2);
-							break;
-						case 140:
-							ptable = &ecmwf_140_params[0];
-							ptable_count = sizeof(ecmwf_140_params)/sizeof(TBLE2);
-							break;
-						case 150:
-							ptable = &ecmwf_150_params[0];
-							ptable_count = sizeof(ecmwf_150_params)/sizeof(TBLE2);
-							break;
-						case 151:
-							ptable = &ecmwf_151_params[0];
-							ptable_count = sizeof(ecmwf_151_params)/sizeof(TBLE2);
-							break;
-						case 160:
-							ptable = &ecmwf_160_params[0];
-							ptable_count = sizeof(ecmwf_160_params)/sizeof(TBLE2);
-							break;
-						case 162:
-							ptable = &ecmwf_162_params[0];
-							ptable_count = sizeof(ecmwf_162_params)/sizeof(TBLE2);
-							break;
-						case 170:
-							ptable = &ecmwf_170_params[0];
-							ptable_count = sizeof(ecmwf_170_params)/sizeof(TBLE2);
-							break;
-						case 171:
-							ptable = &ecmwf_171_params[0];
-							ptable_count = sizeof(ecmwf_171_params)/sizeof(TBLE2);
-							break;
-						case 172:
-							ptable = &ecmwf_172_params[0];
-							ptable_count = sizeof(ecmwf_172_params)/sizeof(TBLE2);
-							break;
-						case 173:
-							ptable = &ecmwf_173_params[0];
-							ptable_count = sizeof(ecmwf_173_params)/sizeof(TBLE2);
-							break;
-						case 174:
-							ptable = &ecmwf_174_params[0];
-							ptable_count = sizeof(ecmwf_174_params)/sizeof(TBLE2);
-							break;
-						case 175:
-							ptable = &ecmwf_175_params[0];
-							ptable_count = sizeof(ecmwf_175_params)/sizeof(TBLE2);
-							break;
+						if (subcenter == 232) {  /*MPI (Max Planck Institute for Meteorology)*/
+							switch (ptable_version) {
+							case 128:
+								ptable = &mpi_128_params[0];
+								ptable_count = sizeof(mpi_128_params)/sizeof(TBLE2);
+								break;
+							case 180:
+								ptable = &mpi_180_params[0];
+								ptable_count = sizeof(mpi_180_params)/sizeof(TBLE2);
+								break;
+							case 181:
+								ptable = &mpi_181_params[0];
+								ptable_count = sizeof(mpi_181_params)/sizeof(TBLE2);
+								break;
+							case 199:
+								ptable = &mpi_199_params[0];
+								ptable_count = sizeof(mpi_199_params)/sizeof(TBLE2);
+								break;
+							}
+						}
+						else {
+							switch (ptable_version) {
+							case 0:
+							case 128:
+								ptable = &ecmwf_128_params[0];
+								ptable_count = sizeof(ecmwf_128_params)/sizeof(TBLE2);
+								break;
+							case 129:
+								ptable = &ecmwf_129_params[0];
+								ptable_count = sizeof(ecmwf_129_params)/sizeof(TBLE2);
+								break;
+							case 130:
+								ptable = &ecmwf_130_params[0];
+								ptable_count = sizeof(ecmwf_130_params)/sizeof(TBLE2);
+								break;
+							case 131:
+								ptable = &ecmwf_131_params[0];
+								ptable_count = sizeof(ecmwf_131_params)/sizeof(TBLE2);
+								break;
+							case 132:
+								ptable = &ecmwf_132_params[0];
+								ptable_count = sizeof(ecmwf_132_params)/sizeof(TBLE2);
+								break;
+							case 133:
+								ptable = &ecmwf_133_params[0];
+								ptable_count = sizeof(ecmwf_133_params)/sizeof(TBLE2);
+								break;
+							case 140:
+								ptable = &ecmwf_140_params[0];
+								ptable_count = sizeof(ecmwf_140_params)/sizeof(TBLE2);
+								break;
+							case 150:
+								ptable = &ecmwf_150_params[0];
+								ptable_count = sizeof(ecmwf_150_params)/sizeof(TBLE2);
+								break;
+							case 151:
+								ptable = &ecmwf_151_params[0];
+								ptable_count = sizeof(ecmwf_151_params)/sizeof(TBLE2);
+								break;
+							case 160:
+								ptable = &ecmwf_160_params[0];
+								ptable_count = sizeof(ecmwf_160_params)/sizeof(TBLE2);
+								break;
+							case 162:
+								ptable = &ecmwf_162_params[0];
+								ptable_count = sizeof(ecmwf_162_params)/sizeof(TBLE2);
+								break;
+							case 170:
+								ptable = &ecmwf_170_params[0];
+								ptable_count = sizeof(ecmwf_170_params)/sizeof(TBLE2);
+								break;
+							case 171:
+								ptable = &ecmwf_171_params[0];
+								ptable_count = sizeof(ecmwf_171_params)/sizeof(TBLE2);
+								break;
+							case 172:
+								ptable = &ecmwf_172_params[0];
+								ptable_count = sizeof(ecmwf_172_params)/sizeof(TBLE2);
+								break;
+							case 173:
+								ptable = &ecmwf_173_params[0];
+								ptable_count = sizeof(ecmwf_173_params)/sizeof(TBLE2);
+								break;
+							case 174:
+								ptable = &ecmwf_174_params[0];
+								ptable_count = sizeof(ecmwf_174_params)/sizeof(TBLE2);
+								break;
+							case 175:
+								ptable = &ecmwf_175_params[0];
+								ptable_count = sizeof(ecmwf_175_params)/sizeof(TBLE2);
+								break;
 
-						case 180:
-							ptable = &ecmwf_180_params[0];
-							ptable_count = sizeof(ecmwf_180_params)/sizeof(TBLE2);
-							break;
-						case 190:
-							ptable = &ecmwf_190_params[0];
-							ptable_count = sizeof(ecmwf_190_params)/sizeof(TBLE2);
-							break;
-						case 200:
-							ptable = &ecmwf_200_params[0];
-							ptable_count = sizeof(ecmwf_200_params)/sizeof(TBLE2);
-							break;
-						case 201:
-							ptable = &ecmwf_201_params[0];
-							ptable_count = sizeof(ecmwf_201_params)/sizeof(TBLE2);
-							break;
-						case 210:
-							ptable = &ecmwf_210_params[0];
-							ptable_count = sizeof(ecmwf_210_params)/sizeof(TBLE2);
-							break;
-						case 211:
-							ptable = &ecmwf_211_params[0];
-							ptable_count = sizeof(ecmwf_211_params)/sizeof(TBLE2);
-							break;
-						case 228:
-							ptable = &ecmwf_228_params[0];
-							ptable_count = sizeof(ecmwf_228_params)/sizeof(TBLE2);
-							break;
-						case 230:
-							ptable = &ecmwf_230_params[0];
-							ptable_count = sizeof(ecmwf_230_params)/sizeof(TBLE2);
-							break;
-						case 234:
-							ptable = &ecmwf_234_params[0];
-							ptable_count = sizeof(ecmwf_234_params)/sizeof(TBLE2);
-							break;
+							case 180:
+								ptable = &ecmwf_180_params[0];
+								ptable_count = sizeof(ecmwf_180_params)/sizeof(TBLE2);
+								break;
+							case 190:
+								ptable = &ecmwf_190_params[0];
+								ptable_count = sizeof(ecmwf_190_params)/sizeof(TBLE2);
+								break;
+							case 200:
+								ptable = &ecmwf_200_params[0];
+								ptable_count = sizeof(ecmwf_200_params)/sizeof(TBLE2);
+								break;
+							case 201:
+								ptable = &ecmwf_201_params[0];
+								ptable_count = sizeof(ecmwf_201_params)/sizeof(TBLE2);
+								break;
+							case 210:
+								ptable = &ecmwf_210_params[0];
+								ptable_count = sizeof(ecmwf_210_params)/sizeof(TBLE2);
+								break;
+							case 211:
+								ptable = &ecmwf_211_params[0];
+								ptable_count = sizeof(ecmwf_211_params)/sizeof(TBLE2);
+								break;
+							case 228:
+								ptable = &ecmwf_228_params[0];
+								ptable_count = sizeof(ecmwf_228_params)/sizeof(TBLE2);
+								break;
+							case 230:
+								ptable = &ecmwf_230_params[0];
+								ptable_count = sizeof(ecmwf_230_params)/sizeof(TBLE2);
+								break;
+							case 234:
+								ptable = &ecmwf_234_params[0];
+								ptable_count = sizeof(ecmwf_234_params)/sizeof(TBLE2);
+								break;
 
+							}
 						}
 						break;
 					case 78: /* DWD */
@@ -6648,9 +7189,15 @@ int wr_status;
 						}
 						break;
 					case 34: /* JMA */
-						if (ptable_version == 3) {
+						switch (ptable_version) {
+						case 3:
 							ptable = &jma_3_params[0];
 							ptable_count = sizeof(jma_3_params)/sizeof(TBLE2);
+							break;
+						case 200:  /* JMA 55 year reanalysis (JRA55)*/
+							ptable = &jra55_params[0];
+							ptable_count = sizeof(jra55_params)/sizeof(TBLE2);
+							break;
 						}
 						break;
 					case 8:
@@ -6760,16 +7307,20 @@ int wr_status;
 							break;
 						}
 					}
+					/*
 					if (ptable == NULL && grib_rec->param_number < 128) {
-						if (ptable_version > 3 && table_warning == 0) {
+					*/
+					if (ptable == NULL) {
+						if (table_warning == 0 && (ptable_version > 3 || grib_rec->param_number > 127)) {
 							NhlPError(NhlWARNING,NhlEUNKNOWN,
-								  "NclGRIB: Unrecognized parameter table (center %d, subcenter %d, table %d), defaulting to NCEP operational table for standard parameters (1-127): variable names and units may be incorrect",
+								  "NclGRIB: Unrecognized parameter table (center %d, subcenter %d, table %d), defaulting to NCEP operational table: variable names and units may be incorrect",
 								  center, subcenter, ptable_version);
 							table_warning = 1;
 						}
 						/* 
 						 * if the ptable_version <= 3 and the parameter # is less than 128 then 
-						 * the NCEP operational table is the legitimate default; 
+						 * the NCEP operational table (same as WMO default ptable) is the legitimate default -- and the warning above should not be given
+						 * Otherwise we still default, but the chances are higher that it is wrong : hence the warning -- this is a change for 6.2.0
 						 */
 						ptable = &ncep_opn_params[0];
 						ptable_count = sizeof(ncep_opn_params)/sizeof(TBLE2);
@@ -6817,7 +7368,7 @@ int wr_status;
 
 
 					grib_rec->level_indicator = (int)grib_rec->pds[9];
-					_GetLevels(&grib_rec->level0,&grib_rec->level1,(int)grib_rec->pds[9],&(grib_rec->pds[10]));
+					SetLevelInfo(grib_rec);        /*->level0,&grib_rec->level1,(int)grib_rec->pds[9],&(grib_rec->pds[10]));*/
 					grib_rec->is_ensemble = 0;
 					memset(&grib_rec->ens,0,sizeof(ENS));
 					/* check for ensemble dimension */
@@ -6908,19 +7459,40 @@ int wr_status;
  					} else {
 						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_%d",grib_rec->grid_number);
 					}
-					for(i = 0; i < sizeof(level_index)/sizeof(int); i++) {
-						if(level_index[i] == (int)grib_rec->pds[9]) { 
-							break;
+					grib_rec->level_index = -1;
+					if (grib_rec->center_ix == 98) { /* look for possible ecmwf local level */
+						for (i = 0; i < sizeof(ecmwf_local_level) / sizeof(int); i++) {
+							if (ecmwf_local_level[i] == (int)grib_rec->pds[9]) {
+							        grib_rec->level_index =  ecmwf_local_start_index + i;
+								break;
+							}
 						}
 					}
-					if(i < sizeof(level_index)/sizeof(int)) {
-						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_%s",level_str[i]);
+					if (grib_rec->level_index == -1 && grib_rec->center_ix == 32 && grib_rec->ptable_version == 200) { /* look for possible jra55 local level */
+						for (i = 0; i < sizeof(jra55_local_level) / sizeof(int); i++) {
+							if (jra55_local_level[i] == (int)grib_rec->pds[9]) {
+							        grib_rec->level_index =  jra55_local_start_index + i;
+								break;
+							}
+						}
+					}
+					if (grib_rec->level_index == -1) {   /* look through the standard levels */
+						for(i = 0; i < sizeof(level_index)/sizeof(int); i++) {
+							if(level_index[i] == (int)grib_rec->pds[9]) { 
+								grib_rec->level_index  = i;
+								break;
+							}
+						}
+					}
+					if (grib_rec->level_index != -1) { 
+						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_%s",level_str[grib_rec->level_index]);
 					} else {
 						if(((int)grib_rec->pds[9]) != 0) {
 							sprintf((char*)&(buffer[strlen((char*)buffer)]),"_%d",(int)grib_rec->pds[9]);
 						}
 					}
 					grib_rec->time_period = 0;
+					/* printf("time range indicator %d\n",(int)grib_rec->pds[20]); */
 					suffix = (int)(therec->options[GRIB_TIME_PERIOD_SUFFIX_OPT].values);
 					switch((int)grib_rec->pds[20]) {
 						char tpbuf[16];
@@ -6984,6 +7556,48 @@ int wr_status;
 							if (! suffix) tpbuf[0] = '\0';
 							sprintf((char*)&(buffer[strlen((char*)buffer)]),"_ave%s",tpbuf);
 						}
+						break;
+					case 51:
+						grib_rec->time_period = (int) grib_rec->pds[19];
+						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_S%d",(int)grib_rec->pds[20]);
+						break;
+					case 113:
+					case 114:
+					case 115:
+					case 116:
+					case 117:
+					case 119:
+					case 125:
+						grib_rec->time_period = (int) grib_rec->pds[18];
+						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_S%d",(int)grib_rec->pds[20]);
+						break;
+					case 118:
+					case 123:
+					case 124:
+						grib_rec->time_period = 0;
+						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_S%d",(int)grib_rec->pds[20]);
+						break;
+					case 132:
+						if  (grib_rec->center_ix == 32 && grib_rec->ptable_version == 200) {
+							grib_rec->time_period = 0;
+							sprintf((char*)&(buffer[strlen((char*)buffer)]),"_S%d",(int)grib_rec->pds[20]);
+							break;
+						}
+						/* else fall through */
+					case 128:
+					case 129:
+					case 130:
+					case 131:
+					case 133:
+					case 134:
+					case 135:
+					case 136:
+					case 137:
+					case 138:
+					case 139:
+					case 140:
+						grib_rec->time_period = (int)grib_rec->pds[19] - (int) grib_rec->pds[18];
+						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_S%d",(int)grib_rec->pds[20]);
 						break;
 					default:
 						sprintf((char*)&(buffer[strlen((char*)buffer)]),"_%d",(int)grib_rec->pds[20]);
@@ -7154,41 +7768,6 @@ int wr_status;
 				}
 			}
 			qsort((void*)sortar,i,sizeof(GribRecordInqRecList*),record_comp);
-
-#if 0
-		
-			j = 0;
-			i = 0;
-			l = 0;
-			ptr = sortar;
-			start_ptr = sortar;
-			while(j < step->n_entries) {
-				start_ptr = ptr;
-				i = 0;
-				while((j< step->n_entries)&&(date_comp((void*)&(ptr[i]),(void*)start_ptr))==0) {
-					i++;
-					j++;
-				}
-				qsort((void*)ptr,i,sizeof(GribRecordInqRecList*),level_comp);
-#if 0
-				if((*ptr)->rec_inq->level0 != -1) {
-					for(k = 0; k < i-1; k++) {
-						if(!level_comp((void*)&(ptr[k]),(void*)&(ptr[k+1]))) {
-							NhlPError(NhlWARNING,NhlEUNKNOWN,"NclGRIB: Duplicate GRIB record found, skipping record");
-							ptr[k] = ptr[k+1];
-							l++;
-
-						}
-					}
-				}
-#endif
-				if(j < step->n_entries) {
-					ptr = &(ptr[i]);
-				}
-			}
-
-#endif
-
 
 
 
@@ -7549,44 +8128,44 @@ void *therec;
 int *num_dims;
 #endif
 {
-GribFileRecord *thefile = (GribFileRecord*)therec;
-GribDimInqRecList *dstep;
-NclQuark *dims;
-int i,j;
+	GribFileRecord *thefile = (GribFileRecord*)therec;
+	GribDimInqRecList *dstep;
+	NclQuark *dims;
+	int i,j;
 
-dims = (NclQuark*)NclMalloc((unsigned)sizeof(NclQuark)*thefile->total_dims);
-i = 0;
-*num_dims = thefile->total_dims;
-dstep = thefile->scalar_dims;
-for(j=0; j < thefile->n_scalar_dims; j++) {
-	dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
-	dstep = dstep->next;
-}
-dstep = thefile->ensemble_dims;
-for(j=0; j < thefile->n_ensemble_dims; j++) {
-	dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
-	dstep = dstep->next;
-}
-dstep = thefile->it_dims;
-for(j=0; j < thefile->n_it_dims; j++) {
-	dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
-	dstep = dstep->next;
-}
-dstep = thefile->ft_dims;
-for(j=0; j < thefile->n_ft_dims; j++) {
-	dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
-	dstep = dstep->next;
-}
-dstep = thefile->lv_dims;
-for(j=0; j < thefile->n_lv_dims; j++) {
-	dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
-	dstep = dstep->next;
-}
-dstep = thefile->grid_dims;
-for(j=0; j < thefile->n_grid_dims; j++) {
-	dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
-	dstep = dstep->next;
-}
+	dims = (NclQuark*)NclMalloc((unsigned)sizeof(NclQuark)*thefile->total_dims);
+	i = 0;
+	*num_dims = thefile->total_dims;
+	dstep = thefile->scalar_dims;
+	for(j=0; j < thefile->n_scalar_dims; j++) {
+		dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
+		dstep = dstep->next;
+	}
+	dstep = thefile->ensemble_dims;
+	for(j=0; j < thefile->n_ensemble_dims; j++) {
+		dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
+		dstep = dstep->next;
+	}
+	dstep = thefile->it_dims;
+	for(j=0; j < thefile->n_it_dims; j++) {
+		dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
+		dstep = dstep->next;
+	}
+	dstep = thefile->ft_dims;
+	for(j=0; j < thefile->n_ft_dims; j++) {
+		dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
+		dstep = dstep->next;
+	}
+	dstep = thefile->lv_dims;
+	for(j=0; j < thefile->n_lv_dims; j++) {
+		dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
+		dstep = dstep->next;
+	}
+	dstep = thefile->grid_dims;
+	for(j=0; j < thefile->n_grid_dims; j++) {
+		dims[dstep->dim_inq->dim_number] = dstep->dim_inq->dim_name;	
+		dstep = dstep->next;
+	}
 
 return(dims);
 }
@@ -8268,6 +8847,9 @@ static NhlErrorTypes GribSetOption
 	}
 	if (option ==  NrmStringToQuark("timeperiodsuffix")) {
 		rec->options[GRIB_TIME_PERIOD_SUFFIX_OPT].values = (void*) *(int *)values;
+	}
+	if (option ==  NrmStringToQuark("cachesize")) {
+		rec->options[GRIB_CACHE_SIZE_OPT].values = (void*) *(int *)values;
 	}
 	
 	return NhlNOERROR;

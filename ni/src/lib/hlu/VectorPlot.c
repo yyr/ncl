@@ -1373,6 +1373,7 @@ static char *SetValuesName = "VectorPlotSetValues";
 static NhlVectorPlotLayer	Vcl = NULL;
 static NhlVectorPlotLayerPart	*Vcp = NULL;
 static NhlBoolean		Need_Info;
+static int 			Save_Hemisphere = 0;
 
 /*
  * Function:	nhlfvectorplotlayerclass
@@ -3579,6 +3580,8 @@ static NhlErrorTypes VectorPlotPreDraw
 
 	Vcp = vcp;
 	Vcl = vcl;
+	Save_Hemisphere = 0;
+
 
 	subret = vcInitDraw(vcl,entry_name);
 	if ((ret = MIN(subret,ret)) < NhlWARNING) {
@@ -3611,6 +3614,7 @@ static NhlErrorTypes VectorPlotPreDraw
 	}
 
 	Vcp = NULL;
+	Save_Hemisphere = 0;
 	return MIN(subret,ret);
 }
 
@@ -3652,6 +3656,7 @@ static NhlErrorTypes VectorPlotDraw
 
 	Vcp = vcp;
 	Vcl = vcl;
+	Save_Hemisphere = 0;
 
         seg_draw = vcl->view.use_segments && ! vcp->new_draw_req &&
 		vcp->draw_dat && vcp->draw_dat->id != NgNOT_A_SEGMENT;
@@ -3673,6 +3678,7 @@ static NhlErrorTypes VectorPlotDraw
 		subret = vcDraw((NhlVectorPlotLayer) layer,NhlDRAW,entry_name);
 	}
 
+	Save_Hemisphere = 0;
 	Vcp = NULL;
 	return MIN(subret,ret);
 }
@@ -3708,6 +3714,7 @@ static NhlErrorTypes VectorPlotPostDraw
 
 	Vcp = vcp;
 	Vcl = vcl;
+	Save_Hemisphere = 0;
 
 	if (! vcp->data_init || vcp->zero_field) {
 		if (vcp->display_zerof_no_data &&
@@ -3747,6 +3754,7 @@ static NhlErrorTypes VectorPlotPostDraw
 	}
 
 	vcp->new_draw_req = False;
+	Save_Hemisphere = 0;
 	Vcp = NULL;
 
 	if (tfp->overlay_status == _tfNotInOverlay) {
@@ -5880,12 +5888,6 @@ static NhlErrorTypes PrepareAnnoString
 
 	*changed = False;
 
-	if (! vcp->data_changed && ! vcp->levels_set && 
-	    (value == old_value) &&
-	    (*new_string == *old_string)) {
-		return NhlNOERROR;
-	}
-
 	if (init || ! *new_string ||
 	    *new_string != *old_string) {
 		int strsize = *new_string == NULL ? 
@@ -6061,25 +6063,31 @@ static NhlErrorTypes ManageVecAnno
 
 	entry_name = (init) ? InitName : SetValuesName;
 
-	subret = PrepareAnnoString(vcp,ovcp,init,
-				   ilp->aap->real_vec_mag,
-				   oilp->aap->real_vec_mag,
-				   &ilp->string1,&oilp->string1,
-				   def_string1,&ilp->text1,
-				   ilp->fcode[0],
-				   &text_changed,entry_name);
-	if ((ret = MIN(ret,subret)) < NhlWARNING) return ret;
-	if (text_changed) oilp->text1 = NULL;
+	if (vcp->data_changed || vcp->levels_set ||
+	    (ilp->aap->real_vec_mag != oilp->aap->real_vec_mag) ||
+	    (ilp->string1 != oilp->string1) ||
+	    (vcp->mag_scale.scale_factor != ovcp->mag_scale.scale_factor) ||
+	    (vcp->svalue_scale.scale_factor != ovcp->svalue_scale.scale_factor)) {
+		subret = PrepareAnnoString(vcp,ovcp,init,
+					   ilp->aap->real_vec_mag,
+					   oilp->aap->real_vec_mag,
+					   &ilp->string1,&oilp->string1,
+					   def_string1,&ilp->text1,
+					   ilp->fcode[0],
+					   &text_changed,entry_name);
+		if ((ret = MIN(ret,subret)) < NhlWARNING) return ret;
+		if (text_changed) oilp->text1 = NULL;
 
-	subret = PrepareAnnoString(vcp,ovcp,init,
-				   ilp->aap->real_vec_mag,
-				   oilp->aap->real_vec_mag,
-				   &ilp->string2,&oilp->string2,
-				   def_string2,&ilp->text2,
-				   ilp->fcode[0],
-				   &text_changed,entry_name);
-	if ((ret = MIN(ret,subret)) < NhlWARNING) return ret;
-	if (text_changed) oilp->text2 = NULL;
+		subret = PrepareAnnoString(vcp,ovcp,init,
+					   ilp->aap->real_vec_mag,
+					   oilp->aap->real_vec_mag,
+					   &ilp->string2,&oilp->string2,
+					   def_string2,&ilp->text2,
+					   ilp->fcode[0],
+					   &text_changed,entry_name);
+		if ((ret = MIN(ret,subret)) < NhlWARNING) return ret;
+		if (text_changed) oilp->text2 = NULL;
+	}
 
         switch(vcp->glyph_style) {
             default:
@@ -9003,7 +9011,6 @@ void (_NHLCALLF(hluvvmpxy,HLUVVMPXY))
 	static NhlLayer trans_obj, overlay_trans_obj;
 	static NhlBoolean over_map;
 	static double rlen_d;
-	static int save_hemisphere = 0;
 	int hemisphere;
 	float xsc = 1.0, ysc = 1.0;
 
@@ -9207,9 +9214,9 @@ void (_NHLCALLF(hluvvmpxy,HLUVVMPXY))
 			*ye=c_cufy((float)ytd);
 
 			hemisphere = ydata >= 0 ? 1 : -1;
-			if (hemisphere != save_hemisphere) {
+			if (hemisphere != Save_Hemisphere) {
 				NGCALLF(vvinwb,VVINWB)(&hemisphere);
-				save_hemisphere = hemisphere;
+				Save_Hemisphere = hemisphere;
 			}
 
 			return;

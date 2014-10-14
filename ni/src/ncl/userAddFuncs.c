@@ -61,19 +61,18 @@ extern "C" {
 #include "FileSupport.h"
 #include "NclAtt.h"
 #include "NclList.h"
-#include "NclAdvancedList.h"
 #include "ListSupport.h"
 #include "NclFileInterfaces.h"
 #include <signal.h>
 #include <netcdf.h>
-#include <regex.h>
 #include <ctype.h>
+#include <string.h>
 
-#define MAX_PRINT_SPACES	32
-#define MAX_LIST_ELEMENT	32
-#define MAX_PRINT_NAME_LENGTH	512
+#define MAX_PRINT_SPACES	128
+#define MAX_LIST_ELEMENT	128
+#define MAX_PRINT_NAME_LENGTH	1024
 
-#define NCL_INITIAL_STRING_LENGTH	2048
+#define NCL_INITIAL_STRING_LENGTH	8192
 
 NhlErrorTypes _Nclstr_fields_count
 #if     NhlNeedProto
@@ -82,8 +81,8 @@ NhlErrorTypes _Nclstr_fields_count
 ()
 #endif
 {
-    string *strs;
-    string *delim;
+    NclQuark *strs;
+    NclQuark *delim;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -102,7 +101,7 @@ NhlErrorTypes _Nclstr_fields_count
     ng_size_t str_size = 1;
     int max_length = 0;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_strs,
@@ -118,7 +117,7 @@ NhlErrorTypes _Nclstr_fields_count
         return NhlFATAL;
     }
 
-    delim = (string *) NclGetArgValue(
+    delim = (NclQuark *) NclGetArgValue(
                         1,
                         2,
                         NULL,
@@ -221,8 +220,8 @@ NhlErrorTypes _Nclstr_get_field
 ()
 #endif
 {
-    string *strs;
-    string *delim;
+    NclQuark *strs;
+    NclQuark *delim;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -239,7 +238,7 @@ NhlErrorTypes _Nclstr_get_field
     char *tmp_str;
     char *tmp_delim;
     char *result = NULL;
-    string *arraySubString;
+    NclQuark *arraySubString;
     ng_size_t str_size;
     int *field;
 /*
@@ -250,7 +249,7 @@ NhlErrorTypes _Nclstr_get_field
  */
     int max_length = 0;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         3,
                         &ndim_strs,
@@ -276,7 +275,7 @@ NhlErrorTypes _Nclstr_get_field
                         NULL,
                         DONT_CARE);
 
-    delim = (string *) NclGetArgValue(
+    delim = (NclQuark *) NclGetArgValue(
                         2,
                         3,
                         NULL,
@@ -289,7 +288,7 @@ NhlErrorTypes _Nclstr_get_field
     if(has_missing_strs)
         ret_missing.stringval = missing_strs.stringval;
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     str_size = 1;
     for(i=0; i<ndim_strs; i++)
@@ -319,7 +318,7 @@ NhlErrorTypes _Nclstr_get_field
         return NhlFATAL;
     }
 
-    arraySubString = (string *) NclMalloc(str_size*sizeof(string));
+    arraySubString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arraySubString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -400,8 +399,8 @@ NhlErrorTypes _Nclstr_split
 ()
 #endif
 {
-    string *strs;
-    string *delim;
+    NclQuark *strs;
+    NclQuark *delim;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -417,11 +416,11 @@ NhlErrorTypes _Nclstr_split
     char *tmp_str;
     char *tmp_delim;
     char *result = NULL;
-    string *arraySubString;
+    NclQuark *arraySubString;
 
     int max_length = 1;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_strs,
@@ -433,11 +432,11 @@ NhlErrorTypes _Nclstr_split
 
     if (strs == NULL)
     {
-        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_get_field: input string is null.");
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_split: input string is null.");
         return NhlFATAL;
     }
 
-    delim = (string *) NclGetArgValue(
+    delim = (NclQuark *) NclGetArgValue(
                         1,
                         2,
                         NULL,
@@ -450,7 +449,7 @@ NhlErrorTypes _Nclstr_split
     if(has_missing_strs)
         ret_missing.stringval = missing_strs.stringval;
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     tmp_delim = (char *) NclMalloc(strlen(NrmQuarkToString(delim[0]))+2);
     if (! tmp_delim)
@@ -460,7 +459,7 @@ NhlErrorTypes _Nclstr_split
     }
     strcpy(tmp_delim, (char *) NrmQuarkToString(delim[0]));
 
-    arraySubString = (string *) NclMalloc(sizeof(string));
+    arraySubString = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! arraySubString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -493,7 +492,7 @@ NhlErrorTypes _Nclstr_split
             if(n >= max_length)
             {
                 max_length *= 2;
-                arraySubString = (string *) NclRealloc(arraySubString, max_length*sizeof(string));
+                arraySubString = (NclQuark *) NclRealloc(arraySubString, max_length*sizeof(NclQuark));
                 if (! arraySubString)
                 {
                     NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -502,7 +501,7 @@ NhlErrorTypes _Nclstr_split
             }
             result = strtok(NULL, tmp_delim);
         }
-        arraySubString = (string *) NclRealloc(arraySubString, n*sizeof(string));
+        arraySubString = (NclQuark *) NclRealloc(arraySubString, n*sizeof(NclQuark));
         ndim_strs = 1;
         dimsz_strs[0] = n;
 
@@ -521,8 +520,8 @@ NhlErrorTypes _Nclstr_split
 
 NhlErrorTypes _Nclstr_split_csv(void)
 {
-    string *strs;
-    string *delim;
+    NclQuark *strs;
+    NclQuark *delim;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -541,13 +540,13 @@ NhlErrorTypes _Nclstr_split_csv(void)
     char *tmp_str = NULL;
     char *tmp_delim = NULL;
 
-    string *return_strs = NULL;
+    NclQuark *return_strs = NULL;
     int num_fields = 0;
     int max_fields = 1;
     int total_in_strs = 1;
     int total_out_strs = 1;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         3,
                         &ndim_strs,
@@ -563,7 +562,7 @@ NhlErrorTypes _Nclstr_split_csv(void)
         return NhlFATAL;
     }
 
-    delim = (string *) NclGetArgValue(
+    delim = (NclQuark *) NclGetArgValue(
                         1,
                         3,
                         NULL,
@@ -579,7 +578,7 @@ NhlErrorTypes _Nclstr_split_csv(void)
         ret_missing.stringval = missing_strs.stringval;
     }
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     tmp_delim = (char *) NclMalloc(strlen(NrmQuarkToString(delim[0]))+2);
     if (! tmp_delim)
@@ -601,6 +600,11 @@ NhlErrorTypes _Nclstr_split_csv(void)
 
     option = in_option[0];
 
+    if(0 > option)
+        option = 0;
+    else if(3 < option)
+        option = 3;
+
     for(n = 0; n < ndim_strs; n++)
         total_in_strs *= dimsz_strs[n];
 
@@ -608,7 +612,7 @@ NhlErrorTypes _Nclstr_split_csv(void)
     {
         has_missing_ret = 1;
 
-        return_strs = (string *) NclCalloc(total_in_strs, sizeof(string));
+        return_strs = (NclQuark *) NclCalloc(total_in_strs, sizeof(NclQuark));
         if (! return_strs)
         {
             NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -623,9 +627,7 @@ NhlErrorTypes _Nclstr_split_csv(void)
         int len_delim = strlen(tmp_delim);
         int len_str = 1 + strlen((char *) NrmQuarkToString(strs[0]));
         int max_str_len = len_str;
-        int cur_pos = 0;
-        char *cur_str = NULL;
-        char *new_str = NULL;
+        int pre_pos = -1;
         char prt_str[4096];
 
         int in_dq = 0;
@@ -646,73 +648,88 @@ NhlErrorTypes _Nclstr_split_csv(void)
 
         strcpy(tmp_str, (char *) NrmQuarkToString(strs[0]));
 
-        cur_str = tmp_str;
-        new_str = tmp_str;
         num_fields = 0;
 
       /*
        *fprintf(stderr, "\n\nfile: %s, line: %d\n", __FILE__, __LINE__);
        *fprintf(stderr, "\toption = %d\n", option);
        *fprintf(stderr, "\tlen_str = %d, len_delim = %d\n", len_str, len_delim);
-       *fprintf(stderr, "\tthe string: <%s>, the delimitor: <%s>\n\n",
-       *                   tmp_str, tmp_delim);
+       *fprintf(stderr, "\tthe string: <%s>\n", tmp_str);
+       *fprintf(stderr, "\tthe delimitor: <%s>\n\n", tmp_delim);
        */
         
         n = 0;
-        cur_pos = 0;
+        pre_pos = 0;
         in_dq = 0;
         in_sq = 0;
 
+      /*
+       *fprintf(stderr, "Input string: <%s>\n", tmp_str);
+       */
+
         while(n < len_str)
         {
-            if('"' == cur_str[0])
-            {
-                in_dq ++;
-                if(in_dq > 1)
-                    in_dq = 0;
-                if(option)
-                    in_dq = 0;
-            }
+          /*
+           *fprintf(stderr, "\tcurrent string %d: <%s>\n", n, tmp_str+n);
+           *fprintf(stderr, "\tstrncmp(<%s>, <%s>, %d) = %d\n",
+           *                   tmp_str+n, tmp_delim, len_delim,
+           *                   strncmp(tmp_str+n, tmp_delim, len_delim));
+           */
 
-            if('\'' == cur_str[0])
+            if(0 == strncmp(tmp_str+n, tmp_delim, len_delim))
             {
-                in_sq ++;
-                if(in_sq > 1)
-                    in_sq = 0;
-                if(option)
-                    in_sq = 0;
-            }
-
-            if((0 == strncmp(cur_str, tmp_delim, len_delim)) &&
-               (! in_sq) && (! in_dq))
-            {
-                if(cur_pos)
+                if(n - pre_pos)
                 {
-                    strncpy(prt_str, new_str, cur_pos);
-                    prt_str[cur_pos] = '\0';
+                    strncpy(prt_str, tmp_str+pre_pos, n - pre_pos);
+                    prt_str[n-pre_pos] = '\0';
+#if 0
                   /*
-                   *fprintf(stderr, "\tnew string %d: <%s>\n", num_fields, prt_str);
                    */
+                    fprintf(stderr, "\tnew string %d: <%s>\n", num_fields, prt_str);
                 }
                 else
                 {
                   /*
-                   *fprintf(stderr, "\tnew string %d is a missing value.\n", num_fields);
                    */
+                    fprintf(stderr, "\tnew string %d: <missing>\n", num_fields);
+#endif
                 }
-                    
-                num_fields ++;
 
-                new_str = cur_str + len_delim;
-                cur_str = new_str;
-                cur_pos = 0;
+                if(in_dq || in_sq)
+                {
+                   ++n;
+                   continue;
+                }
+
+                ++num_fields;
+
                 n += len_delim;
+
+                pre_pos = n;
             }
             else
             {
-                cur_str += 1;
-                cur_pos ++;
-                n ++;
+                if('"' == tmp_str[n])
+                {
+                    if(in_dq)
+                        in_dq = 0;
+                    else
+                        in_dq = 1;
+                    if(option%2)
+                        in_dq = 0;
+                }
+
+                if('\'' == tmp_str[n])
+                {
+                    if(in_sq)
+                        in_sq = 0;
+                    else
+                        in_sq = 1;
+                    if(1 < option)
+                        in_sq = 0;
+                }
+
+                ++n;
             }
         }
 
@@ -726,9 +743,9 @@ loop_through_strings:
         total_out_strs = total_in_strs * max_fields;
 
         if(NULL == return_strs)
-            return_strs = (string *) NclCalloc(total_out_strs, sizeof(string));
+            return_strs = (NclQuark *) NclCalloc(total_out_strs, sizeof(NclQuark));
         else
-            return_strs = (string *) NclRealloc(return_strs, total_out_strs * sizeof(string));
+            return_strs = (NclQuark *) NclRealloc(return_strs, total_out_strs * sizeof(NclQuark));
         if (! return_strs)
         {
             NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -761,64 +778,39 @@ loop_through_strings:
            *fprintf(stderr, "Input string %d: <%s>\n", i, tmp_str);
            */
 
-            cur_str = tmp_str;
-            new_str = tmp_str;
             num_fields = 0;
 
             m = i * max_fields;
             n = 0;
-            cur_pos = 0;
+            pre_pos = 0;
             in_dq = 0;
             in_sq = 0;
 
             while(n < len_str)
             {
-                if('"' == cur_str[0])
+                if(0 == strncmp(tmp_str+n, tmp_delim, len_delim))
                 {
-                    in_dq ++;
-                    if(in_dq > 1)
-                        in_dq = 0;
-                    if(option)
-                        in_dq = 0;
-                }
-
-                if('\'' == cur_str[0])
-                {
-                    in_sq ++;
-                    if(in_sq > 1)
-                        in_sq = 0;
-                    if(option)
-                        in_sq = 0;
-                }
-
-                if((0 == strncmp(cur_str, tmp_delim, len_delim)) &&
-                   (! in_sq) && (! in_dq))
-                {
-                    if(cur_pos)
+                    if(in_dq || in_sq)
                     {
-                        strncpy(prt_str, new_str, cur_pos);
-                        prt_str[cur_pos] = '\0';
+                       ++n;
+                       continue;
+                    }
 
-                        if(strlen(prt_str))
-                        {
-                            return_strs[m] = NrmStringToQuark(prt_str);
-                          /*
-                           *fprintf(stderr, "\tnew string %d: <%s>\n", m, prt_str);
-                           */
-                        }
-                        else
-                        {
-                            has_missing_ret = 1;
-                        }
+                    if(n - pre_pos)
+                    {
+                        strncpy(prt_str, tmp_str+pre_pos, n - pre_pos);
+                        prt_str[n-pre_pos] = '\0';
+
+                        return_strs[m] = NrmStringToQuark(prt_str);
                     }
                     else
                     {
                         has_missing_ret = 1;
                     }
 
-                    m ++;
+                    ++m;
                     
-                    num_fields ++;
+                    ++num_fields;
 
                     if(max_fields < num_fields)
                     {
@@ -826,31 +818,42 @@ loop_through_strings:
                         goto loop_through_strings;
                     }
 
-                    new_str = cur_str + len_delim;
-                    cur_str = new_str;
-                    cur_pos = 0;
                     n += len_delim;
+                    pre_pos = n;
                 }
                 else
                 {
-                    cur_str += 1;
-                    cur_pos ++;
-                    n ++;
+                    if('"' == tmp_str[n])
+                    {
+                        if(in_dq)
+                            in_dq = 0;
+                        else
+                            in_dq = 1;
+                        if(option%2)
+                            in_dq = 0;
+                    }
+
+                    if('\'' == tmp_str[n])
+                    {
+                        if(in_sq)
+                            in_sq = 0;
+                        else
+                            in_sq = 1;
+                        if(1 < option)
+                            in_sq = 0;
+                    }
+
+                    ++n;
                 }
             }
 
-            if(strlen(new_str))
+            n = len_str - 1;
+            if(n - pre_pos)
             {
-                strcpy(prt_str, new_str);
+                strncpy(prt_str, tmp_str+pre_pos, n - pre_pos);
+                prt_str[n-pre_pos] = '\0';
+
                 return_strs[m] = NrmStringToQuark(prt_str);
-              /*
-               *fprintf(stderr, "\t\tnew string %d: <%s>\n", m, new_str);
-               *fprintf(stderr, "\t\tcur string %d: <%s>\n", cur_pos, cur_str);
-               */
-            }
-            else
-            {
-                has_missing_ret = 1;
             }
         }
 
@@ -870,7 +873,7 @@ NhlErrorTypes _Nclstr_get_cols
 ()
 #endif
 {
-    string *strs;
+    NclQuark *strs;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -884,14 +887,14 @@ NhlErrorTypes _Nclstr_get_cols
 
     char *tmp_str;
     char *result;
-    string *arraySubString;
+    NclQuark *arraySubString;
     ng_size_t str_size;
     int ms, me, ns, ne, is, ie;
     int *startCol, sC;
     int *endCol, eC;
     int max_length = 0;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         3,
                         &ndim_strs,
@@ -912,7 +915,7 @@ NhlErrorTypes _Nclstr_get_cols
         ret_missing.stringval = missing_strs.stringval;
     }
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     startCol = (int *) NclGetArgValue(
                         1,
@@ -965,7 +968,7 @@ NhlErrorTypes _Nclstr_get_cols
     }
     max_length ++;
 
-    arraySubString = (string *) NclMalloc(str_size*sizeof(string));
+    arraySubString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arraySubString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -1183,9 +1186,9 @@ NhlErrorTypes _Nclstr_split_by_length
 ()
 #endif
 {
-    string *strs;
+    NclQuark *strs;
     int    *leng;
-    string *new_strs;
+    NclQuark *new_strs;
 
     int ndim_strs;
     int ndim_leng;
@@ -1212,7 +1215,7 @@ NhlErrorTypes _Nclstr_split_by_length
     int number_splitted = 1;
     int max_length = 1;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_strs,
@@ -1232,7 +1235,7 @@ NhlErrorTypes _Nclstr_split_by_length
     if(has_missing_strs)
         missing_news.stringval = missing_strs.stringval;
     else
-        missing_news.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        missing_news.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     leng = (int *) NclGetArgValue(
                         1,
@@ -1350,7 +1353,7 @@ NhlErrorTypes _Nclstr_split_by_length
    *fprintf(stderr, "\tnew_size = %d\n", new_size);
    */
     
-    new_strs = (string *) NclMalloc(new_size*sizeof(string));
+    new_strs = (NclQuark *) NclMalloc(new_size*sizeof(NclQuark));
     if (!new_strs)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -1418,9 +1421,9 @@ NhlErrorTypes _Nclstr_sub_str
 ()
 #endif
 {
-    string *str;
-    string *o_s;
-    string *n_s;
+    NclQuark *str;
+    NclQuark *o_s;
+    NclQuark *n_s;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -1437,14 +1440,14 @@ NhlErrorTypes _Nclstr_sub_str
     char *new_str;
     char *tmp_o_s;
     char *tmp_n_s;
-    string *arrayString;
+    NclQuark *arrayString;
     ng_size_t i;
     ng_size_t str_size;
     int m, n, nf, nn;
     ng_size_t current_size = 0;
     int cols, o_s_len, n_s_len;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         3,
                         &ndim_str,
@@ -1466,10 +1469,10 @@ NhlErrorTypes _Nclstr_sub_str
     }
     else
     {
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
     }
 
-    o_s = (string *) NclGetArgValue(
+    o_s = (NclQuark *) NclGetArgValue(
                         1,
                         3,
                         NULL,
@@ -1494,7 +1497,7 @@ NhlErrorTypes _Nclstr_sub_str
     }
     strcpy(tmp_o_s, tmp_str);
 
-    n_s = (string *) NclGetArgValue(
+    n_s = (NclQuark *) NclGetArgValue(
                         2,
                         3,
                         NULL,
@@ -1531,7 +1534,7 @@ NhlErrorTypes _Nclstr_sub_str
     for(i=0; i<ndim_str; i++)
         str_size *= dimsz_str[i];
 
-    arrayString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -1638,7 +1641,7 @@ NhlErrorTypes _Nclstr_is_blank
 ()
 #endif
 {
-    string *strs;
+    NclQuark *strs;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -1652,7 +1655,7 @@ NhlErrorTypes _Nclstr_is_blank
     logical *tmp_val;
     ng_size_t str_sz = 1;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_strs,
@@ -1751,7 +1754,7 @@ NhlErrorTypes _Nclstr_left_strip
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -1766,11 +1769,11 @@ NhlErrorTypes _Nclstr_left_strip
     ng_size_t str_size;
     int cols;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -1798,7 +1801,7 @@ NhlErrorTypes _Nclstr_left_strip
     }
     max_length ++;
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -1863,7 +1866,7 @@ NhlErrorTypes _Nclstr_right_strip
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -1878,11 +1881,11 @@ NhlErrorTypes _Nclstr_right_strip
     int n;
     int cols;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -1910,7 +1913,7 @@ NhlErrorTypes _Nclstr_right_strip
     }
     max_length ++;
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -1967,7 +1970,7 @@ NhlErrorTypes _Nclstr_strip
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -1982,11 +1985,11 @@ NhlErrorTypes _Nclstr_strip
     ng_size_t str_size;
     int cols;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -2014,7 +2017,7 @@ NhlErrorTypes _Nclstr_strip
     }
     max_length ++;
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -2089,7 +2092,7 @@ NhlErrorTypes _Nclstr_squeeze
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -2104,11 +2107,11 @@ NhlErrorTypes _Nclstr_squeeze
     int m, n;
     int cols;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -2141,7 +2144,7 @@ NhlErrorTypes _Nclstr_squeeze
     }
     max_length ++;
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -2239,8 +2242,8 @@ NhlErrorTypes _Nclstr_index_of_substr
 ()
 #endif
 {
-    string *str;
-    string *substr;
+    NclQuark *str;
+    NclQuark *substr;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -2267,7 +2270,7 @@ NhlErrorTypes _Nclstr_index_of_substr
     ndim_index = 1;
     dimsz_index[0] = 1;
     
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         3,
                         &ndim_str,
@@ -2283,7 +2286,7 @@ NhlErrorTypes _Nclstr_index_of_substr
         return NhlFATAL;
     }
 
-    substr = (string *) NclGetArgValue(
+    substr = (NclQuark *) NclGetArgValue(
                         1,
                         3,
                         NULL,
@@ -2449,7 +2452,7 @@ NhlErrorTypes _Nclstr_upper
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -2463,11 +2466,11 @@ NhlErrorTypes _Nclstr_upper
     int n;
     ng_size_t str_size;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -2488,7 +2491,7 @@ NhlErrorTypes _Nclstr_upper
         ret_missing.stringval = missing_str.stringval;
     }
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     str_size = 1;
     for(i=0; i<ndim_str; i++)
@@ -2502,7 +2505,7 @@ NhlErrorTypes _Nclstr_upper
     }
     max_length ++;
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -2550,7 +2553,7 @@ NhlErrorTypes _Nclstr_lower
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -2564,11 +2567,11 @@ NhlErrorTypes _Nclstr_lower
     int n;
     ng_size_t str_size;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -2589,7 +2592,7 @@ NhlErrorTypes _Nclstr_lower
         ret_missing.stringval = missing_str.stringval;
     }
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     str_size = 1;
     for(i=0; i<ndim_str; i++)
@@ -2603,7 +2606,7 @@ NhlErrorTypes _Nclstr_lower
     }
     max_length ++;
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -2651,7 +2654,7 @@ NhlErrorTypes _Nclstr_switch
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -2665,11 +2668,11 @@ NhlErrorTypes _Nclstr_switch
     int n;
     ng_size_t str_size;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -2690,7 +2693,7 @@ NhlErrorTypes _Nclstr_switch
         ret_missing.stringval = missing_str.stringval;
     }
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     str_size = 1;
     for(i=0; i<ndim_str; i++)
@@ -2704,7 +2707,7 @@ NhlErrorTypes _Nclstr_switch
     }
     max_length ++;
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -2754,7 +2757,7 @@ NhlErrorTypes _Nclstr_capital
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -2767,13 +2770,13 @@ NhlErrorTypes _Nclstr_capital
     int n;
     ng_size_t str_size;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char *result;
     int max_length = 0;
     int len;
     int capitalize = 1;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -2796,7 +2799,7 @@ NhlErrorTypes _Nclstr_capital
     }
     else
     {
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
     }
 
     str_size = 1;
@@ -2804,7 +2807,7 @@ NhlErrorTypes _Nclstr_capital
         str_size *= dimsz_str[i];
 
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -2876,8 +2879,8 @@ NhlErrorTypes _Nclstr_join
 ()
 #endif
 {
-    string *strs;
-    string *delim;
+    NclQuark *strs;
+    NclQuark *delim;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -2897,12 +2900,12 @@ NhlErrorTypes _Nclstr_join
 
     char *tmp_str;
     char *tmp_delim;
-    string *new_string;
+    NclQuark *new_string;
     ng_size_t str_size;
     ng_size_t max_length = 1;
     ng_size_t total_length = 0;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_strs,
@@ -2918,7 +2921,7 @@ NhlErrorTypes _Nclstr_join
         return NhlFATAL;
     }
 
-    delim = (string *) NclGetArgValue(
+    delim = (NclQuark *) NclGetArgValue(
                         1,
                         2,
                         NULL,
@@ -2937,7 +2940,7 @@ NhlErrorTypes _Nclstr_join
     if(has_missing_strs)
         ret_missing.stringval = missing_strs.stringval;
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     str_size = 1;
     for(i=0; i<ndim_strs; i++)
@@ -2973,7 +2976,7 @@ NhlErrorTypes _Nclstr_join
         return NhlFATAL;
     }
 
-    new_string = (string *) NclMalloc(str_size*sizeof(string));
+    new_string = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3014,7 +3017,7 @@ NhlErrorTypes _Nclstr_concat
 ()
 #endif
 {
-    string *strs;
+    NclQuark *strs;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -3030,12 +3033,12 @@ NhlErrorTypes _Nclstr_concat
     char *result;
 
     char *tmp_str;
-    string *new_string;
+    NclQuark *new_string;
     ng_size_t str_size;
     ng_size_t max_length = 1;
     ng_size_t total_length = 0;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_strs,
@@ -3054,7 +3057,7 @@ NhlErrorTypes _Nclstr_concat
     if(has_missing_strs)
         ret_missing.stringval = missing_strs.stringval;
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     str_size = 1;
     for(i=0; i<ndim_strs; i++)
@@ -3077,7 +3080,7 @@ NhlErrorTypes _Nclstr_concat
         return NhlFATAL;
     }
 
-    new_string = (string *) NclMalloc(str_size*sizeof(string));
+    new_string = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3113,8 +3116,8 @@ NhlErrorTypes _Nclstr_insert
 ()
 #endif
 {
-    string *strs;
-    string *insert;
+    NclQuark *strs;
+    NclQuark *insert;
 
     int ndim_strs;
     ng_size_t dimsz_strs[NCL_MAX_DIMENSIONS];
@@ -3129,12 +3132,12 @@ NhlErrorTypes _Nclstr_insert
     char *tmp_str;
     char *tmp_insert;
     char *result;
-    string *new_string;
+    NclQuark *new_string;
     ng_size_t str_size;
     int *position;
     ng_size_t max_length = 0;
     
-    strs = (string *) NclGetArgValue(
+    strs = (NclQuark *) NclGetArgValue(
                         0,
                         3,
                         &ndim_strs,
@@ -3150,7 +3153,7 @@ NhlErrorTypes _Nclstr_insert
         return NhlFATAL;
     }
 
-    insert = (string *) NclGetArgValue(
+    insert = (NclQuark *) NclGetArgValue(
                         1,
                         3,
                         NULL,
@@ -3185,7 +3188,7 @@ NhlErrorTypes _Nclstr_insert
     if(has_missing_strs)
         ret_missing.stringval = missing_strs.stringval;
     else
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
 
     str_size = 1;
     for(i=0; i<ndim_strs; i++)
@@ -3208,7 +3211,7 @@ NhlErrorTypes _Nclstr_insert
     }
     max_length += 1+abs(position[0]) + strlen(tmp_insert);
 
-    new_string = (string *) NclMalloc(str_size*sizeof(string));
+    new_string = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3307,9 +3310,9 @@ NhlErrorTypes _Nclstr_get_comma
 {
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3334,9 +3337,9 @@ NhlErrorTypes _Nclstr_get_space
 {
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3361,9 +3364,9 @@ NhlErrorTypes _Nclstr_get_tab
 {
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3388,9 +3391,9 @@ NhlErrorTypes _Nclstr_get_sq
 {
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3415,9 +3418,9 @@ NhlErrorTypes _Nclstr_get_dq
 {
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3442,9 +3445,9 @@ NhlErrorTypes _Nclstr_get_nl
 {
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3469,9 +3472,9 @@ NhlErrorTypes _Nclstr_get_cr
 {
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3532,7 +3535,7 @@ NhlErrorTypes _Nclstr_from_int
 
     int ndim;
     ng_size_t dimsz[1];
-    string *new_string;
+    NclQuark *new_string;
     char cs[2];
   
     in = (int *) NclGetArgValue(
@@ -3554,7 +3557,7 @@ NhlErrorTypes _Nclstr_from_int
     cs[0] = in[0];
     cs[1] = '\0';
 
-    new_string = (string *) NclMalloc(sizeof(string));
+    new_string = (NclQuark *) NclMalloc(sizeof(NclQuark));
     if (! new_string)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3577,8 +3580,8 @@ NhlErrorTypes _Nclstr_match
 ()
 #endif
 {
-    string *input_strs;
-    string *input_expr;
+    NclQuark *input_strs;
+    NclQuark *input_expr;
 
     int ndim_input_strs;
     ng_size_t dimsz_input_strs[NCL_MAX_DIMENSIONS];
@@ -3592,19 +3595,17 @@ NhlErrorTypes _Nclstr_match
     NclBasicDataTypes type;
 
     char *tmp_str;
-    string *output_strs;
+    char *tmp_exp;
+    NclQuark *output_strs;
     ng_size_t i;
     ng_size_t str_size;
     ng_size_t output_str_size = 0;
-
-    regex_t expr;
-    regmatch_t rm;
 
   /*
    *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
    */
 
-    input_strs = (string *) NclGetArgValue(
+    input_strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_input_strs,
@@ -3633,10 +3634,10 @@ NhlErrorTypes _Nclstr_match
     }
     else
     {
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
     }
 
-    input_expr = (string *) NclGetArgValue(
+    input_expr = (NclQuark *) NclGetArgValue(
                         1,
                         2,
                         NULL,
@@ -3652,56 +3653,21 @@ NhlErrorTypes _Nclstr_match
         return NhlFATAL;
     }
 
-    if(type == NCL_string)
-    {
-        char *reg_exp = NrmQuarkToString(input_expr[0]);
-      /*
-       *fprintf(stderr, "\tfile: %s, line: %d\n", __FILE__, __LINE__);
-       *fprintf(stderr, "\treg_exp: <%s>\n", reg_exp);
-       *fprintf(stderr, "\tstrlen(reg_exp) = %d\n", strlen(reg_exp));
-       */
-
-        if(strlen(reg_exp) > 0)
-        {
-            if(regcomp(&expr,reg_exp,REG_EXTENDED) != 0)
-            {
-                NhlPError(NhlWARNING,NhlEUNKNOWN,"str_match: Invalid expression");
-                return NhlFATAL;
-            }
-        }
-        else
-        {
-            str_size = 1;
-
-            output_strs = (string *) NclMalloc(str_size*sizeof(string));
-            if (! output_strs)
-            {
-                NHLPERROR((NhlFATAL,ENOMEM,NULL));
-                return NhlFATAL;
-            }
-            
-            output_str_size = 1;
-            output_strs[0] = ret_missing.stringval;
-            return NclReturnValue(output_strs, 1, &output_str_size,
-                                  &ret_missing, NCL_string, 0);
-        }
-    }
-    else
-    {
-        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match: input expression is not a string.");
-        return NhlFATAL;
-    }
-
     str_size = 1;
     for(i=0; i<ndim_input_strs; i++)
         str_size *= dimsz_input_strs[i];
 
-    output_strs = (string *) NclMalloc(str_size*sizeof(string));
+    output_strs = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! output_strs)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
         return NhlFATAL;
     }
+
+    tmp_exp = (char *) NrmQuarkToString(input_expr[0]);
+  /*
+   *fprintf(stderr, "\tinput_expr: <%s>\n", tmp_exp);
+   */
 
     for(i=0; i<str_size; i++)
     {
@@ -3721,7 +3687,7 @@ NhlErrorTypes _Nclstr_match
        *fprintf(stderr, "\tinput_strs[%d]: <%s>\n", i, tmp_str);
        */
 
-        if(regexec(&expr,tmp_str,1,&rm,0) == 0)
+        if(NULL != strstr(tmp_str, tmp_exp))
         {
             output_strs[output_str_size] = input_strs[i];
           /*
@@ -3733,11 +3699,11 @@ NhlErrorTypes _Nclstr_match
     }
 
     if(output_str_size)
-        output_strs = (string *) NclRealloc(output_strs, output_str_size*sizeof(string));
+        output_strs = (NclQuark *) NclRealloc(output_strs, output_str_size*sizeof(NclQuark));
     else
     {
         has_missing = 1;
-        output_strs = (string *) NclRealloc(output_strs, sizeof(string));
+        output_strs = (NclQuark *) NclRealloc(output_strs, sizeof(NclQuark));
         output_strs[output_str_size] = ret_missing.stringval;
       /*
        *output_strs[output_str_size] = NrmStringToQuark("NO MATCH");
@@ -3755,8 +3721,8 @@ NhlErrorTypes _Nclstr_match_ic
 ()
 #endif
 {
-    string *input_strs;
-    string *input_expr;
+    NclQuark *input_strs;
+    NclQuark *input_expr;
 
     int ndim_input_strs;
     ng_size_t dimsz_input_strs[NCL_MAX_DIMENSIONS];
@@ -3770,19 +3736,17 @@ NhlErrorTypes _Nclstr_match_ic
     NclBasicDataTypes type;
 
     char *tmp_str;
-    string *output_strs;
-    ng_size_t i;
+    char *tmp_exp;
+    NclQuark *output_strs;
+    ng_size_t i, n;
     ng_size_t str_size;
     ng_size_t output_str_size = 0;
 
-    regex_t expr;
-    regmatch_t rm;
+    ng_size_t nstr = 1024;
+    char *low_str;
+    char *low_exp;
 
-  /*
-   *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
-   */
-
-    input_strs = (string *) NclGetArgValue(
+    input_strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_input_strs,
@@ -3811,10 +3775,10 @@ NhlErrorTypes _Nclstr_match_ic
     }
     else
     {
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
     }
 
-    input_expr = (string *) NclGetArgValue(
+    input_expr = (NclQuark *) NclGetArgValue(
                         1,
                         2,
                         NULL,
@@ -3830,33 +3794,42 @@ NhlErrorTypes _Nclstr_match_ic
         return NhlFATAL;
     }
 
-    if(type == NCL_string)
+    tmp_exp = (char *) NrmQuarkToString(input_expr[0]);
+
+    low_exp = (char *)NclMalloc((strlen(tmp_exp) + 1) * sizeof(char));
+    if(NULL == low_exp)
     {
-        char *reg_exp = NrmQuarkToString(input_expr[0]);
-      /*
-       *fprintf(stderr, "\tfile: %s, line: %d\n", __FILE__, __LINE__);
-       *fprintf(stderr, "\treg_exp: <%s>\n", reg_exp);
-       */
-        if(strlen(reg_exp) > 0)
-        {
-            if(regcomp(&expr,reg_exp,REG_ICASE|REG_EXTENDED) != 0)
-            {
-                NhlPError(NhlWARNING,NhlEUNKNOWN,"str_match_ic: Invalid expression");
-                return NhlFATAL;
-            }
-        }
-    }
-    else
-    {
-        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ic: input expression is not a string.");
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ic: Cannot allocate memory for working string.");
         return NhlFATAL;
     }
+
+    memset(low_exp, 0, strlen(tmp_exp) + 1);
+
+    for(n=0; n<strlen(tmp_exp); n++)
+    {
+        if((tmp_exp[n] >= 'A') && (tmp_exp[n] <= 'Z'))
+            low_exp[n] = tmp_exp[n] + 'a' - 'A';
+        else
+            low_exp[n] = tmp_exp[n];
+    }
+
+    low_str = (char *)NclMalloc(nstr * sizeof(char));
+    if(NULL == low_str)
+    {
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ic: Cannot allocate memory for working string.");
+        return NhlFATAL;
+    }
+
+  /*
+   *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
+   *fprintf(stderr, "\tlower case input_expr: <%s>\n", low_exp);
+   */
 
     str_size = 1;
     for(i=0; i<ndim_input_strs; i++)
         str_size *= dimsz_input_strs[i];
 
-    output_strs = (string *) NclMalloc(str_size*sizeof(string));
+    output_strs = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! output_strs)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -3877,11 +3850,34 @@ NhlErrorTypes _Nclstr_match_ic
         }
 
         tmp_str = (char *) NrmQuarkToString(input_strs[i]);
+
       /*
-       *fprintf(stderr, "\tinput_strs[%d]: <%s>\n", i, tmp_str);
+       *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
+       *fprintf(stderr, "\tlower case input_str[%d]: <%s>\n", i, low_str);
        */
 
-        if(regexec(&expr,tmp_str,1,&rm,0) == 0)
+        if(nstr <= strlen(tmp_str))
+        {
+            nstr = 1 + strlen(tmp_str);
+            low_str = (char *)NclRealloc(low_str, nstr * sizeof(char));
+            if(NULL == low_str)
+            {
+                NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ic: Cannot allocate memory for working string.");
+                return NhlFATAL;
+            }
+        }
+
+        memset(low_str, 0, nstr);
+
+        for(n=0; n<strlen(tmp_str); n++)
+        {
+            if((tmp_str[n] >= 'A') && (tmp_str[n] <= 'Z'))
+                low_str[n] = tmp_str[n] + 'a' - 'A';
+            else
+                low_str[n] = tmp_str[n];
+        }
+
+        if(NULL != strstr(low_str, low_exp))
         {
             output_strs[output_str_size] = input_strs[i];
           /*
@@ -3892,12 +3888,15 @@ NhlErrorTypes _Nclstr_match_ic
         }
     }
 
+    NclFree(low_str);
+    NclFree(low_exp);
+
     if(output_str_size)
-        output_strs = (string *) NclRealloc(output_strs, output_str_size*sizeof(string));
+        output_strs = (NclQuark *) NclRealloc(output_strs, output_str_size*sizeof(NclQuark));
     else
     {
         has_missing = 1;
-        output_strs = (string *) NclRealloc(output_strs, sizeof(string));
+        output_strs = (NclQuark *) NclRealloc(output_strs, sizeof(NclQuark));
         output_strs[output_str_size] = ret_missing.stringval;
       /*
        *output_strs[output_str_size] = NrmStringToQuark("NO MATCH");
@@ -3915,8 +3914,8 @@ NhlErrorTypes _Nclstr_match_ind
 ()
 #endif
 {
-    string *input_strs;
-    string *input_expr;
+    NclQuark *input_strs;
+    NclQuark *input_expr;
 
     int ndim_input_strs;
     ng_size_t dimsz_input_strs[NCL_MAX_DIMENSIONS];
@@ -3930,19 +3929,17 @@ NhlErrorTypes _Nclstr_match_ind
     NclBasicDataTypes type;
 
     char *tmp_str;
+    char *tmp_exp;
     int *output_inds;
     ng_size_t i;
     ng_size_t str_size;
     ng_size_t output_ind_size = 0;
 
-    regex_t expr;
-    regmatch_t rm;
-
   /*
    *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
    */
 
-    input_strs = (string *) NclGetArgValue(
+    input_strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_input_strs,
@@ -3964,7 +3961,7 @@ NhlErrorTypes _Nclstr_match_ind
     }
     ret_missing.intval =  (int) ((NclTypeClass) nclTypeintClass)->type_class.default_mis.intval;
 
-    input_expr = (string *) NclGetArgValue(
+    input_expr = (NclQuark *) NclGetArgValue(
                         1,
                         2,
                         NULL,
@@ -3980,23 +3977,11 @@ NhlErrorTypes _Nclstr_match_ind
         return NhlFATAL;
     }
 
-    if(type == NCL_string)
-    {
-        char *reg_exp = NrmQuarkToString(input_expr[0]);
-        if(strlen(reg_exp) > 0)
-        {
-            if(regcomp(&expr,reg_exp,REG_EXTENDED) != 0)
-            {
-                NhlPError(NhlWARNING,NhlEUNKNOWN,"str_match_ind: Invalid expression");
-                return NhlFATAL;
-            }
-        }
-    }
-    else
-    {
-        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ind: input expression is not a string.");
-        return NhlFATAL;
-    }
+    tmp_exp = (char *) NrmQuarkToString(input_expr[0]);
+  /*
+   *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
+   *fprintf(stderr, "\tinput_expr: <%s>\n", tmp_exp);
+   */
 
     str_size = 1;
     for(i=0; i<ndim_input_strs; i++)
@@ -4027,7 +4012,7 @@ NhlErrorTypes _Nclstr_match_ind
        *fprintf(stderr, "\tinput_strs[%d]: <%s>\n", i, tmp_str);
        */
 
-        if(regexec(&expr,tmp_str,1,&rm,0) == 0)
+        if(NULL != strstr(tmp_str, tmp_exp))
         {
             output_inds[output_ind_size] = i;
             output_ind_size ++;
@@ -4057,8 +4042,8 @@ NhlErrorTypes _Nclstr_match_ind_ic
 ()
 #endif
 {
-    string *input_strs;
-    string *input_expr;
+    NclQuark *input_strs;
+    NclQuark *input_expr;
 
     int ndim_input_strs;
     ng_size_t dimsz_input_strs[NCL_MAX_DIMENSIONS];
@@ -4072,19 +4057,17 @@ NhlErrorTypes _Nclstr_match_ind_ic
     NclBasicDataTypes type;
 
     char *tmp_str;
+    char *tmp_exp;
     int *output_inds;
-    ng_size_t i;
+    ng_size_t i, n;
     ng_size_t str_size;
     ng_size_t output_ind_size = 0;
 
-    regex_t expr;
-    regmatch_t rm;
+    ng_size_t nstr = 1024;
+    char *low_str;
+    char *low_exp;
 
-  /*
-   *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
-   */
-
-    input_strs = (string *) NclGetArgValue(
+    input_strs = (NclQuark *) NclGetArgValue(
                         0,
                         2,
                         &ndim_input_strs,
@@ -4106,7 +4089,7 @@ NhlErrorTypes _Nclstr_match_ind_ic
     }
     ret_missing.intval =  (int) ((NclTypeClass) nclTypeintClass)->type_class.default_mis.intval;
 
-    input_expr = (string *) NclGetArgValue(
+    input_expr = (NclQuark *) NclGetArgValue(
                         1,
                         2,
                         NULL,
@@ -4122,23 +4105,36 @@ NhlErrorTypes _Nclstr_match_ind_ic
         return NhlFATAL;
     }
 
-    if(type == NCL_string)
+    tmp_exp = (char *) NrmQuarkToString(input_expr[0]);
+
+    low_exp = (char *)NclMalloc((strlen(tmp_exp) + 1) * sizeof(char));
+    if(NULL == low_exp)
     {
-        char *reg_exp = NrmQuarkToString(input_expr[0]);
-        if(strlen(reg_exp) > 0)
-        {
-            if(regcomp(&expr,reg_exp,REG_ICASE|REG_EXTENDED) != 0)
-            {
-                NhlPError(NhlWARNING,NhlEUNKNOWN,"str_match_ind_ic: Invalid expression");
-                return NhlFATAL;
-            }
-        }
-    }
-    else
-    {
-        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ind_ic: input expression is not a string.");
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ic: Cannot allocate memory for working string.");
         return NhlFATAL;
     }
+
+    memset(low_exp, 0, strlen(tmp_exp) + 1);
+
+    for(n=0; n<strlen(tmp_exp); n++)
+    {
+        if((tmp_exp[n] >= 'A') && (tmp_exp[n] <= 'Z'))
+            low_exp[n] = tmp_exp[n] + 'a' - 'A';
+        else
+            low_exp[n] = tmp_exp[n];
+    }
+
+    low_str = (char *)NclMalloc(nstr * sizeof(char));
+    if(NULL == low_str)
+    {
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ic: Cannot allocate memory for working string.");
+         return NhlFATAL;
+     }
+ 
+  /*
+   *fprintf(stderr, "in file: %s, line: %d\n", __FILE__, __LINE__);
+   *fprintf(stderr, "\tlower case input_expr: <%s>\n", low_exp);
+   */
 
     str_size = 1;
     for(i=0; i<ndim_input_strs; i++)
@@ -4169,7 +4165,28 @@ NhlErrorTypes _Nclstr_match_ind_ic
        *fprintf(stderr, "\tinput_strs[%d]: <%s>\n", i, tmp_str);
        */
 
-        if(regexec(&expr,tmp_str,1,&rm,0) == 0)
+        if(nstr <= strlen(tmp_str))
+        {
+            nstr = 101 + strlen(tmp_str);
+            low_str = (char *)NclRealloc(low_str, nstr * sizeof(char));
+            if(NULL == low_str)
+            {
+                NhlPError(NhlFATAL, NhlEUNKNOWN, "str_match_ic: Cannot allocate memory for working string.");
+                return NhlFATAL;
+            }
+        }
+
+        memset(low_str, 0, nstr);
+
+        for(n=0; n<strlen(tmp_str); n++)
+        {
+            if((tmp_str[n] >= 'A') && (tmp_str[n] <= 'Z'))
+                low_str[n] = tmp_str[n] + 'a' - 'A';
+            else
+                low_str[n] = tmp_str[n];
+        }
+
+        if(NULL != strstr(low_str, low_exp))
         {
             output_inds[output_ind_size] = i;
             output_ind_size ++;
@@ -4189,6 +4206,9 @@ NhlErrorTypes _Nclstr_match_ind_ic
         output_ind_size = 1;
     }
 
+    NclFree(low_str);
+    NclFree(low_exp);
+
     return NclReturnValue(output_inds, 1, &output_ind_size, ( has_missing ? &ret_missing : NULL ), NCL_int, 0);
 }
 
@@ -4199,7 +4219,7 @@ NhlErrorTypes _Nclstr_sort
 ()
 #endif
 {
-    string *str;
+    NclQuark *str;
 
     int ndim_str;
     ng_size_t dimsz_str[NCL_MAX_DIMENSIONS];
@@ -4212,12 +4232,12 @@ NhlErrorTypes _Nclstr_sort
     int n;
     ng_size_t str_size;
 
-    string *arrayOfString;
+    NclQuark *arrayOfString;
     char **sa;
     char *tmp_str;
     int max_length = 0;
 
-    str = (string *) NclGetArgValue(
+    str = (NclQuark *) NclGetArgValue(
                         0,
                         1,
                         &ndim_str,
@@ -4240,14 +4260,14 @@ NhlErrorTypes _Nclstr_sort
     }
     else
     {
-        ret_missing.stringval = (string) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
+        ret_missing.stringval = (NclQuark) ((NclTypeClass) nclTypestringClass)->type_class.default_mis.stringval;
     }
 
     str_size = 1;
     for(i=0; i<ndim_str; i++)
         str_size *= dimsz_str[i];
 
-    arrayOfString = (string *) NclMalloc(str_size*sizeof(string));
+    arrayOfString = (NclQuark *) NclMalloc(str_size*sizeof(NclQuark));
     if (! arrayOfString)
     {
         NHLPERROR((NhlFATAL,ENOMEM,NULL));
@@ -4315,9 +4335,8 @@ NhlErrorTypes _Nclstr_sort
 
 NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int output)
 {
-    NclObj  thelist = NULL;
     NclVar  thevar;
-    NclList tmp_list;
+    NclList thelist = NULL;
     NclMultiDValData thevalue = NULL;
 
     size_t i = 0;
@@ -4325,13 +4344,13 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
     int maxelems = MAX_LIST_ELEMENT;
     int truelems = 0;
     NclBasicDataTypes type[MAX_LIST_ELEMENT];
-    char              prefix[256];
+    char              prefix[NCL_INITIAL_STRING_LENGTH];
     char              format[MAX_LIST_ELEMENT][MAX_PRINT_NAME_LENGTH];
     size_t            size[MAX_LIST_ELEMENT];
     size_t maxlen = 0;
 
     char  name[MAX_LIST_ELEMENT][MAX_PRINT_NAME_LENGTH];
-    char *tmp = strdup(fmtstr);
+    char *tmp = NULL;
     char *result = NULL;
 
     NclListObjList *step;
@@ -4345,6 +4364,10 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
     int nstart, length, remain;
     int has_seperator[MAX_LIST_ELEMENT];
 
+    length = 1 + strlen(fmtstr);
+    tmp = (char*)NclMalloc(length*sizeof(char));
+    strcpy(tmp, fmtstr);
+
     if('%' != fmtstr[0])
     {
         strcpy(prefix, tmp);
@@ -4355,9 +4378,9 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
     else
         prefix[0] = '\0';
 
-    thelist = _NclGetObj(*list_id);
-    thevar = (NclVar)thelist;
-    tmp_list = (NclList) thelist;
+    theobj = _NclGetObj(*list_id);
+    thevar = (NclVar)theobj;
+    thelist = (NclList) theobj;
 
   /*
    *fprintf(stderr, "\tfile: %s, line: %d\n", __FILE__, __LINE__);
@@ -4369,7 +4392,7 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
     result = strtok(tmp, "%");
     while(result != NULL)
     {
-        if(16 > nelems)
+        if(MAX_LIST_ELEMENT > nelems)
         {
             strcpy(format[nelems], "%");
             strcat(format[nelems], result);
@@ -4379,7 +4402,8 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
         }
         else
         {
-            NhlPError(NhlFATAL,NhlEUNKNOWN,"_Nclwrite_table: write_table can only handle list less than 16 elements.\n");
+            NhlPError(NhlFATAL,NhlEUNKNOWN,"%s: can only handle list less than %d elements.\n",
+                                            "process_list", MAX_LIST_ELEMENT);
             return(NhlFATAL);
         }
 
@@ -4390,7 +4414,7 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
     maxelems = nelems;
 
     nelems = 0;
-    step = tmp_list->list.first;
+    step = thelist->list.first;
     while(step != NULL)
     {
         cur_obj = (NclObj)_NclGetObj(step->obj_id);
@@ -4428,7 +4452,7 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
                     *}
                     */
          
-                     NhlPError(NhlFATAL,NhlEUNKNOWN,"_Nclwrite_table: can not print file list yet.\n");
+                     NhlPError(NhlFATAL,NhlEUNKNOWN,"%s: can not print file list yet.\n", "process_list");
                      return(NhlFATAL);
                  }
                  else if(thevalue->obj.obj_type_mask & Ncl_MultiDVallistData)
@@ -4437,7 +4461,7 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
                     *ret = _PrintListVarSummary((NclObj)thevalue,fp);
                     */
          
-                     NhlPError(NhlFATAL,NhlEUNKNOWN,"_Nclwrite_table: can not print list in list yet.\n");
+                     NhlPError(NhlFATAL,NhlEUNKNOWN,"%s: can not print list in list yet.\n", "process_list");
                      return(NhlFATAL);
                  }
                  else
@@ -4493,21 +4517,8 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
     }
 
     theobj = (NclObj)_NclGetObj(*list_id);
-
-    if(0 == strcmp("NclAdvancedListClass", theobj->obj.class_ptr->obj_class.class_name))
-    {
-        NclAdvancedList thelist = (NclAdvancedList) theobj;
-        truelems = (int)thelist->advancedlist.n_elem;
-    }
-    else if(0 == strcmp("NclListClass",theobj->obj.class_ptr->obj_class.class_name))
-    {
-        NclList thelist = (NclList) theobj;
-        truelems = (int)thelist->list.nelem;
-    }
-    else
-    {
-        truelems = 0;
-    }
+    thelist = (NclList) theobj;
+    truelems = (int)thelist->list.nelem;
 
     if(maxelems > truelems)
        maxelems = truelems;
@@ -4536,7 +4547,7 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
             nstart = strlen(prefix);
         }
 
-        step = tmp_list->list.first;
+        step = thelist->list.first;
         for(nelems = 0; nelems < maxelems; ++nelems)
         {
             memset(buffer, 0, NCL_INITIAL_STRING_LENGTH);
@@ -4555,7 +4566,7 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
                     {
                         case NCL_string:
                              {
-                                 string *sp = (string *) thevalue->multidval.val;
+                                 NclQuark *sp = (NclQuark *) thevalue->multidval.val;
                                  sprintf(buffer, format[nelems], NrmQuarkToString(*(sp + i)));
                              }
                              break;
@@ -4716,6 +4727,10 @@ NhlErrorTypes process_list(FILE *fp, obj *list_id, char *fmtstr, int *ndvdl, int
             fprintf(fp, "%s\n", prntln);
     }
 
+  /*
+   *NclFree(tmp);
+   */
+
     return(NhlNOERROR);
 }
 
@@ -4723,7 +4738,7 @@ NhlErrorTypes _Nclprint_table(void)
 {
     obj *list_id;
 
-    string *qformat;
+    NclQuark *qformat;
     char   *format;
 
     int ndvdl[MAX_LIST_ELEMENT];
@@ -4744,7 +4759,7 @@ NhlErrorTypes _Nclprint_table(void)
                NULL,
                DONT_CARE);
 
-    qformat = (string *)NclGetArgValue(
+    qformat = (NclQuark *)NclGetArgValue(
               1,
               2,
               NULL,
@@ -4774,9 +4789,9 @@ NhlErrorTypes _Nclwrite_table(void)
 {
     obj *list_id;
 
-    string *qformat;
-    string *qfilename;
-    string *qoption;
+    NclQuark *qformat;
+    NclQuark *qfilename;
+    NclQuark *qoption;
 
     char *format;
     char *filename;
@@ -4790,7 +4805,7 @@ NhlErrorTypes _Nclwrite_table(void)
    *fprintf(stderr, "\nEnter _Nclwrite_table, file: %s, line: %d\n", __FILE__, __LINE__);
    */
 
-    qfilename = (string *)NclGetArgValue(
+    qfilename = (NclQuark *)NclGetArgValue(
               0,
               4,
               NULL,
@@ -4812,7 +4827,7 @@ NhlErrorTypes _Nclwrite_table(void)
    *fprintf(stderr, "\tfilename = <%s>\n", filename);
    */
 
-    qoption = (string *)NclGetArgValue(
+    qoption = (NclQuark *)NclGetArgValue(
               1,
               4,
               NULL,
@@ -4845,7 +4860,7 @@ NhlErrorTypes _Nclwrite_table(void)
         return(NhlFATAL);
     }
 
-    qformat = (string *)NclGetArgValue(
+    qformat = (NclQuark *)NclGetArgValue(
               3,
               4,
               NULL,
@@ -4877,6 +4892,125 @@ NhlErrorTypes _Nclwrite_table(void)
    *fprintf(stderr, "Leave _Nclwrite_table, file: %s, line: %d\n\n", __FILE__, __LINE__);
    */
     return(NhlNOERROR);
+}
+
+NhlErrorTypes _NclgetNbitsFromUint64()
+{
+    unsigned long long *ui64;
+    int *nskip;
+    int *nbits;
+
+    int ndim_ui64;
+    int has_missing_ui64;
+    int has_missing_ret = 0;
+
+    NclScalar missing_ui64;
+    NclScalar ret_missing;
+  
+    ng_size_t dimsz_ui64[NCL_MAX_DIMENSIONS];
+    ng_size_t i;
+
+    unsigned long long *newui64;
+    unsigned long long mask = 1;
+    ng_size_t total_size;
+    
+    ui64 = (unsigned long long *) NclGetArgValue(
+                        0,
+                        3,
+                        &ndim_ui64,
+                        dimsz_ui64,
+                        &missing_ui64,
+                        &has_missing_ui64,
+                        NULL,
+                        DONT_CARE);
+
+    if(NULL == ui64)
+    {
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "getNbitsFromUint64: input uint64 array is null.");
+        return NhlFATAL;
+    }
+
+    nskip = (int *) NclGetArgValue(
+                        1,
+                        3,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        DONT_CARE);
+
+    if(NULL == nskip)
+    {
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "getNbitsFromUint64: input nskip is null.");
+        return NhlFATAL;
+    }
+
+    nbits = (int *) NclGetArgValue(
+                        2,
+                        3,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        DONT_CARE);
+
+    if(NULL == nbits)
+    {
+        NhlPError(NhlFATAL, NhlEUNKNOWN, "getNbitsFromUint64: input nbits is null.");
+        return NhlFATAL;
+    }
+
+    if(has_missing_ui64)
+        ret_missing.uint64val = missing_ui64.uint64val;
+    else
+        ret_missing.uint64val = (uint64) ((NclTypeClass) nclTypeuint64Class)->type_class.default_mis.uint64val;
+
+    total_size = 1;
+    for(i=0; i<ndim_ui64; i++)
+        total_size *= dimsz_ui64[i];
+
+    newui64 = (unsigned long long *) NclMalloc(total_size*sizeof(unsigned long long));
+    if (! newui64)
+    {
+        NHLPERROR((NhlFATAL,ENOMEM,NULL));
+        return NhlFATAL;
+    }
+
+    mask = 1;
+    for(i = 1; i < nbits[0]; ++i)
+    {
+        mask = mask << 1;
+        ++mask;
+    }
+
+    if(has_missing_ui64)
+    {
+        for(i=0; i<total_size; i++)
+        {
+            if(ui64[i] == missing_ui64.uint64val)
+            {
+                has_missing_ret = 1;
+	        newui64[i] = ret_missing.uint64val;
+            }
+            else
+            {
+                newui64[i] = (ui64[i] >> nskip[0]) & mask;
+            }
+        }
+    }
+    else
+    {
+        has_missing_ret = 0;
+        for(i=0; i<total_size; i++)
+        {
+            newui64[i] = (ui64[i] >> nskip[0]) & mask;
+        }
+    }
+
+    return NclReturnValue(newui64, ndim_ui64, dimsz_ui64, (has_missing_ret ? &ret_missing : NULL), NCL_uint64, 0);
+
 }
 
 #ifdef __cplusplus

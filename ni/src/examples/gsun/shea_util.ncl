@@ -2700,7 +2700,7 @@ begin
        x = dtrend(x,False)             ; step 1: detrend
    end if
                                        ; step 2: Calculate input sample variance 
-   xVaro = variance(x)*(N-1.)/N        ; variance after pre-whitening
+   xVaro = variance(x)*(N-1.)/N        ; population variance after pre-whitening
 
    x     = taper (x,pct,0)             ; step 3: taper the series
                                        ; tapering correction factor
@@ -3142,6 +3142,38 @@ end
 ;----------------------------------------------------------------------------
 ;----------------------- Unsupported: DJS -----------------------------------
 ;----------------------------------------------------------------------------
+undef("cdnlp")
+function cdnlp(sp[*]:numeric, z:numeric)
+; Written by:
+; Ufuk Utku Turuncoglu (BE) <u.utku.turuncoglu@be.itu.edu.tr>
+begin
+  kappa = 0.4
+  tol = 0.001
+  a = log(z/10.0)/kappa
+
+  cd = sp
+  cd = 1.15e-3
+  u10 = sp/(1.0+a*sqrt(cd))
+  u10o = sp*0.0
+
+  ii = (abs(u10-u10o) .gt. tol)
+  do while(any(ii))
+    u10o = u10
+    cd = 4.9e-4+6.5e-5*u10o
+    cd = where(u10o .lt. 10.15385, 1.15e-3, cd)
+    u10 = sp/(1.0+a*sqrt(cd))
+    ii = (abs(u10-u10o) .gt. tol)
+  end do
+
+  opt = True
+  opt@cd = cd
+  opt@wspd = u10
+  return(opt)
+end
+
+;----------------------------------------------------------------------------
+;----------------------- Unsupported: DJS -----------------------------------
+;----------------------------------------------------------------------------
 undef("advect_gradient")
 function advect_gradient (u:numeric, v:numeric, x:numeric \
                          ,gridType[1]:integer, con[1]:numeric \
@@ -3150,8 +3182,10 @@ function advect_gradient (u:numeric, v:numeric, x:numeric \
 ; linear advection of a scalar quantity: UV.GRADIENT(X)
 ;                                      : U*(dX/dlon) + V*(dX/dlat)
 ;
-; Requires that the grid be global cuz spherical harmonics are used
-;             dimension order ([time,[lev,]]lat,lon)
+; Requires:
+;    (1) grid be global cuz spherical harmonics are used
+;    (2) required dimension order ([time,[lev,]]lat,lon)
+;    (3) the input grids *must* be ordered South==>North
 ; 
 ; Nomenclature:
 ;   u, v      - zonal and meridional wind components [m/s]
@@ -3211,6 +3245,18 @@ begin
       print("advect_gradient: variable rank must be at least 2D: ([time,[lev,]]lat,lon)")
       print("advect_gradient: rank="+rankx+"D")
       ier = ier + 1000
+  end if
+
+  dnam  = getvardims(x)             ; dimension names
+  ynam  = dnam(rankx-2)             ; latitude dimension name
+  if (.not.ismissing(ynam) .and. iscoord(x,ynam)) then
+      yord  = isMonotonic(x&$ynam$)
+      if (yord.le.0) then
+          print("advect_gradient: grid is not in South-to-North order.")
+          ier = ier + 10000
+      end if
+  else
+      print("advect_gradient: Warning: No named dimensions. Can not check grid order.")
   end if
 
   if (ier.ne.0) then
@@ -4286,6 +4332,7 @@ end
 undef("area_global_rectilinear_grid")
 function area_global_rectilinear_grid (lat[*]:numeric, lon[*], opt[1]:logical)
 ; Area (approximate) of a global rectilinear grid cells.
+; Actually, the rectilinear grid must be equally spaced: 1x1, 1x2, 3x5
 ; This could be modified for non-global grids by adding
 ;     the left and right and left dx.
 local rearth, nlat, mlon, pi, rad, rr, dlon, dx, dy
@@ -4341,7 +4388,7 @@ begin
 end
 ;-------------------------------
 undef("area_polar_region")
-function area_polar_region (lat[*]:numeric, opt[1]:logical)
+function area_polar_region (lat[1]:numeric, opt[1]:logical)
 ; Area from pole to latitude. Special case of area_sphere_region
 local rearth, pi, rad, rr, twopi, parea
 begin
@@ -4488,7 +4535,7 @@ begin
 
 end
 ;-------------------------------------
-undef("calc_day_stat")
+undef("calc_day_values")
 function calc_day_values(x, arith[1]:string, nDim[1]:integer, opt[1]:logical)  
 ;;function calculate_daily_values (x:numeric, arith:string, nDim[1]:integer, opt[1]:logical)
 local tstep, tspan, tunits, tbase, TIME, tuchar, tbchar, ntu, ntb, newunits \

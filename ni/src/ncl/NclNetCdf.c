@@ -129,7 +129,7 @@ static NrmQuark Qfill_val;
 #define NC_FORMAT_OPT 4
 #define NC_MISSING_TO_FILL_VALUE_OPT 5
 
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 #define NC_COMPRESSION_LEVEL_OPT 6
 #define NC_USE_CACHE_OPT	 7
 #define NC_CACHE_SIZE_OPT	 8
@@ -300,7 +300,7 @@ NetCdfAttInqRec* att_inq
 		fprintf(stderr,"ncattget(%d,%d,\"%s\",value);\n",ncid,att_inq->varid,NrmQuarkToString(att_inq->name));
 #endif                
 		att_inq->value = NclMalloc(sizeof(NclQuark));
-		*(string *)att_inq->value = NrmStringToQuark(tmp);
+		*(NclQuark *)att_inq->value = NrmStringToQuark(tmp);
 		NclFree(tmp);
 	} 
 	else {
@@ -389,7 +389,7 @@ NetCdfFileRecord *rec;
 int cdfid;
 #endif
 {
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 	NetCdfVarInqRecList *stepvl;
 	NetCdfVarInqRec *var_inq;
 
@@ -502,7 +502,7 @@ int cdfid;
 	 * hence the double condition.
 	 */
 	if (rec->define_mode) {
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 		_checking_nc4_chunking(rec,cdfid);
 #endif                
 		if (rec->n_vars > 0 && rec->header_reserve_space > 0) {
@@ -565,7 +565,7 @@ NetCdfFileRecord *tmp;
 	options[NC_MISSING_TO_FILL_VALUE_OPT].n_values = 1;
 	options[NC_MISSING_TO_FILL_VALUE_OPT].values = (void *) 1;
 
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 	options[NC_COMPRESSION_LEVEL_OPT].name = NrmStringToQuark("compressionlevel");
 	options[NC_COMPRESSION_LEVEL_OPT].data_type = NCL_int;
 	options[NC_COMPRESSION_LEVEL_OPT].n_values = 1;
@@ -710,7 +710,7 @@ int wr_status;
 	}
 
 	tmp->open = 1;
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 	nc_inq_format(cdfid,&(tmp->format));
 #if NETCDF_DEBUG
 	fprintf(stderr,"nc_inq_format(%d,&format);\n",cdfid);
@@ -928,7 +928,7 @@ NclQuark path;
 		mode = (NC_NOCLOBBER|NC_64BIT_OFFSET);
 		format = 2;
 	}
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 	else if ((NrmQuark)(tmp->options[NC_FORMAT_OPT].values) == 
 	    NrmStringToQuark("netcdf4classic")) {
 		mode = (NC_NOCLOBBER|NC_NETCDF4|NC_CLASSIC_MODEL);
@@ -1394,24 +1394,21 @@ void* storage;
 
 			rec->open = 1;
 			if(no_stride) {	
-				ret = ncvargetg(cdfid,
+				ret = nc_get_vara(cdfid,
 					stepvl->var_inq->varid,
 					start,
 					count,
-					NULL,
-					NULL,
 					out_data);
 #if NETCDF_DEBUG
 				fprintf(stderr,"ncvargetg(%d,%d,start,count,NULL,NULL,outdata);\n",cdfid,stepvl->var_inq->varid);
 #endif                
 
 			} else {
-				ret = ncvargetg(cdfid,
+				ret = nc_get_vars(cdfid,
 					stepvl->var_inq->varid,
 					start,
 					count,
 					stride,
-					NULL,
 					out_data);
 #if NETCDF_DEBUG
 				fprintf(stderr,"ncvargetg(%d,%d,start,count,stride,NULL,outdata);\n",cdfid,stepvl->var_inq->varid);
@@ -1470,7 +1467,7 @@ void* storage;
 		if(stepal->att_inq->name == theatt) {
 			if (stepal->att_inq->value != NULL) {
 				if(stepal->att_inq->data_type == NC_CHAR && !(theatt == Qfill_val || theatt == Qmissing_val)) {
-					*(string*)storage = *(string*)(stepal->att_inq->value);
+					*(NclQuark*)storage = *(NclQuark*)(stepal->att_inq->value);
 				} else {
 					memcpy(storage,stepal->att_inq->value,
 					       nctypelen(stepal->att_inq->data_type)*stepal->att_inq->len);
@@ -1503,7 +1500,7 @@ void* storage;
 #if NETCDF_DEBUG
 				fprintf(stderr,"ncattget(%d,NC_GLOBAL,%s,buffer);\n",cdfid,NrmQuarkToString(theatt));
 #endif                
-				*(string*)storage = NrmStringToQuark(tmp);
+				*(NclQuark*)storage = NrmStringToQuark(tmp);
 				NclFree(tmp);
 			} else {
 				ret = ncattget(cdfid,NC_GLOBAL,NrmQuarkToString(theatt),storage);
@@ -1559,7 +1556,7 @@ void* storage;
 				if(stepal->att_inq->name == theatt) {
 					if (stepal->att_inq->value != NULL) {
 						if(stepal->att_inq->data_type == NC_CHAR && !(theatt == Qfill_val || theatt == Qmissing_val)) {
-							*(string*)storage = *(string*)(stepal->att_inq->value);
+							*(NclQuark*)storage = *(NclQuark*)(stepal->att_inq->value);
 						} else {
 							memcpy(storage,stepal->att_inq->value,
 							       nctypelen(stepal->att_inq->data_type)*stepal->att_inq->len);
@@ -1601,7 +1598,7 @@ void* storage;
 						fprintf(stderr,"ncattget(%d,%d,\"%s\",buffer);\n",cdfid,stepvl->var_inq->varid,
 						       NrmQuarkToString(theatt));
 #endif                
-						*(string*)storage = NrmStringToQuark(tmp);
+						*(NclQuark*)storage = NrmStringToQuark(tmp);
 						NclFree(tmp);
 					} else {
 						ret = ncattget(cdfid,stepvl->var_inq->varid,NrmQuarkToString(theatt),storage);
@@ -2200,7 +2197,7 @@ ng_size_t *chunk_dims;
     NetCdfFileRecord* rec = (NetCdfFileRecord*)therec;
     NetCdfVarInqRecList *stepvl = NULL;
     int i,ret = NhlNOERROR;
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
     int cdfid;
     int nc_ret;
     int storage = NC_CHUNKED;
@@ -2282,7 +2279,7 @@ float cache_preemption;
     int ret = NhlNOERROR;
     int cdfid;
     int nc_ret;
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 
     if(rec->wr_status <= 0)
     {
@@ -2363,7 +2360,7 @@ int compress_level;
     int deflate = compress_level;
     int deflate_level = compress_level;
     int nc_ret;
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 
     if(rec->wr_status <= 0)
     {
@@ -2554,7 +2551,7 @@ ng_size_t size;
 int is_unlimited;
 #endif
 {
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 	NetCdfFileRecord *rec = (NetCdfFileRecord*) therec;
 	int cdfid;
 	int nc_ret;
@@ -2749,7 +2746,7 @@ long* dim_sizes;
 				fprintf(stderr,"nc_def_var(%d,\"%s\",%d,%d,dim_ids,&var_id);\n",
 				       cdfid,NrmQuarkToString(thevar),(int)*the_data_type,n_dims);
 #endif                
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 				if (ret == NC_NOERR && rec->format > 2 &&
 				    ((int)(rec->options[NC_COMPRESSION_LEVEL_OPT].values) > -1)) {
 					int shuffle = 1;
@@ -3056,7 +3053,7 @@ static void NetCacheAttValue
 		strncpy(tmp,value,att_inq->len);
 		tmp[att_inq->len] = '\0';
 		att_inq->value = NclMalloc(sizeof(NclQuark));
-		*(string*)att_inq->value = NrmStringToQuark(tmp);
+		*(NclQuark*)att_inq->value = NrmStringToQuark(tmp);
 		NclFree(tmp);
 	}
 	else {
@@ -3325,7 +3322,7 @@ static NhlErrorTypes NetSetOption
 	else if (option == NrmStringToQuark("missingtofillvalue")) {
 		rec->options[NC_MISSING_TO_FILL_VALUE_OPT].values = (void*) *(int*)values;
 	}
-#ifdef USE_NETCDF4
+#ifdef USE_NETCDF4_FEATURES
 	else if (option == NrmStringToQuark("compressionlevel")) {
 		if (*(int*)values < -1 || *(int*)values > 9) {
 			NhlPError(NhlWARNING,NhlEUNKNOWN,

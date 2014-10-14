@@ -41,19 +41,13 @@ void
 #endif
 
 #ifdef BuildHDFEOS5
-extern NclFormatFunctionRecPtr HDFEOS5AddFileFormat(
-#if     NhlNeedProto
-void
-#endif
-);
+extern NclFormatFunctionRecPtr HDFEOS5AddFileFormat(void);
+extern NclFormatFunctionRecPtr NewHE5AddFileFormat(void);
 #endif
 
 #ifdef BuildHDF5
-extern NclFormatFunctionRecPtr HDF5AddFileFormat(
-#if     NhlNeedProto
-void
-#endif
-);
+extern NclFormatFunctionRecPtr H5AddFileFormat(void);
+extern NclFormatFunctionRecPtr HDF5AddFileFormat(void);
 #endif
 
 extern NclFormatFunctionRecPtr NetCdfAddFileFormat(
@@ -62,13 +56,8 @@ void
 #endif
 );
 
-#ifdef USE_NETCDF4_FEATURES
-extern NclFormatFunctionRecPtr NC4AddFileFormat(
-#if	NhlNeedProto
-void
-#endif
-);
-#endif
+extern NclFormatFunctionRecPtr NC4AddFileFormat(void);
+
 
 extern NclFormatFunctionRecPtr GribAddFileFormat(
 #if	NhlNeedProto
@@ -87,8 +76,9 @@ extern NclFormatFunctionRecPtr OGRAddFileFormat(
 void
 #endif
 );
-
+#ifndef NIO_LIB_ONLY
 extern NclFormatFunctionRecPtr AdvancedOGRAddFileFormat(void);
+#endif
 #endif
 
 void _NclAddFileFormats
@@ -118,7 +108,13 @@ void _NclAddFileFormats
 	_NclRegisterFormat(HDFEOS5AddFileFormat,"he5");
 #endif
 #ifdef BuildHDF5
+        _NclRegisterFormat(H5AddFileFormat,"h5");
+        _NclRegisterFormat(H5AddFileFormat,"hdf5");
+
+#ifndef NIO_LIB_ONLY
         _NclRegisterFormat(HDF5AddFileFormat,"h5");
+        _NclRegisterFormat(HDF5AddFileFormat,"hdf5");
+#endif
 #endif
 	_NclRegisterFormat(GribAddFileFormat,"gr");
 	_NclRegisterFormat(GribAddFileFormat,"gr1");
@@ -169,25 +165,36 @@ void _NclAddFileFormats
         /* TIGER: see http://www.census.gov/geo/www/tiger/tiger2006se/tgr2006se.html */
 #endif
 
-	/*These is for NetCDF4.
+#ifndef NIO_LIB_ONLY
+#ifdef  USE_NETCDF4_FEATURES
+	/*
 	 *where this file will be scanned to find the second match.
 	 *The advanced file-structure is used when found the second match.
 	 */
-#ifdef USE_NETCDF4_FEATURES
 	_NclRegisterFormat(NC4AddFileFormat,"cdf");
 	_NclRegisterFormat(NC4AddFileFormat,"nc");
 	_NclRegisterFormat(NC4AddFileFormat,"nc3");
 	_NclRegisterFormat(NC4AddFileFormat,"nc4");
 	_NclRegisterFormat(NC4AddFileFormat,"netcdf");
+#endif
 
+#ifdef BuildHDF5
+	_NclRegisterFormat(HDF5AddFileFormat,"h5");
+	_NclRegisterFormat(HDF5AddFileFormat,"hdf5");
+#endif
+#ifdef BuildHDFEOS5
+	_NclRegisterFormat(NewHE5AddFileFormat,"he5");
+	_NclRegisterFormat(NewHE5AddFileFormat,"hdfeos5");
+#endif
 #ifdef  BuildGDAL
+#ifdef  USE_NETCDF4_FEATURES
         /* file types supported by OGR in advanced file structure */
         _NclRegisterFormat(AdvancedOGRAddFileFormat, "shp");  /* shapefile */
         _NclRegisterFormat(AdvancedOGRAddFileFormat, "mif");  /* mapinfo */
         _NclRegisterFormat(AdvancedOGRAddFileFormat, "gmt");  /* GMT   */
 #endif
 #endif
-
+#endif
 	return;
 }
 

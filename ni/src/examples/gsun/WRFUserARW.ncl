@@ -353,8 +353,8 @@ begin
        
 ; set vertical cross section
      if (opts) then
-       xy = wrf_user_set_xy( z, loc_param(0)-1, loc_param(2)-1, \    ; the -1 is for NCL dimensions
-                                loc_param(1)-1, loc_param(3)-1, \
+       xy = wrf_user_set_xy( z, loc_param(0)-1, loc_param(1)-1, \    ; the -1 is for NCL dimensions
+                                loc_param(2)-1, loc_param(3)-1, \
                                 angle, opts )
      else
        xy = wrf_user_set_xy( z, loc_param(0), loc_param(1), \
@@ -471,8 +471,8 @@ begin
      end if
      if (opts) then
        xy = wrf_user_set_xy( var2dtmp, \
-                             loc_param(0)-1, loc_param(2)-1, \    ; the -1 is for NCL dimensions
-                             loc_param(1)-1, loc_param(3)-1, \
+                             loc_param(0)-1, loc_param(1)-1, \    ; the -1 is for NCL dimensions
+                             loc_param(2)-1, loc_param(3)-1, \
                              angle, opts )
      else
        xy = wrf_user_set_xy( var2dtmp, \
@@ -1670,7 +1670,6 @@ begin
           T   = nc_file->T
           P   = nc_file->P
           PB  = nc_file->PB
-          QV  = nc_file->QVAPOR
           PH  = nc_file->PH
           PHB = nc_file->PHB
           QV  = nc_file->QVAPOR
@@ -1678,7 +1677,6 @@ begin
           T   = file_handle[:]->T
           P   = file_handle[:]->P
           PB  = file_handle[:]->PB
-          QV  = file_handle[:]->QVAPOR
           PH  = file_handle[:]->PH
           PHB = file_handle[:]->PHB
           QV  = file_handle[:]->QVAPOR
@@ -1688,7 +1686,6 @@ begin
           T   = nc_file->T(time_in,:,:,:)
           P   = nc_file->P(time_in,:,:,:)
           PB  = nc_file->PB(time_in,:,:,:)
-          QV  = nc_file->QVAPOR(time_in,:,:,:)
           PH  = nc_file->PH(time_in,:,:,:)
           PHB = nc_file->PHB(time_in,:,:,:)
           QV  = nc_file->QVAPOR(time_in,:,:,:)
@@ -1696,7 +1693,6 @@ begin
           T   = file_handle[:]->T(time_in,:,:,:)
           P   = file_handle[:]->P(time_in,:,:,:)
           PB  = file_handle[:]->PB(time_in,:,:,:)
-          QV  = file_handle[:]->QVAPOR(time_in,:,:,:)
           PH  = file_handle[:]->PH(time_in,:,:,:)
           PHB = file_handle[:]->PHB(time_in,:,:,:)
           QV  = file_handle[:]->QVAPOR(time_in,:,:,:)
@@ -1895,6 +1891,126 @@ begin
   end if
 
 
+  if( variable .eq. "twb" ) then
+       ; Wet bulb temperature
+       if ( time .eq. -1 ) then
+         if(ISFILE) then
+           T  = nc_file->T
+           P  = nc_file->P
+           PB = nc_file->PB
+           QV = nc_file->QVAPOR
+         else
+           T  = file_handle[:]->T
+           P  = file_handle[:]->P
+           PB = file_handle[:]->PB
+           QV = file_handle[:]->QVAPOR
+         end if
+       else
+         if(ISFILE) then
+           T  = nc_file->T(time_in,:,:,:)
+           P  = nc_file->P(time_in,:,:,:)
+           PB = nc_file->PB(time_in,:,:,:)
+           QV = nc_file->QVAPOR(time_in,:,:,:)
+         else
+           T  = file_handle[:]->T(time_in,:,:,:)
+           P  = file_handle[:]->P(time_in,:,:,:)
+           PB = file_handle[:]->PB(time_in,:,:,:)
+           QV = file_handle[:]->QVAPOR(time_in,:,:,:)
+         end if
+       end if
+       T = T + 300.
+       P = P + PB
+       t = wrf_tk(P,T)
+
+       twb = wrf_wetbulb(P,t,QV)
+
+       delete_VarAtts(T,(/"description"/))
+       copy_VarAtts(T,twb)
+       return(twb)
+  end if
+
+
+  if( variable .eq. "omg" ) then
+       ; Omega
+       if ( time .eq. -1 ) then
+         if(ISFILE) then
+           T  = nc_file->T
+           P  = nc_file->P
+           W  = nc_file->W
+           PB = nc_file->PB
+           QV = nc_file->QVAPOR
+         else
+           T  = file_handle[:]->T
+           P  = file_handle[:]->P
+           W  = file_handle[:]->W
+           PB = file_handle[:]->PB
+           QV = file_handle[:]->QVAPOR
+         end if
+       else
+         if(ISFILE) then
+           T  = nc_file->T(time_in,:,:,:)
+           P  = nc_file->P(time_in,:,:,:)
+           W  = nc_file->W(time_in,:,:,:)
+           PB = nc_file->PB(time_in,:,:,:)
+           QV = nc_file->QVAPOR(time_in,:,:,:)
+         else
+           T  = file_handle[:]->T(time_in,:,:,:)
+           P  = file_handle[:]->P(time_in,:,:,:)
+           W  = file_handle[:]->W(time_in,:,:,:)
+           PB = file_handle[:]->PB(time_in,:,:,:)
+           QV = file_handle[:]->QVAPOR(time_in,:,:,:)
+         end if
+       end if
+       T = T + 300.
+       P = P + PB
+       t = wrf_tk(P,T)
+       wa = wrf_user_unstagger(W,W@stagger)
+
+       omg = wrf_omega(QV,t,wa,P)
+
+       delete_VarAtts(T,(/"description","units"/))
+       copy_VarAtts(T,omg)
+       return(omg)
+  end if
+
+
+  if( variable .eq. "tv" ) then
+       ; Virtual temperature
+       if ( time .eq. -1 ) then
+         if(ISFILE) then
+           T  = nc_file->T
+           P  = nc_file->P
+           PB = nc_file->PB
+           QV = nc_file->QVAPOR
+         else
+           T  = file_handle[:]->T
+           P  = file_handle[:]->P
+           PB = file_handle[:]->PB
+           QV = file_handle[:]->QVAPOR
+         end if
+       else
+         if(ISFILE) then
+           T  = nc_file->T(time_in,:,:,:)
+           P  = nc_file->P(time_in,:,:,:)
+           PB = nc_file->PB(time_in,:,:,:)
+           QV = nc_file->QVAPOR(time_in,:,:,:)
+         else
+           T  = file_handle[:]->T(time_in,:,:,:)
+           P  = file_handle[:]->P(time_in,:,:,:)
+           PB = file_handle[:]->PB(time_in,:,:,:)
+           QV = file_handle[:]->QVAPOR(time_in,:,:,:)
+         end if
+       end if
+       T = T + 300.
+       P = P + PB
+       t = wrf_tk(P,T)
+
+       tv = wrf_virtual_temp(t,QV)
+
+       delete_VarAtts(T,(/"description"/))
+       copy_VarAtts(T,tv)
+       return(tv)
+  end if
 
 
   if( any( variable .eq. (/"ter","HGT","HGT_M"/) ) ) then
@@ -2648,13 +2764,15 @@ begin
 
 
 ; Set field Title and levels if available
-  if(isatt(opts,"FieldTitle")) then
-    opts@cnInfoLabelString     = opts@FieldTitle + " Contours: $CMN$ to $CMX$ by $CIU$"
-  else
-    if(isatt(data,"description")) then
-      opts@cnInfoLabelString     = data@description + " Contours: $CMN$ to $CMX$ by $CIU$"
+  if(.not.isatt(opts,"cnInfoLabelString")) then
+    info_string = " Contours: $CMN$ to $CMX$ by $CIU$"
+    if(isatt(opts,"FieldTitle")) then
+        opts@cnInfoLabelString = opts@FieldTitle + info_string
+    else if(isatt(data,"description")) then
+        opts@cnInfoLabelString = data@description + info_string
     else
-      opts@cnInfoLabelString     = " Contours: $CMN$ to $CMX$ by $CIU$"
+        opts@cnInfoLabelString = info_string
+    end if
     end if
   end if
 

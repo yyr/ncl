@@ -714,6 +714,9 @@ static NhlResource resources[] = {
 	{NhlNcnConstFLabelOrthogonalPosF,NhlCcnConstFLabelOrthogonalPosF,
 		 NhlTFloat,sizeof(float),Oset(constf_lbl_rec.ortho_pos),
 		 NhlTString,_NhlUSET("0.0"),0,NULL},
+	{NhlNcnConstFEnableFill,NhlCcnConstFEnableFill,NhlTBoolean,
+		 sizeof(NhlBoolean),Oset(constf_enable_fill),
+		 NhlTImmediate,_NhlUSET((NhlPointer)False),0,NULL},
 
 /* Missing value area resources */
 
@@ -2114,6 +2117,10 @@ ContourPlotInitialize
 		else 
 			cnp->fill_mode = NhlAREAFILL;
 	}
+	cnp->do_constf_fill = False;
+	if (cnp->fill_on && cnp->constf_enable_fill) {
+		cnp->do_constf_fill = True;
+	}
 
         if (! cnp->lbar_end_labels_on_set) {
 		cnp->lbar_end_labels_on = False;
@@ -2186,12 +2193,14 @@ ContourPlotInitialize
 	/*
 	 * CellFill is not supported for 1D data arrays
 	 */
+/*
 	if (cnp->sfp && cnp->sfp->d_arr->num_dimensions == 1 
 	    && cnp->fill_mode == NhlCELLFILL) {
 		e_text = "%s: CellFill mode not supported for MeshScalarField data; defaulting to RasterFill";
 		NhlPError(NhlWARNING,NhlEUNKNOWN,e_text,entry_name);
 		cnp->fill_mode = NhlRASTERFILL;
 	}
+*/
 
 /* Set view dependent resources */
 
@@ -2564,6 +2573,10 @@ static NhlErrorTypes ContourPlotSetValues
 		else if (cnp->fill_mode == NhlRASTERFILL)
 			cnp->fill_mode = NhlAREAFILL;
 	}
+	cnp->do_constf_fill = False;
+	if (cnp->fill_on && cnp->constf_enable_fill) {
+		cnp->do_constf_fill = True;
+	}
 
 	if (cnp->lbar_end_labels_on_set && ! cnp->lbar_end_style_set) {
 		if (cnp->lbar_end_labels_on) {
@@ -2585,12 +2598,14 @@ static NhlErrorTypes ContourPlotSetValues
 	/*
 	 * CellFill is not supported for 1D data arrays
 	 */
+/*
 	if (cnp->sfp && cnp->sfp->d_arr->num_dimensions == 1 
 	    && cnp->fill_mode == NhlCELLFILL) {
 		e_text = "%s: CellFill mode not supported for MeshScalarField data; defaulting to RasterFill";
 		NhlPError(NhlWARNING,NhlEUNKNOWN,e_text,entry_name);
 		cnp->fill_mode = NhlRASTERFILL;
 	}
+*/
 
 /* Set view dependent resources */
 
@@ -2676,7 +2691,10 @@ static NhlErrorTypes ContourPlotSetValues
 	}
 
 	if (cnp->grid_type == NhltrTRIANGULARMESH) {
-		if (cnp->trans_updated)
+		if (cnp->trans_updated || ! cnp->osfp 
+			|| cnp->sfp->element_nodes != cnp->osfp->element_nodes 
+			|| cnp->sfp->x_cell_bounds != cnp->osfp->x_cell_bounds
+			|| cnp->sfp->y_cell_bounds != cnp->osfp->y_cell_bounds)
 			cnp->render_update_mode = TRIMESH_NEWMESH;
 		else if (cnp->data_changed)
 			cnp->render_update_mode = TRIMESH_DATAUPDATE;
@@ -3564,7 +3582,7 @@ static NhlErrorTypes ContourPlotPreDraw
 	NhlContourPlotLayerPart	*cnp = &cnl->contourplot;
         NhlBoolean		seg_draw;
 
-	if (! cnp->data_init || cnp->const_field)
+	if (! cnp->data_init || (cnp->const_field && !cnp->do_constf_fill))
 		return NhlNOERROR;
 	
 	Cnp = cnp;
@@ -3631,7 +3649,7 @@ static NhlErrorTypes ContourPlotDraw
 	NhlString	entry_name = "ContourPlotDraw";
         NhlBoolean		seg_draw;
 
-	if (! cnp->data_init || cnp->const_field) {
+	if (! cnp->data_init || (cnp->const_field && !cnp->do_constf_fill)) {
 		Cnp = NULL;
 		return NhlNOERROR;
 	}
@@ -3709,7 +3727,7 @@ static NhlErrorTypes ContourPlotPostDraw
 		return ret;
 	}
 		
-	if (! cnp->data_init || cnp->const_field) {
+	if (! cnp->data_init || (cnp->const_field && !cnp->do_constf_fill)) {
 		if (cnp->display_constf_no_data &&
 		    tfp->overlay_status == _tfNotInOverlay) {
 			subret = NhlDraw(cnp->constf_lbl_rec.id);
@@ -3908,8 +3926,10 @@ static NhlErrorTypes cnDraw
 		}
                 cnp->low_level_log_on = False;
 	}
-        
-        subret = _NhlDeactivateWorkstation(cnl->base.wkptr);
+
+	if (cnp->wk_active) {
+		subret = _NhlDeactivateWorkstation(cnl->base.wkptr);
+	}
 	cnp->wk_active = False;
 	cnp->trans_updated = False;
 	ret = MIN(subret,ret);
@@ -5972,9 +5992,11 @@ static NhlErrorTypes ManageLabelBar
 	if (init || 
 	    cnp->display_labelbar != ocnp->display_labelbar ||
 	    cnp->const_field != ocnp->const_field ||
+	    cnp->do_constf_fill != ocnp->do_constf_fill ||
 	    cnp->data_init != ocnp->data_init) {
 
-		if ( cnp->const_field && cnp->display_labelbar < NhlFORCEALWAYS) {
+		if ( cnp->const_field && cnp->display_labelbar < NhlFORCEALWAYS &&
+			! cnp->do_constf_fill) {
 			e_text = "%s: constant field: turning Labelbar off";
 			NhlPError(NhlINFO,NhlEUNKNOWN,e_text,entry_name);
 			ret = MIN(ret,NhlINFO);
@@ -5985,7 +6007,8 @@ static NhlErrorTypes ManageLabelBar
 			NhlSetSArg(&sargs[(*nargs)++],
 				   NhlNpmLabelBarDisplayMode,
 				   cnp->display_labelbar);
-			if (init || cnp->const_field != ocnp->const_field) 
+			if (init || cnp->const_field != ocnp->const_field ||
+				cnp->do_constf_fill != ocnp->do_constf_fill) 
 				set_all = True;
 		}
 	}
@@ -6012,7 +6035,7 @@ static NhlErrorTypes ManageLabelBar
 		cnp->lbar_labels_set = True;
 	}
 
-	if (cnp->const_field && cnp->display_labelbar < NhlFORCEALWAYS) return ret;
+	if (cnp->const_field && cnp->display_labelbar < NhlFORCEALWAYS && ! cnp->do_constf_fill) return ret;
 	
         if (! (cnp->explicit_lbar_labels_on && cnp->lbar_alignment_set)) {
 		if (init || cnp->lbar_end_style != ocnp->lbar_end_style ||
@@ -6589,7 +6612,7 @@ static NhlErrorTypes ManageInfoLabel
  *
  * Description: If a constant field is detected a constant field label
  *		is created, or turned on.
- *		If there is an PlotManager an AnnoManager object is 
+ *		If there is a PlotManager an AnnoManager object is 
  *		created so that the overlay object can manage the
  *		annotations.
  *
@@ -6688,9 +6711,19 @@ static NhlErrorTypes ManageConstFLabel
 	if (text_changed)
 		ocnp->constf_no_data_string = NULL;
 
+/**
+   this would turn off the constant field label automatically whenever fill is on and do_constf_fill is set True,
+   but we don't want to do that just yet. For now it's up to the user to do it with the cnConstFLabelOn resource.
+
 	cnp->display_constf_no_data = 
-		(cflp->on && cnp->const_field) || 
+		(cflp->on && cnp->const_field && 
+		 ! (cnp->fill_on && cnp->do_constf_fill)) || 
 			(cnp->no_data_label_on && ! cnp->data_init);
+*/
+
+	cnp->display_constf_no_data = 
+		(cflp->on && cnp->const_field) ||
+		 (cnp->no_data_label_on && ! cnp->data_init);
 
 	subret = ReplaceSubstitutionChars(cnp,ocnp,init,_cnCONSTF,
 				  &text_changed,entry_name);
@@ -7664,10 +7697,18 @@ static NhlErrorTypes    ManageData
 		_NhlCmpFAny2(cnp->zmax,cnp->zmin,6,_NhlMIN_NONZERO) <= 0.0 ?
 		True : False;
 	if (cnp->const_field) {
-		e_text = 
-		 "%s: scalar field is constant; ContourPlot not possible";
-		NhlPError(NhlWARNING,NhlECONSTFIELD,e_text,entry_name);
-		ret = MIN(NhlWARNING,ret);
+		if (! cnp->do_constf_fill) {
+			e_text = 
+				"%s: scalar field is constant; no contour lines will appear; use cnConstFEnableFill to enable fill";
+			NhlPError(NhlWARNING,NhlEUNKNOWN,e_text,entry_name);
+			ret = MIN(NhlWARNING,ret);
+		}
+		else {
+			e_text = 
+				"%s: scalar field is constant; no contour lines will appear";
+			NhlPError(NhlINFO,NhlEUNKNOWN,e_text,entry_name);
+			ret = MIN(NhlINFO,ret);
+		}
 	}
 
 	cnp->data_init = True;
@@ -9435,9 +9476,14 @@ static NhlErrorTypes    SetupLevelsAutomatic
 	lmax = cnp->zmax;
 
         if (cnp->const_field) {
-                choose_spacing = False;
-                count = 1;
-                spacing = cnp->level_spacing;
+		if (_NhlCmpFAny2(cnp->zmax,0.0,6,1e-6) == 0.0) {
+			lmax = 1.0;
+			lmin = -1.0;
+		}
+		else {
+			lmax = cnp->zmax + fabs(cnp->zmax * 0.1);  
+			lmin = cnp->zmax - fabs(cnp->zmax * 0.1);
+		}
         }
 	else if (cnp->level_spacing_set) {
 		spacing = cnp->level_spacing;
@@ -9485,7 +9531,7 @@ static NhlErrorTypes    SetupLevelsAutomatic
 			lmin += spacing;
 		}
 		ftmp = lmin;
-		ftest = cnp->zmax;
+		ftest = cnp->const_field ? lmax : cnp->zmax;
 		count = 0;
 		while (_NhlCmpFAny2(ftmp,ftest,6,spacing * 0.001) < 0.0) {
 			count++;
@@ -12115,7 +12161,117 @@ NhlErrorTypes CellFill1D
 	return ret;
 }
 
+/*
+ * Function:  CellBoundsFill
+ *
+ * Description: fills data cells using GKS fill  
+ *
+ * In Args:
+ *
+ * Out Args:
+ *
+ * Return Values:
+ *
+ * Side Effects: 
+ */
 
+NhlErrorTypes CellBoundsFill
+#if	NhlNeedProto
+(
+	NhlContourPlotLayer     cnl,
+	NhlString    entry_name
+	)
+#else     
+(cnl, entry_name)
+	NhlContourPlotLayer     cnl;
+	NhlString    entry_name;
+#endif
+{
+	NhlContourPlotLayerPart 	  *cnp = &cnl->contourplot;
+	NhlErrorTypes	ret = NhlNOERROR, subret;
+	char *e_text;
+	float *x, *y;
+	ng_size_t ncells;
+	int nvertices;
+	int *segments;
+	int *colors;
+	float *data;
+	float *levels;
+	int *lcols;
+	int i, j;
+	int nlevels;
+	NhlSArg			sargs[16];
+	int			nargs = 0;
+	char			buffer[_NhlMAXRESNAMLEN];
+	int			gsid;
+	NhlGenArray		segments_ga, colors_ga;
+
+	if (cnp->sfp->x_cell_bounds->num_dimensions != 2 || cnp->sfp->y_cell_bounds->num_dimensions != 2 ||
+	    cnp->sfp->x_cell_bounds->len_dimensions[0] != cnp->sfp->y_cell_bounds->len_dimensions[0] ||
+	    cnp->sfp->x_cell_bounds->len_dimensions[1] != cnp->sfp->y_cell_bounds->len_dimensions[1] ||
+	    cnp->sfp->d_arr->num_elements != cnp->sfp->x_cell_bounds->len_dimensions[0]) {
+		e_text = "%s: invalid call to cnCellFill";
+		NhlPError(NhlFATAL,NhlEUNKNOWN,e_text,entry_name);
+		return(NhlFATAL);
+	}
+
+	x = (float *) cnp->sfp->x_cell_bounds->data;
+	y = (float *) cnp->sfp->y_cell_bounds->data;
+	data = (float *) cnp->sfp->d_arr->data;
+
+	ncells = cnp->sfp->x_cell_bounds->len_dimensions[0];
+	nvertices = cnp->sfp->x_cell_bounds->len_dimensions[1];
+	levels = (float *) cnp->levels->data;
+	nlevels = cnp->levels->num_elements;
+	lcols = (int *) cnp->fill_colors->data;
+
+	segments = NhlMalloc(ncells * sizeof(int));
+	colors = NhlMalloc(ncells * sizeof(int));
+	
+
+	for (i = 0; i < ncells; i++) {
+		segments[i] = i * nvertices;
+		colors[i] = -99;
+		for (j = 0; j < nlevels; j++) {
+			if (data[i] < levels[j]) {
+				colors[i] = lcols[j];
+				break;
+			}
+			colors[i] = lcols[nlevels];
+		}
+	}
+
+	segments_ga = _NhlCreateGenArray(segments,NhlTFloat,sizeof(float),1,&ncells,False);
+	segments_ga->my_data = True;
+	colors_ga = _NhlCreateGenArray(colors,NhlTColorIndex,sizeof(int),1,&ncells,False);
+	colors_ga->my_data = True;
+	NhlSetSArg(&sargs[(nargs)++],NhlNgsSegments,segments_ga);
+	NhlSetSArg(&sargs[(nargs)++],NhlNgsColors,colors_ga);
+	if (cnp->cell_fill_edge_color > NhlTRANSPARENT) {
+		NhlSetSArg(&sargs[(nargs)++],NhlNgsEdgesOn, True);
+		NhlSetSArg(&sargs[(nargs)++],NhlNgsEdgeColor, cnp->cell_fill_edge_color);
+	}
+	NhlSetSArg(&sargs[(nargs)++],NhlNgsFillOpacityF, cnp->fill_opacity);
+		
+	sprintf(buffer,"%s",cnl->base.name);
+	strcat(buffer,".GraphicStyle");
+
+	ret = NhlALCreate(&gsid,buffer,NhlgraphicStyleClass,
+			     cnl->base.wkptr->base.id,sargs,nargs);
+/*
+	nargs = 0;
+	NhlSetSArg(&sargs[(nargs)++],NhlNtrLineInterpolationOn, False);
+	ret = NhlALSetValues(cnp->trans_obj->base.id,sargs,nargs);
+*/
+
+	subret = NhlDataPolygon(cnl->base.id,gsid,x,y,ncells*nvertices);
+	ret = MIN(ret,subret);
+
+	NhlDestroy(gsid);
+	
+	
+	return ret;
+}
 
 /*
  * Function:  _NhlCellFill
@@ -12158,7 +12314,10 @@ NhlErrorTypes _NhlCellFill
 		NhlPError(NhlFATAL,NhlEUNKNOWN,e_text,entry_name);
 		return(NhlFATAL);
         }
-	if (cnp->sfp->x_arr && cnp->sfp->x_arr->num_dimensions == 2) {
+	if (cnp->sfp->x_cell_bounds && cnp->sfp->y_cell_bounds) {
+		ret = CellBoundsFill(Cnl,entry_name);
+	}
+	else if (cnp->sfp->x_arr && cnp->sfp->x_arr->num_dimensions == 2) {
 		if (! (cnp->sfp->y_arr && 
 		       cnp->sfp->y_arr->num_dimensions == 2)) {
 			e_text = "%s: invalid call to cnCellFill";

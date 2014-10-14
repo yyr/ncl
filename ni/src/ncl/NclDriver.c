@@ -11,10 +11,13 @@ int quark_comp(const void *q1, const void *q2)
 	return(strcmp((const char*)NrmQuarkToString(*(NrmQuark *)q1),(const char*)NrmQuarkToString(*(NrmQuark *) q2)));
 }
 
-char *preload_scripts[4] = {"$NCARG_ROOT/lib/ncarg/nclscripts/csm/gsn_code.ncl",
+static int numberOfPreloadedScripts = 5;
+
+char *preload_scripts[5] = {"$NCARG_ROOT/lib/ncarg/nclscripts/csm/gsn_code.ncl",
                             "$NCARG_ROOT/lib/ncarg/nclscripts/csm/gsn_csm.ncl",
                             "$NCARG_ROOT/lib/ncarg/nclscripts/utilities.ncl",
-                            "$NCARG_ROOT/lib/ncarg/nclscripts/csm/contributed.ncl"};
+                            "$NCARG_ROOT/lib/ncarg/nclscripts/csm/contributed.ncl",
+                            "$NCARG_ROOT/lib/ncarg/nclscripts/wrf/WRFUserARW.ncl"};
 
 int NclDriver(int argc, char **argv)
 {
@@ -62,11 +65,13 @@ int NclDriver(int argc, char **argv)
     yydebug = 1;
 #endif /* YYDEBUG */
 
+#ifdef _OPENMP
     /* make sure that only one OMP thread runs unless OMP_NUM_THREADS is explicitly defined  -- on Darwin at least the default is not a single thread */
 
     if (! getenv("OMP_NUM_THREADS")) {
 	    omp_set_num_threads(1);
     }
+#endif
 
     strcpy(buffer,(char *)GetNCARGPath("tmp"));
     sr = access(buffer,W_OK|X_OK|F_OK);
@@ -441,7 +446,7 @@ int NclDriver(int argc, char **argv)
 
     /* Pre-Load script */
 
-    for(i = 0; i < 4; ++i)
+    for(i = 0; i < numberOfPreloadedScripts; ++i)
     {
         strcpy(buffer, _NGResolvePath(preload_scripts[i]));
 #ifdef NCLDEBUG

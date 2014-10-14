@@ -1,5 +1,5 @@
 /*
- *      $Id: CairoWorkstation.h 15126 2014-03-14 20:41:42Z brownrig $
+ *      $Id: CairoWorkstation.h 15364 2014-07-28 21:16:31Z huangwei $
  */
 
 #ifndef    _NCarioWorkstation_h
@@ -68,6 +68,8 @@ typedef enum _NhlCairoFormat {
 extern NhlClass NhlcairoDocumentWorkstationClass;
 extern NhlClass NhlcairoImageWorkstationClass;
 extern NhlClass NhlcairoWindowWorkstationClass;
+#ifdef BuildQtEnabled
 extern NhlClass NhlcairoQtWorkstationClass;
+#endif
 
 #endif /* _NCairoWorkstation_h */

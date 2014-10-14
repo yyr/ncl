@@ -1,5 +1,5 @@
 /*
- *  $Id: CairoWorkstationP.h 15126 2014-03-14 20:41:42Z brownrig $
+ *  $Id: CairoWorkstationP.h 15364 2014-07-28 21:16:31Z huangwei $
  */
 
 # ifndef    _NCairoWorkstationP_h
@@ -80,6 +80,8 @@ typedef struct _NhlCairoWorkstationClassRec   *NhlCairoWorkstationClass;
 extern NhlCairoWorkstationClassRec    NhlcairoDocumentWorkstationClassRec;
 extern NhlCairoWorkstationClassRec    NhlcairoImageWorkstationClassRec;
 extern NhlCairoWorkstationClassRec    NhlcairoWindowWorkstationClassRec;
+#ifdef BuildQtEnabled
 extern NhlCairoWorkstationClassRec    NhlcairoQtWorkstationClassRec;
+#endif
 
 # endif /* _NCairoWorkstationP_h */

@@ -6,7 +6,7 @@
 *                                                                       *
 ************************************************************************/
 /*
- *      $Id: NclAdvancedFile.h 15121 2014-03-12 17:49:11Z huangwei $
+ *      $Id: NclAdvancedFile.h 15249 2014-04-21 16:03:44Z huangwei $
  */
 #ifndef NclAdvancedFile_h
 #define NclAdvancedFile_h
@@ -54,7 +54,7 @@ typedef NclAdvancedFileClassRec *NclAdvancedFileClass;
 
 typedef NhlErrorTypes (*NclAssignFileGrpFunc)(NclFile thefile, NclQuark grp_name);
 typedef NhlErrorTypes (*NclAssignFileVlenFunc)(NclFile thefile, NclQuark vlen_name, NclQuark var_name,
-                                               NclQuark type, NclQuark dim_name);
+                                               NclQuark type, NclQuark *dim_names, ng_size_t ndims);
 typedef NhlErrorTypes (*NclAssignFileEnumFunc)(NclFile thefile, NclQuark vlen_name, NclQuark var_name,
                                                NclQuark dim_name, NclQuark *mem_name, void *mem_value,
                                                ng_size_t n_mems, NclBasicDataTypes val_type);

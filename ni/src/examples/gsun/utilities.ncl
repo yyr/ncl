@@ -171,7 +171,7 @@ begin
         path1 = paths(i) + "/" + colorMapName
         do j=0, dimsizes(suffixes)-1
             path2 = path1 + suffixes(j)
-            if (isfilepresent(path2)) then
+            if (fileexists(path2)) then
               return path2
             end if
           end do
@@ -193,7 +193,7 @@ begin
   maxValue = -1.0
   i = 0
   do while (i.lt.dimsizes(lines) .and. numColors.lt.MAXCOLORS)
-      if (strlen(lines(i)).eq.0) then  
+      if (ismissing(strlen(lines(i))) .or. strlen(lines(i)).eq.0) then  
           lines(i) = "#"  ; zero-lengthed lines cause us grief...
       end if 
       tokens = str_split(lines(i), " ")

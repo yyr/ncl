@@ -1,5 +1,5 @@
 /*
- *      $Id: AddBuiltIns.c 14343 2013-06-19 23:04:39Z huangwei $
+ *      $Id: AddBuiltIns.c 15249 2014-04-21 16:03:44Z huangwei $
  */
 /************************************************************************
 *                                                                       *
@@ -79,6 +79,8 @@ extern NhlErrorTypes    _NclIFileIsPresent(
 void
 # endif /* NhlNeedProto */
 );
+
+extern NhlErrorTypes _NclIFileExists(void);
 
 extern int _MachineIsBigEndian();
 
@@ -971,6 +973,9 @@ extern NhlErrorTypes _NclIGetFileVarAtts(
 void
 #endif
 );
+
+extern NhlErrorTypes _NclIGetFileCompoundVarComponentNames(void);
+
 extern NhlErrorTypes _NclIGetVarDims(
 #if     NhlNeedProto
 void
@@ -2277,6 +2282,14 @@ void _NclAddBuiltIns
 	NclRegisterFunc(_NclIGetFileVarAtts,args,"getfilevaratts",nargs);
 
 	nargs = 0;
+	args = NewArgs(2);
+	dimsizes[0] = 1;
+	SetArgTemplate(args,0,"file",0,NclANY);nargs++;
+	SetArgTemplate(args,1,"string",1,dimsizes);nargs++;
+	NclRegisterFunc(_NclIGetFileCompoundVarComponentNames,args,
+			"getfilecompoundvarcomponentnames",nargs);
+
+	nargs = 0;
 	args = NewArgs(1);
 	dimsizes[0] = 1;
 	SetArgTemplate(args, nargs, "file", 0, NclANY);  nargs++;
@@ -2598,6 +2611,11 @@ void _NclAddBuiltIns
     args = NewArgs(1);
     SetArgTemplate(args, nargs, "string", 0, NclANY);  nargs++;
     NclRegisterFunc( _NclIFileIsPresent, args, "isfilepresent", nargs);
+
+    nargs = 0;
+    args = NewArgs(1);
+    SetArgTemplate(args, nargs, "string", 0, NclANY);  nargs++;
+    NclRegisterFunc( _NclIFileExists, args, "fileexists", nargs);
 
     nargs = 0;
     args = NewArgs(1);

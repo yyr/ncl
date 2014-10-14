@@ -1,5 +1,5 @@
 #
-#      $Id: yMakefile 15131 2014-03-17 15:47:49Z haley $
+#      $Id: yMakefile 15728 2014-08-27 18:57:16Z haley $
 #
 ###########################################################################
 #			   Copyright (C)  1993			 	  #
@@ -14,7 +14,7 @@
 #				National Center for Atmospheric Research
 #				POB 3000, Boulder, Colorado
 #
-#	Date:		$Date: 2014-03-17 09:47:49 -0600 (Mon, 17 Mar 2014) $
+#	Date:		$Date: 2014-08-27 12:57:16 -0600 (Wed, 27 Aug 2014) $
 #
 #	Description:	
 #
@@ -34,7 +34,6 @@ MYXQFBIN	=	ncl.xq.fix
 MYLIB		=	libncl
 MYLIB_API	=	libnclapi
 YACC		=	$(NYACC)
-LEX		= 	flex
 
 #if defined(Darwin)
  EXTRA_CCOPTIONS =
@@ -194,7 +193,7 @@ API_DEFS	=	-DMAKEAPI
 
 PROG_LIBS	=	$(NFPLIBS) $(HLULIBS) $(NCARGLIBS) $(NGMATHLIB)
 DEPLIBS		=	$(DEPNFPLIBS) $(DEPHLULIBS) $(DEPNCARGLIBS) $(DEPNGMATHLIB)
-#if JIRA1530
+#ifdef JIRA1530
 PROG_XQFLIBS	=	$(NFPLIBS) $(HLULIBS) $(NCARGXQFLIBS) $(NGMATHLIB)
 DEPXQFLIBS	=	$(DEPNFPLIBS) $(DEPHLULIBS) $(DEPNCARGXQFLIBS) $(DEPNGMATHLIB)
 #endif
@@ -395,7 +394,7 @@ STATIC_IO_SRCS  =       AddFileFormats.c AttSupport.c DataSupport.c \
 			NclAdvancedFile.c NclAdvancedGroup.c \
 			InitData.c Memory.c NclAtt.c NclCCM.c \
 			NclCoordVar.c NclData.c NclGroup.c NclFile.c NclFileVar.c \
-			NclGRIB.c NclHDF.c NclMultiDValnclfileData.c \
+			NclGRIB.c NclMultiDValnclfileData.c \
 			NclNetCdf.c NclOneDValCoordData.c NclType.c \
 			NclTypelist.c NclVar.c VarSupport.c \
 			ctoiee.c date.c 

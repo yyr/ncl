@@ -14,6 +14,37 @@
 ; This script was added to the NCL trunk on 13 Oct 2011.
 ;
 ;    Important modifications:
+;       01 Sep 2014:
+;           Renamed print_elapsed_time to print_elapsed_esmf_time
+
+;       17 Aug 2014:
+;         Added --norm_type fracarea for the "conserve" method.
+;           This replaces the old "ApplyFracB" code in 
+;           ESMF_regrid_with_weights.  You can turn this off
+;           by setting NormalizeWeights = False. The old
+;           code can still be invoked by setting WgtApplyFracB
+;           when calling ESMF_regrid_with_weights.
+;
+;         Added a "Check" option to tell the regridder to
+;         include "--check" on the regridder line. This
+;         will add some extra error reporting on the output
+;         results.
+;
+;       24 Jul 2014:
+;         Added a "NoPETLog" option to tell the regridder not
+;         to create the PET log file.  This was added as the
+;         "--no_log" option added in 6.3.0rp1.
+;         We'll keep the RemovePETLog option for people who 
+;         want to remove an existing PET file.
+;
+;       8 Jul 2014:
+;           Added a WgtNetCDFType option for source/destination files
+;           and weight files. ESMF_RegridWeightGen uses the F90
+;           interface to read the source/destination files, which
+;           is a problem because this interface doesn't support
+;           the NetCDF-4 "string" type.  We have to write file
+;           string attributes (like "units") as character arrays.
+;
 ;       18 Dec 2013:
 ;          Added some code to get ready for automatically setting
 ;          SrcMask2D.
@@ -274,7 +305,7 @@
 ;======================================================================
 ; This function returns the start time, either in CPU or wall
 ; clock seconds, depending on your version of NCL. Use this function
-; with print_elapsed_time, below.
+; with print_elapsed_esmf_time, below.
 ;======================================================================
 undef("get_start_time")
 function get_start_time()
@@ -293,8 +324,8 @@ end
 ; clock seconds, depending on your version of NCL. Use this procedure
 ; with get_start_time, above.
 ;======================================================================
-undef("print_elapsed_time")
-procedure print_elapsed_time(stime,title)
+undef("print_elapsed_esmf_time")
+procedure print_elapsed_esmf_time(stime,title)
 local s 
 begin
   s = str_split(get_ncl_version(),".")        
@@ -759,7 +790,108 @@ begin
                                          "/" + max(grid_corner_lon))
     end if
 
+    delete([/grid_corner_lat2d,grid_corner_lon2d/])
+
 end     ; of calc_SCRIP_corners_boundaries(...)
+
+;======================================================================
+; This procedure is meant as a test to see if calling 
+; calc_SCRIP_corners_boundaries once for lat and once for lon is 
+; better than doing both lat/lon in one call. The reason for this
+; is doing both can be unnecessarily memory intensive.
+;======================================================================
+undef("calc_SCRIP_corners_boundaries_2")
+procedure calc_SCRIP_corners_boundaries_2(ll2d[*][*],grid_corner_ll,\
+                                        ll_dim_name,opt)
+local DEBUG, latlon_dims, grid_corner_ll2d, nlat, nlon, nlatp1, nlonp1
+begin
+    DEBUG = isatt_logical_true(opt,"Debug")
+
+;---Get dimension sizes
+    latlon_dims     = dimsizes(ll2d)
+    cnr_latlon_dims = dimsizes(grid_corner_ll)
+    cnr_rank        = dimsizes(cnr_latlon_dims)
+    nlat            = latlon_dims(0)
+    nlon            = latlon_dims(1)
+    nlatp1          = nlat+1
+    nlonp1          = nlon+1
+
+    if(cnr_rank.ne.2.or.cnr_latlon_dims(0).ne.(nlat*nlon).or. \
+       cnr_latlon_dims(1).ne.4) then
+      print("calc_SCRIP_corners_boundaries_2: grid_corner_lat/grid_corner_lon must be (nlat*nlon) x 4")
+      exit
+    end if
+
+    if(DEBUG) then
+      print("calc_SCRIP_corners_boundaries_2")
+      print("     min/max original " + ll_dim_nam + " : " + min(ll2d) + "/" + max(ll2d))
+    end if
+
+;---Create array to hold a 2D array of lat/lon corners
+    grid_corner_ll2d = new((/nlatp1,nlonp1/),typeof(ll2d))
+
+;---Calculate interior locations of corner grid
+    do i=1,nlat-1
+      do j=1,nlon-1
+        grid_corner_ll2d(i,j) = avg((/ll2d(i-1,j-1),ll2d(i,j-1),\
+                                      ll2d(i-1,j),  ll2d(i,j)/))
+      end do
+    end do
+
+;---Calculate bottom locations of corner grid
+    do j=1,nlon-1
+      grid_corner_ll2d(0,j) = avg((/ll2d(0,j),ll2d(0,j-1)/))
+    end do
+
+;---Calculate top locations of corner grid
+    do j=1,nlon-1
+      grid_corner_ll2d(nlat,j) = avg((/ll2d(nlat-1,j), \
+                                       ll2d(nlat-1,j-1)/))
+    end do
+
+;---Calculate left locations of corner grid
+    do i=1,nlat-1
+      grid_corner_ll2d(i,0) = avg((/ll2d(i,0),ll2d(i-1,0)/))
+    end do
+
+;---Calculate right locations of corner grid
+    do i=1,nlat-1
+      grid_corner_ll2d(i,nlon) = avg((/ll2d(i,nlon-1), \
+                                       ll2d(i-1,nlon-1)/))
+    end do
+
+;---Set four corners of corner grid
+    grid_corner_ll2d(0,0)       = ll2d(0,0)
+    grid_corner_ll2d(0,nlon)    = ll2d(0,nlon-1)
+    grid_corner_ll2d(nlat,nlon) = ll2d(nlat-1,nlon-1)
+    grid_corner_ll2d(nlat,0)    = ll2d(nlat-1,0)
+
+    if(DEBUG) then
+      print("calc_SCRIP_corners_boundaries_2")
+      print("     min/max grid_corner_" + ll_dim_name + ": " + \
+                  min(grid_corner_ll2d) + "/" + max(grid_corner_ll2d))
+    end if
+
+    n = 0
+    do i=0,nlat-1
+      do j=0,nlon-1
+        grid_corner_ll(n,0) = grid_corner_ll2d(i,  j)
+        grid_corner_ll(n,1) = grid_corner_ll2d(i,  j+1)
+        grid_corner_ll(n,2) = grid_corner_ll2d(i+1,j+1)
+        grid_corner_ll(n,3) = grid_corner_ll2d(i+1,j)
+        n=n+1
+      end do
+    end do
+
+    if(DEBUG) then
+      print("calc_SCRIP_corners_boundaries_2")
+      print("     min/max grid_corner_" + ll_dim_name + ": " + min(grid_corner_ll) + \
+                                         "/" + max(grid_corner_ll))
+    end if
+
+    delete(grid_corner_ll2d)
+
+end     ; of calc_SCRIP_corners_boundaries_2(...)
 
 ;======================================================================
 ; This procedure is used within the curvilinear_to_SCRIP function.
@@ -907,6 +1039,9 @@ begin
     grid_corner_lon(:,2) = ExtGridCenter_lon((jj+1)*(nlonp1)+(ii+1))
     grid_corner_lon(:,3) = ExtGridCenter_lon((jj+1)*(nlonp1)+ii)
 
+;--Clean up
+    delete([/ExtGridCenter_lat,ExtGridCenter_lon,Extlat2d,Extlon2d/])
+
 end     ; of calc_SCRIP_corners_noboundaries(...)
 
 ;======================================================================
@@ -932,6 +1067,15 @@ begin
 ;---Do we need to create a large file?
     if (.not.isatt_logical_false(Opt,"LargeFile")) then
       setfileoption("nc","Format","LargeFile") 
+    end if
+
+;---Do we need to create a netcdf-4 file?
+    if (isatt(Opt,"NetCDFType").and.\
+        str_lower(Opt@NetCDFType).eq."netcdf4") then
+      setfileoption("nc","Format","netcdf4") 
+      nc_file_type = "netcdf4"
+    else
+      nc_file_type = "netcdf3"
     end if
 
     lat = ndtooned(inLat)
@@ -1041,21 +1185,33 @@ begin
     
 ;---Define the variables unit attribute
     AttNodeCoords               = 0
-    AttNodeCoords@units         = "degrees"
-    
     AttElementConn              = 0
-    AttElementConn@long_name    = "Node Indices that define the element connectivity"
-    AttElementConn@_FillValue   = -1
-    
     AttNumElementConn           = 0
-    AttNumElementConn@long_name = "Number of nodes per element"
-    
     AttCenterCoords             = 0
-    AttCenterCoords@units       = "degrees"
-    
     AttElementArea              = 0
-    AttElementArea@units        = "radians^2"
-    AttElementArea@long_name    = "area weights"
+;
+; The conversion to character arrays for NetCDF-4 files is a 
+; work-around.  ESMF_RegridWeightGen uses the F90 interface to 
+; read NetCDF-4 files, which doesn't yet have support for 
+; NetCDF-4 "string" types.
+; 
+    if(nc_file_type.eq."netcdf3") then
+      AttNodeCoords@units         = "degrees"
+      AttElementConn@long_name    = "Node Indices that define the element connectivity"
+      AttNumElementConn@long_name = "Number of nodes per element"
+      AttCenterCoords@units       = "degrees"
+      AttElementArea@units        = "radians^2"
+      AttElementArea@long_name    = "area weights"
+    else
+      AttNodeCoords@units         = tochar("degrees")
+      AttElementConn@long_name    = tochar("Node Indices that define the element connectivity")
+      AttNumElementConn@long_name = tochar("Number of nodes per element")
+      AttCenterCoords@units       = tochar("degrees")
+      AttElementArea@units        = tochar("radians^2")
+      AttElementArea@long_name    = tochar("area weights")
+    end if
+    
+    AttElementConn@_FillValue   = -1
     
     filevarattdef(fid,"nodeCoords",    AttNodeCoords)
     filevarattdef(fid,"elementConn",   AttElementConn)
@@ -1112,7 +1268,7 @@ begin
     fid->elementMask = (/elementMask/)
 
     if(PrintTimings) then
-      print_elapsed_time(start_time,"unstructured_to_ESMF")
+      print_elapsed_esmf_time(start_time,"unstructured_to_ESMF")
     end if
 end     ; of unstructured_to_ESMF(...)
 ;======================================================================
@@ -1137,7 +1293,7 @@ procedure curvilinear_to_SCRIP(FName[1]:string,lat2d[*][*]:numeric,\
 local latlon_dims, nlat, nlon, fid, FileAtt, grid_siz, grid_corners, \
 grid_rank, FDimNames, FDimSizes, FDimUnlim, DummyAtt1, DummyAtt2, \
 GridCornerLat, GridCornerLon, grid_corner_lat, grid_corner_lon, mask2d, \
-lat_type, lon_type, DEBUG
+lat_type, lon_type, DEBUG, nc_file_type
 begin
 ;---Check for options
     PrintTimings = isatt_logical_true(Opt,"PrintTimings")
@@ -1146,6 +1302,7 @@ begin
     end if
 
     DEBUG = isatt_logical_true(Opt,"Debug")
+    TESTIT = isatt_logical_true(Opt,"Testit")
 
 ;---Check if the file already exists
     check_for_file(FName,Opt)
@@ -1153,6 +1310,15 @@ begin
 ;---Do we need to create a large file?
     if (.not.isatt_logical_false(Opt,"LargeFile")) then
       setfileoption("nc","Format","LargeFile") 
+    end if
+
+;---Do we need to create a netcdf-4 file?
+    if (isatt(Opt,"NetCDFType").and.\
+        str_lower(Opt@NetCDFType).eq."netcdf4") then
+      setfileoption("nc","Format","netcdf4") 
+      nc_file_type = "netcdf4"
+    else
+      nc_file_type = "netcdf3"
     end if
 
     if ( any(dimsizes(lat2d).ne.dimsizes(lon2d)) ) then
@@ -1217,9 +1383,20 @@ begin
     
 ;---Define the variables unit attribute
     DummyAtt1       = 0
-    DummyAtt1@units = "degrees"
     DummyAtt2       = 0
-    DummyAtt2@units = "unitless"
+;
+; The conversion to character arrays for NetCDF-4 files is a 
+; work-around.  ESMF_RegridWeightGen uses the F90 interface to 
+; read NetCDF-4 files, which doesn't yet have support for 
+; NetCDF-4 "string" types.
+; 
+    if(nc_file_type.eq."netcdf3") then
+      DummyAtt1@units = "degrees"
+      DummyAtt2@units = "unitless"
+    else
+      DummyAtt1@units = tochar("degrees")
+      DummyAtt2@units = tochar("unitless")
+    end if
     filevarattdef(fid,"grid_center_lat",DummyAtt1)
     filevarattdef(fid,"grid_center_lon",DummyAtt1)
     filevarattdef(fid,"grid_imask",DummyAtt2)
@@ -1286,7 +1463,12 @@ begin
             print("       poles, so calculating grid corners using")
             print("       calc_SCRIP_corners_boundaries...")
           end if
-          calc_SCRIP_corners_boundaries(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+          if(TESTIT) then
+            calc_SCRIP_corners_boundaries_2(lat2d,grid_corner_lat,"lat",Opt)
+            calc_SCRIP_corners_boundaries_2(lon2d,grid_corner_lon,"lon",Opt)
+          else 
+            calc_SCRIP_corners_boundaries(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+          end if
         else
           if(DEBUG) then
             print("curvilinear_to_SCRIP: no lat values are at the poles, so")
@@ -1300,7 +1482,12 @@ begin
              print("       produced out-of-range latitude values.")
              print("       Trying calc_SCRIP_corners_boundaries...")
            end if
-           calc_SCRIP_corners_boundaries(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+            if(TESTIT) then
+              calc_SCRIP_corners_boundaries_2(lat2d,grid_corner_lat,"lat",Opt)
+              calc_SCRIP_corners_boundaries_2(lon2d,grid_corner_lon,"lon",Opt)
+            else 
+              calc_SCRIP_corners_boundaries(lat2d,lon2d,grid_corner_lat,grid_corner_lon,Opt)
+            end if
           end if
         end if
     end if
@@ -1316,7 +1503,7 @@ begin
     fid->grid_corner_lon = (/ todouble(grid_corner_lon) /)
 
     if(PrintTimings) then
-      print_elapsed_time(start_time,"curvilinear_to_SCRIP")
+      print_elapsed_esmf_time(start_time,"curvilinear_to_SCRIP")
     end if
 end     ; of curvilinear_to_SCRIP(...)
 
@@ -1360,7 +1547,7 @@ begin
     curvilinear_to_SCRIP(FName,grid_center_lat,grid_center_lon,Opt2)
 
     if(PrintTimings) then
-      print_elapsed_time(start_time,"rectilinear_to_SCRIP")
+      print_elapsed_esmf_time(start_time,"rectilinear_to_SCRIP")
     end if
 end     ; of rectilinear_to_SCRIP
 
@@ -1754,7 +1941,7 @@ begin
   end if
 
   if(PrintTimings) then
-    print_elapsed_time(start_time,"latlon_to_SCRIP")
+    print_elapsed_esmf_time(start_time,"latlon_to_SCRIP")
   end if
 end     ; of latlon_to_SCRIP(...)
 
@@ -2097,9 +2284,15 @@ begin
   lon = fwgt->xc_b(0:mlon-1)
 
   if(.not.is_rectilinear) then
+     tmplat    = fwgt->yc_b(nlat/2::mlon)
+     tmplon    = fwgt->xc_b(mlon:2*mlon-1)
+     nlat_test = dimsizes(lat)
+     nlon_test = dimsizes(lon)
+     nlat_tmp  = dimsizes(tmplat)
+     nlon_tmp  = dimsizes(tmplon)
 ;---Test for "rectilinear-ness"
-     if (all(lat.eq.fwgt->yc_b(nlat/2::mlon)).and. \
-         all(lon.eq.fwgt->xc_b(mlon:2*mlon-1))) then
+     if (nlat_test.eq.nlat_tmp.and.nlon_test.eq.nlon_tmp.and.\
+         all(lat.eq.tmplat).and.all(lon.eq.tmplon)) then
        if(DEBUG) then
          print("ESMF_copy_varcoords: detected a rectilinear grid.")
          dq = str_get_dq()
@@ -2113,6 +2306,7 @@ begin
        sd_regrid@lon2d = reshape(fwgt->xc_b,(/nlat,mlon/))
        return
      end if
+     delete([/tmplat,tmplon/])
   end if
 
 ;---Must be rectilinear!
@@ -2242,10 +2436,15 @@ begin
   check_both_atts(opt2,"RemoveFiles","RemoveSrcFile",False)
   check_both_atts(opt2,"WgtForceOverwrite","ForceOverwrite",False)
   check_both_atts(opt2,"WgtOverwrite","Overwrite",False)
+  check_both_atts(opt2,"WgtNetCDFType","NetCDFType","netcdf3")
 
   if(isatt_logical_true(opt2,"RemoveDstFile"))
     print("ESMF_regrid_gen_weights: Warning: RemoveDstFile was set to True.")
     print("  This file might be needed later to generate coordinates.")
+  end if
+
+  if(isatt(opt2,"WgtNetCDFType")) then
+    opt2@NetCDFType = opt2@WgtNetCDFType
   end if
 
   if(isatt_logical_true(opt2,"WgtOverwrite")) then
@@ -2266,6 +2465,7 @@ begin
   end if
 
   DEBUG          = isatt_logical_true(opt2,"Debug")
+  CHECK          = isatt_logical_true(opt2,"Check")
   REMOVE_PET_LOG = isatt_logical_true(opt2,"RemovePETLog")
 
 ;---Check if the source grid file is a SCRIP file.
@@ -2362,8 +2562,8 @@ begin
     end if
     if(isvar("interp_method").and.isvar("pole").and.pole.eq."all".and.\
        any(interp_method.eq.(/"conserve","neareststod","nearestdtos"/))) then
-      print("ESMF_regrid_gen_weights: warning: 'Pole' cannot be set to 'all' when") 
-      print("                  using 'conserve' method. Defaulting to 'none'.")
+      print("ESMF_regrid_gen_weights: warning: 'Pole' cannot be set to 'all' when using") 
+      print("              'conserve' or 'nearest neighbor' methods. Defaulting to 'none'.")
       pole = "none"      
     end if
 
@@ -2401,9 +2601,34 @@ begin
         ESMFCMD = ESMFCMD + " --64bit_offset"
     end if
 
+;---This flag is necessary for writing vars > 4 GB
+    if (isatt(opt2,"NetCDFType").and.\
+        str_lower(opt2@NetCDFType).eq."netcdf4") then
+        ESMFCMD = ESMFCMD + " --netcdf4"
+    end if
+;
+; Must normalize weights on destinatioin grid if using "conserve"
+; This was added in V6.2.1. in V6.2.0 or earlier, the weights were
+; normalized *after* the weights file was created
+; (see ESMF_regrid_with_weights).
+;
+    if((isvar("interp_method").and.interp_method.eq."conserve".and.\
+        .not.isatt_logical_false(opt2,"NormalizeWeights")).or.\
+        isatt_logical_true(opt2,"NormalizeWeights")) then
+      ESMFCMD = ESMFCMD + " --norm_type fracarea"
+    end if
+
 ;---Check if the user has requested to print out the full command to be run.
   end if  ; end of building the command (Second Pass - optional features)
 		
+  if (isatt_logical_true(opt2,"NoPETLog")) then
+      ESMFCMD = ESMFCMD + " --no_log"
+  end if
+
+  if (CHECK) then
+      ESMFCMD = ESMFCMD + " --check"
+  end if
+
   if (DEBUG)
     print("--------------------------------------------------")
     print("ESMF_regrid_gen_weights: the following command is about to be executed on the system:")
@@ -2414,11 +2639,15 @@ begin
 ;---Execute the regridding command
   RegridOut = systemfunc(ESMFCMD)
         
+;
+; This removes the PET log file. You can set NoPETLog=True to
+; have it not generated at all.
+;
   if(REMOVE_PET_LOG) then
     system("rm -rf PET0.RegridWeightGen.Log")
   end if
 
-  if(DEBUG) then
+  if(DEBUG.or.CHECK) then
     print("ESMF_regrid_gen_weights: output from '" + ESMF_exec + "':")
     print("     " + RegridOut)
     print("--------------------------------------------------")
@@ -2458,7 +2687,7 @@ begin
   end if
 
   if(PrintTimings) then
-    print_elapsed_time(start_time,"ESMF_regrid_gen_weights")
+    print_elapsed_esmf_time(start_time,"ESMF_regrid_gen_weights")
   end if
 
 end     ; of ESMF_regrid_gen_weights(...)
@@ -2556,12 +2785,15 @@ begin
 ; "conserve" case, and they reconfirmed this Oct 2012.
 ;
   if(map_method.eq."Conservative remapping") then
-    ApplyFrac_B = True
+    ApplyFrac_B = isatt_logical_true(opt,"WgtApplyFracB")
+  else
+    ApplyFrac_B = False
+  end if
+
+  if(ApplyFrac_B) then
     frac_b = fid->frac_b
     frac_b@_FillValue = default_fillvalue(typeof(frac_b))
     frac_b = where(frac_b.eq.0,frac_b@_FillValue,frac_b)
-  else
-    ApplyFrac_B = False
   end if
 
 ;---Get the lat/lon of source and destination grids
@@ -2655,11 +2887,11 @@ begin
   v   = fid->S
 
 ;---Check that the column indexes will map into src_grid_dims
-  if ( max(col).gt.product(srcData_rgt_dims) ) then
-    print("ESMF_regrid_with_weights: error: source data on the description")
-    print("     file does not have proper dimensions.")
-    return(fmsg)
-  end if
+;;  if ( max(col).gt.product(srcData_rgt_dims) ) then
+;;    print("ESMF_regrid_with_weights: error: source data on the description")
+;;    print("     file does not have proper dimensions.")
+;;    return(fmsg)
+;;  end if
     
 ;
 ; We have to convert the src grid to 1D no matter what.
@@ -2682,7 +2914,10 @@ begin
 ;    print("ESMF_regrid_with_weights: error: weight file has internal mistmatched data or is corrupted.")
 ;    return(fmsg)
 ;  end if
-      
+
+; 01 Sep 2014: I don't think the above is an issue any more,
+; so will not use "max(row)" below.
+;
   if(DEBUG)
     print("ESMF_regrid_with_weights: calling sparse_matrix_mult to apply weights...")
   end if
@@ -2692,22 +2927,33 @@ begin
 ; of length N because ESMF gives us the indices into a
 ; 1D array. 
 ;
-; If dst_grid_dims is 1, then we have to set N=max(row).
-;
-  if(dst_grid_rank.eq.1) then
-    dst_grid_dims_in = max(row)
-  else
-    dst_grid_dims_in = product(dst_grid_dims)
-  end if
+;; NOTE: 01 Sep 2014: removed the N=max(row) below, because
+;; it causes a problem if you have a destination mask and
+;; a curvilinear or unstructured grid. Don't think this
+;; has been needed for awhile.
+;;
+;; If dst_grid_dims is 1, then we have to set N=max(row).
+;;
+;;  if(dst_grid_rank.eq.1) then
+;;    dst_grid_dims_in = max(row)
+;;  else
+;;    dst_grid_dims_in = product(dst_grid_dims)
+;;  end if
+
+  dst_grid_dims_in = product(dst_grid_dims)
 
 ;
 ; We will need to reshape the return (M) x N grid from
 ; sparse_matrix_mult if the output dimensions are not 1D.
 ;
-; We also need to divide by frac_b if using the "conserve"
-; method. We are trying to avoid making a separate copy
-; of the array, if float return is desired. So, we have
-; 8 special "if" tests to avoid this as much as possible:
+; Pre V6.2.1, we also needed to divide by frac_b if using
+; the "conserve" method. Post V6.2.0, we can use the 
+; "--norm_type fracarea" option when generating the weights.
+; So, frac_b stuff only applies if the user sets the
+; *unadvertised* WgtApplyFracB.
+;
+; All the "if" tests below are to avoid unnecessary copying
+; of the return array.
 ;
 ; Return array has to be reshaped and converted to float
 ;   Case 1: Apply frac_b
@@ -2857,7 +3103,7 @@ begin
   end if
 
   if(PrintTimings) then
-    print_elapsed_time(start_time,"ESMF_regrid_with_weights")
+    print_elapsed_esmf_time(start_time,"ESMF_regrid_with_weights")
   end if
 
   return(dstData)
@@ -3252,7 +3498,8 @@ begin
 ; Check for generic attributes to pass through; that is,
 ; attributes like "Debug".
 ;
-  gen_atts = (/"GridCornerDelta","PrintTimings","Overwrite","ForceOverwrite","Debug"/)
+  gen_atts = (/"NetCDFType","GridCornerDelta","PrintTimings",\
+               "Overwrite","ForceOverwrite","Debug"/)
   do i=0,dimsizes(gen_atts)-1
     if(isatt(opt2,gen_atts(i))) then
       opt_new@$gen_atts(i)$ = opt2@$gen_atts(i)$
@@ -3267,7 +3514,7 @@ begin
 ; attribute, like "opt@SrcOverwrite".
 ;
   spc_atts = (/"Mask2D","TriangularMesh","LargeFile",\
-               "Title","LLCorner","URCorner", \
+               "NetCDFType","Title","LLCorner","URCorner", \
                "Rotation","GridCornerLat","GridCornerLon",\
                "InputFileName","Overwrite","ForceOverwrite"/)
   do i=0,dimsizes(spc_atts)-1
@@ -3276,7 +3523,6 @@ begin
       opt_new@$spc_atts(i)$ = opt2@$tmp_att$
     end if
   end do
-
 ;
 ; Error checking added in V6.1.1 to make sure user doesn't 
 ; accidentally specify SrcFileName or DstFileName to be
@@ -3362,6 +3608,7 @@ end
 ;  DstGridType / DstGridLat / DstGridLon
 ;  SrcMask2D / DstMask2D
 ;  SrcLargeFile / DstLargeFile
+;  SrcNetCDFType / DstNetCDFType
 ;  WgtFileName
 ;  SkipSrcGrid / SkipDstGrid / SkipWgtGen
 ;  Debug

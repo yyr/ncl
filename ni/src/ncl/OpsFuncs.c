@@ -902,25 +902,6 @@ NclStackEntry _NclCreateAList(const char *buffer)
 	return(data);
 }
 
-void _NclBuildArrayOfList(void *tmp_val, int ndims, ng_size_t *dim_sizes)
-{
-	obj *id = (obj *)tmp_val;
-	NclList tmp_list;
-	ng_size_t i;
-	ng_size_t n_items = 1;
-	int list_type = (int) (NCL_FIFO);
-
-	for(i = 0; i < ndims; i++)
-		n_items *= dim_sizes[i];
-
-	for(i = 0; i < n_items; i++)
-	{
-		tmp_list =(NclList)_NclListCreate(NULL,NULL,0,0,list_type);
-		_NclListSetType((NclObj)tmp_list,list_type);
-		id[i] = tmp_list->obj.id;
-	}
-}
-
 NhlErrorTypes _NclBuildConcatArray
 #if	NhlNeedProto
 (int n_items,NclStackEntry *result)
@@ -2109,7 +2090,6 @@ NclStackEntry missing_expr;
 	NclScalar missing_val;
 	NclMultiDValData missing_md,tmp_md,size_md,tmp1_md;
 	void *tmp_val;
-	ng_size_t ndims = 1;
 	ng_size_t dim_sizes[NCL_MAX_DIMENSIONS];
 	long long *dim_size_list;
 	ng_size_t total;
@@ -2208,7 +2188,6 @@ NclStackEntry missing_expr;
 		}
 		ll_total = 1;
 		j = 0;
-		ndims = tmp1_md->multidval.dim_sizes[0];
 		if((tmp1_md->multidval.dim_sizes[0] == 1)&&(dim_size_list[0] > 0)) {
 			ll_total *= dim_size_list[0];
 			dim_sizes[0] = (ng_size_t)dim_size_list[0];
@@ -2230,7 +2209,6 @@ NclStackEntry missing_expr;
 			}
 		}
 		if(j == 0) {
-			ndims = 1;
 			dim_sizes[0] = 1;
 			j = 1;
 		}

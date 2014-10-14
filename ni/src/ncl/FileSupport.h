@@ -1,5 +1,5 @@
 /*
- *      $Id: FileSupport.h 15121 2014-03-12 17:49:11Z huangwei $
+ *      $Id: FileSupport.h 15249 2014-04-21 16:03:44Z huangwei $
  */
 /************************************************************************
 *									*
@@ -286,7 +286,7 @@ int	/* is_unlimited*/
 );
 
 extern NhlErrorTypes _NclFileAddVlen(NclFile thefile, NclQuark vlen_name, NclQuark var_name,
-                                     NclQuark type, NclQuark dim_name);
+                                     NclQuark type, NclQuark *dim_names, ng_size_t ndims);
 extern NhlErrorTypes _NclFileAddEnum(NclFile thefile, NclQuark vlen_name, NclQuark var_name,
                                      NclQuark dim_name, NclQuark *mem_name, void *mem_value,
                                      ng_size_t n_mems, NclBasicDataTypes val_type);

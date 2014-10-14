@@ -1811,7 +1811,7 @@ begin
 
           ; names to check
  oNames = (/"add_offset", "offset", "OFFSET", "Offset", "_offset" \
-           ,"Intercept", "intercept"/)
+           ,"Intercept", "intercept", "add_off", "ADD_OFF"/)
  sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor", "factor" \
            ,"Scale_factor", "Slope" , "slope", "ScaleFactor", "Scale_Factor" /)
 
@@ -4230,14 +4230,17 @@ function smthClmDayTLL (clmDay[*][*][*]:numeric, nHarm:integer)
 local nFill, dn, z, cf, clmDaySmth 
 begin
   
-  if (isatt(clmDay, "_FillValue")) then
-      nFill = num(ismissing(clmDay))
-      if (nFill.gt.0) then
-          print("smthClmDay_TLL: No missing values allowed: ezfftf does not allow")
-          print("smthClmDay_TLL: nFill="+nFill)
-          exit  
-      end if
-  end if
+; The following was commented out (post 6.2.0) when people started using 
+; this on daily SSTs which, of course, have _FillValue over land.
+ 
+ ;if (isatt(clmDay, "_FillValue")) then
+ ;    nFill = num(ismissing(clmDay))
+ ;    if (nFill.gt.0) then
+ ;        print("smthClmDayTLL: No missing values allowed: ezfftf does not allow")
+ ;        print("smthClmDayTLL: nFill="+nFill)
+ ;        exit  
+ ;    end if
+ ;end if
 
   dn = getvardims(clmDay)                   ; get dimension names
   if (dn(0).ne."year_day") then
@@ -4267,12 +4270,15 @@ function smthClmDayTLLL (clmDay[*][*][*][*]:numeric, nHarm:integer)
 ;  lxf: Li 2011-05-15
 local nFill, dn, z, cf, clmDaySmth
 begin
+  
+; The following was commented out (post 6.2.0) when people started using 
+; this on daily ocean which, of course, have _FillValue over land.
 
   if (isatt(clmDay, "_FillValue")) then
       nFill = num(ismissing(clmDay))
       if (nFill.gt.0) then
-          print("smthClmDay_TLLL: No missing values allowed: ezfftf does not allow")
-          print("smthClmDay_TLLL: nFill="+nFill)
+          print("smthClmDayTLLL: No missing values allowed: ezfftf does not allow")
+          print("smthClmDayTLLL: nFill="+nFill)
           exit
       end if
   end if
@@ -6766,6 +6772,117 @@ begin
 end
 
 ; ******************************************************************
+; Mary Haley
+; wrapper for NCL function escorc
+;
+; This wrapper is unique because of the multiple
+; dimensionality possibilities of x and y.
+
+undef ("escorc_Wrap")
+function escorc_Wrap(x:numeric, y:numeric)
+local ccr, ndims_x, ndims_y, rank_x, rank_y, xnames, ynames
+begin
+  dsizes_x = dimsizes(x)
+  dsizes_y = dimsizes(y)
+  rank_x   = dimsizes(dsizes_x)
+  rank_y   = dimsizes(dsizes_y)
+
+  ccr = escorc (x, y)
+
+  if(rank_x.gt.1.and.rank_x.eq.rank_y) then
+    copy_VarCoords_not_n (x, ccr, rank_x-1)
+  else
+    ccr_n = 0   ; dimension counter for ccr 
+    if(rank_x.gt.1) then
+      xnames = getvardims(x)
+      do n=0,rank_x-2
+        if (ismissing(xnames(n))) then
+          xnames(n) = "ncl_"+ccr_n
+        end if
+        ccr!ccr_n = xnames(n)
+        if(iscoord(x,xnames(n))) then
+          ccr&$ccr!ccr_n$ = x&$xnames(n)$
+        end if
+        ccr_n = ccr_n + 1
+      end do
+    end if
+    if(rank_y.gt.1) then
+      ynames = getvardims(y)
+      do n=0,rank_y-2
+        if (ismissing(ynames(n))) then
+          ynames(n) = "ncl_"+ccr_n
+        end if
+        ccr!ccr_n = ynames(n)
+        if(iscoord(y,ynames(n))) then
+          ccr&$ccr!ccr_n$ = y&$ynames(n)$
+        end if
+      end do
+    end if
+  end if
+  ccr@escorc_op_ncl = "escorc"
+  return(ccr)
+end
+
+; ******************************************************************
+; Mary Haley
+; wrapper for NCL function escorc_n
+;
+; This wrapper is a pain because of the multiple
+; dimensionality possibilities of x and y.
+
+undef ("escorc_n_Wrap")
+function escorc_n_Wrap(x:numeric,y:numeric,xdims[*]:integer,\
+                       ydims[*]:integer)
+local ccr, rank_x, rank_y, xnames, ynames, n, ccr_n
+begin
+  rank_x = dimsizes(dimsizes(x))
+  rank_y = dimsizes(dimsizes(y))
+
+  ccr = escorc_n (x, y, xdims, ydims)
+; copy_VarAtts(x, ccr)
+
+  if(rank_x.gt.1.and.rank_x.eq.rank_y) then
+    copy_VarCoords_not_n (x, ccr, xdims)
+  else
+    ccr_n = 0   ; dimension counter for ccr 
+    if(rank_x.gt.1) then
+      xnames = getvardims(x)
+      do n=0,rank_x-1
+        if (.not.any(n.eq.xdims)) then
+          if(ismissing(xnames(n))) then
+            xnames(n) = "ncl_"+ccr_n
+          end if
+          ccr!ccr_n = xnames(n)
+          if(iscoord(x,xnames(n))) then
+            ccr&$ccr!ccr_n$ = x&$xnames(n)$
+          end if
+          ccr_n = ccr_n + 1
+        end if
+      end do
+    end if
+    if(rank_x.gt.1) then
+      ynames = getvardims(y)
+      do n=0,rank_y-1
+        if (.not.any(n.eq.ydims)) then
+          if (ismissing(ynames(n))) then
+            ynames(n) = "ncl_"+ccr_n
+          end if
+          ccr!ccr_n = ynames(n)
+          if(iscoord(y,ynames(n))) then
+            ccr&$ccr!ccr_n$ = y&$ynames(n)$
+          end if
+          ccr_n = ccr_n + 1
+        end if
+      end do
+    end if
+  end if
+
+  ccr@escorc_op_ncl = "escorc_n"
+
+  return(ccr)
+end
+
+; ******************************************************************
 ; Dennis Shea
 ; wrapper for NCL function wgt_areaave
 
@@ -7873,28 +7990,28 @@ begin
      nTim   = dimsizes(yyyymmddhh)
 
      if (varType.eq."double") then
-         yrFrac = new( nDay, "double", "No_FillValue")
+         yrFrac = new( nTim, "double", "No_FillValue")
          one    = 1d0
      else
-         yrFrac = new( nDay, "float", "No_FillValue")
+         yrFrac = new( nTim, "float", "No_FillValue")
          one    = 1.0
      end if
 
-     if (isatt(yyyymmdd,"calendar")) then    ; retrofit to existing code
-         yrFrac@calendar = yyyymmdd@calendar
+     if (isatt(yyyymmddhh,"calendar")) then    ; retrofit to existing code
+         yrFrac@calendar = yyyymmddhh@calendar
 
-         if (yyyymmdd@calendar.eq."360_day" .or. yyyymmdd@calendar.eq."360") then
+         if (yyyymmddhh@calendar.eq."360_day" .or. yyyymmddhh@calendar.eq."360") then
              con = (/ 360, 360, 86400, 3600 /)*one
          end if
-         if (yyyymmdd@calendar.eq."365_day" .or. yyyymmdd@calendar.eq."365"    .or. \
-             yyyymmdd@calendar.eq."noleap"  .or. yyyymmdd@calendar.eq."no_leap") then
+         if (yyyymmddhh@calendar.eq."365_day" .or. yyyymmddhh@calendar.eq."365"    .or. \
+             yyyymmddhh@calendar.eq."noleap"  .or. yyyymmddhh@calendar.eq."no_leap") then
              con = (/ 365, 365, 86400, 3600 /)*one
          end if
-         if (yyyymmdd@calendar.eq."366_day" .or. yyyymmdd@calendar.eq."366"    .or. \
-             yyyymmdd@calendar.eq."allleap" .or. yyyymmdd@calendar.eq."all_leap") then
+         if (yyyymmddhh@calendar.eq."366_day" .or. yyyymmddhh@calendar.eq."366"    .or. \
+             yyyymmddhh@calendar.eq."allleap" .or. yyyymmddhh@calendar.eq."all_leap") then
              con = (/ 366, 366, 86400, 3600 /)*one
          end if
-         if (yyyymmdd@calendar.eq."gregorian" .or. yyyymmdd@calendar.eq."standard") then
+         if (yyyymmddhh@calendar.eq."gregorian" .or. yyyymmddhh@calendar.eq."standard") then
              con = (/ 365, 366, 86400, 3600 /)*one 
          end if
      else
@@ -8739,10 +8856,16 @@ procedure wallClockElapseTime(wcStrt:string, title:string, opt:integer)
 ;            wallClockElapseTime(wcStrt, "short_info", 0)
 ; opt not used right now
 ; this will not handle case where year or month changes
-local wcNow, wcStrt_c, tSTRT, wcNow_c, tNOW, sec, NLINE
+;
+; Haley: updated Aug 2014 to return the date in the correct format.
+;
+local wcNow, wcStrt_c, tSTRT, wcNow_c, tNOW, sec, NLINE, dq, date_cmd
 begin
-  wcNow     = systemfunc("date")     ; current ("now") time
-  wcNow_c   = stringtochar(wcNow)
+  dq        = str_get_dq()
+  date_cmd  = "date +" + dq + "%a %b %d %H:%M:%S %Z %Y" + dq
+;;wcNow     = systemfunc("date")
+  wcNow     = systemfunc(date_cmd)   ; current ("now") time; must be
+  wcNow_c   = stringtochar(wcNow)    ;    be 'Wed Aug 27 08:38:33 MDT 2014' format
   wcStrt_c  = stringtochar(wcStrt)
 
   if (dimsizes(wcNow_c).eq.dimsizes(wcStrt_c) .and. \
@@ -9727,6 +9850,7 @@ begin
    end if
 return
 end
+
 ; *****************************************************************
 ; D. Shea
 
@@ -9780,21 +9904,21 @@ begin
       one    = 1.0
   end if
 
-  if (isatt(yyyymmdd,"calendar")) then    ; retrofit to existing code
-      yrFrac@calendar = yyyymmdd@calendar
+  if (isatt(yyyymm,"calendar")) then    ; retrofit to existing code
+      yrFrac@calendar = yyyymm@calendar
 
-      if (yyyymmdd@calendar.eq."360_day" .or. yyyymmdd@calendar.eq."360") then
+      if (yyyymm@calendar.eq."360_day" .or. yyyymm@calendar.eq."360") then
           con = (/ 360, 360 /)*one
       end if
-      if (yyyymmdd@calendar.eq."365_day" .or. yyyymmdd@calendar.eq."365"    .or. \
-          yyyymmdd@calendar.eq."noleap"  .or. yyyymmdd@calendar.eq."no_leap") then
+      if (yyyymm@calendar.eq."365_day" .or. yyyymm@calendar.eq."365"    .or. \
+          yyyymm@calendar.eq."noleap"  .or. yyyymm@calendar.eq."no_leap") then
           con = (/ 365, 365 /)*one
       end if
-      if (yyyymmdd@calendar.eq."366_day" .or. yyyymmdd@calendar.eq."366"    .or. \
-          yyyymmdd@calendar.eq."allleap" .or. yyyymmdd@calendar.eq."all_leap") then
+      if (yyyymm@calendar.eq."366_day" .or. yyyymm@calendar.eq."366"    .or. \
+          yyyymm@calendar.eq."allleap" .or. yyyymm@calendar.eq."all_leap") then
           con = (/ 366, 366 /)*one
       end if
-      if (yyyymmdd@calendar.eq."gregorian" .or. yyyymmdd@calendar.eq."standard") then
+      if (yyyymm@calendar.eq."gregorian" .or. yyyymm@calendar.eq."standard") then
           con = (/ 365, 366 /)*one 
       end if
   else
@@ -10015,7 +10139,6 @@ begin
       return(xAnnual)
    end if
 end
-
 ; *****************************************************************
 ; D. Shea
 ; Convert monthly total values [eg, precipitation] to "per day" values.
@@ -11620,7 +11743,7 @@ begin
   end if
                     
   binxBound(nbinsx)= binxBound(nbinsx) + epsx*binxBound(nbinsx)
-  binyBound(nbinsy)= binxBound(nbinsy) + epsy*binyBound(nbinsy)
+  binyBound(nbinsy)= binyBound(nbinsy) + epsy*binyBound(nbinsy)
                       ; ------------------------------------------- 
 
   pdf2 = pdfxy_bin(x,y, binxBound,binyBound, popt)
@@ -11721,6 +11844,39 @@ begin
   
   return( pdf2 )
 end
+; ----
+undef("pdfxy_conform")
+function pdfxy_conform(x,y,nbinx,nbiny,opt)  ; same arguments as pdfxy
+;
+; Work around to allow x and y to be different sizes
+; Same arguments as pdfxy
+
+local N, M, X, Y, XX, YY, pdf2
+begin
+    N = product(dimsizes(x))
+    M = product(dimsizes(y))
+
+    if (N.eq.M) then
+        pdf2 = pdfxy(x,y,nbinx,nbiny,opt)
+        return(pdf2)
+    end if
+
+    X = ndtooned(x)
+    Y = ndtooned(y)
+
+    if (N.gt.M) then
+        YY   = new(N, typeof(Y), getVarFillValue(Y))
+        YY(0:M-1) = (/ Y /)
+        pdf2 = pdfxy(X,YY,nbinx,nbiny,opt)
+    else
+        XX   = new(M, typeof(X), getVarFillValue(X))
+        XX(0:N-1) = (/ X /)
+        pdf2 = pdfxy(XX,Y,nbinx,nbiny,opt)
+    end if
+
+    return(pdf2)
+end 
+
 ; ----
 undef ("genNormalDist")
 function genNormalDist(xAve[1]:numeric, xStd[1]:numeric, opt:logical) 
@@ -14164,7 +14320,7 @@ function regline_stats(x[*]:numeric, y[*]:numeric)
 ; Davis, J.C. (2002): Statistics and Data Analysis in Geology
 ;                     Wiley (3rd Edition)   ; pgs 215-218 
 
-local nx, ny, ii, RC, rc
+local nx, ny, ii, nii, RC, rc
 begin
 
 ; Get the lengths of the x and y arrays.
@@ -14179,8 +14335,16 @@ begin
    end if
 
    if (any(ismissing(x)) .or. any(ismissing(y))) then
-       ii = ind(.not.ismissing(x) .and. .not.ismissing(y))
-       RC  = reg_multlin_stats(y(ii),x(ii),False)
+       ii  = ind(.not.ismissing(x) .and. .not.ismissing(y))
+       nii = dimsizes(ii)
+       if (nii.gt.2) then
+           RC  = reg_multlin_stats(y(ii),x(ii),False)
+       else
+           RC  = new(1,typeof(y),getVarFillValue(y))
+           RC@info = "Not enough non-missing values: nii="+nii
+           print("regline_stats: Not enough non-missing values: nii="+nii)
+           return(RC)
+       end if
    else
        RC  = reg_multlin_stats(y,x,False)
    end if
@@ -14240,3 +14404,135 @@ begin
   end if
 
 end
+
+;==========================
+undef("sign_matlab")
+function sign_matlab( X:numeric )
+;
+; Mimic Matlab 'sign' function: sign_matlab(X) returns the sign of each element of 'X'
+; There are 3 possible return values for non _FillValue elements:  -1, 0, 1
+; The return value type will be the same type as 'X'
+;
+local typex, zero, onePos, oneNeg, result
+begin
+  typex  = typeof(X)
+
+  zero   = totype( 0, typex)
+  onePos = totype( 1, typex)
+  oneNeg = totype(-1, typex)
+
+  result = X                       ; same size, shape and type as 'X'
+
+  result = where(X.eq.zero,  zero  , result)
+  result = where(X.gt.zero,  onePos, result)
+  result = where(X.lt.zero,  oneNeg, result)
+
+  return(result)
+end
+;==========================
+undef("sign_f90")
+function sign_f90( X:numeric, Y:numeric )
+;
+; X and Y must be the same shape and size. 
+; They may be different numeric types (eg:, byte, short, int, float, double)
+;
+; Mimic the f90 'sign' function: sign(X,Y) returns the
+;       absolute value of X times the sign of Y.
+;       This is a transfer of sign from Y to X.
+; Note: Fortran 90 does not allow a processor to distinguish between a 
+;       positive and a negative zero, whereas Fortran 95 does.
+;
+; Note: NCL can not test for -0 .... this will test positive.
+;
+local typey, zero, result, dimX, dimY, rankX, rankY
+begin
+  dimX  = dimsizes(X)
+  dimY  = dimsizes(Y)
+  rankX = dimsizes(dimX)
+  rankY = dimsizes(dimY)
+
+  ier   = 0
+  if (rankX.ne.rankY) then
+      print("sign_f90: rank mismatch: rankX="+rankX+"; rankY="+rankY)
+      ier = 1
+  end if
+  if (.not.all(dimX.eq.dimY)) then
+      print("sign_f90: dimension size mismatch")
+      print("          dimX="+dimX)
+      print("          dimY="+dimY)
+      ier = ier+10
+  end if 
+  if (ier.ne.0) then
+      exit
+  end if
+
+  typeY  = typeof(Y)
+  zero   = totype( 0, typeY) ; make 0 same numeric type as Y
+
+  result = abs(X)            ; same size, shape and type as 'X'; all positive
+  result = where(Y.lt.zero, -result, result)
+  return(result)
+end
+; *****************************************************************
+; Generate latitudes for a Fixed (Rectilinear) grid
+; lat = latGridF (latStrt[1]:numeric, latLast[1]:numeric, nlat, "lat", "latitude", "degrees_north")
+;
+undef ("latGridF")
+function latGridF(latStrt[1]:numeric, latLast[1]:numeric, nlat[1]:integer \
+                 ,dimName[1]:string,longName[1]:string,units[1]:string)
+local lat
+begin
+  lat           = fspan(latStrt, latLast, nlat)
+  lat!0         = dimName
+  lat@long_name = longName
+  lat@units     = units
+  lat&$dimName$ = lat
+  return (lat)
+end
+; *****************************************************************
+; Generate longitudes for a Fixed (Rectilinear) grid
+; lon = lonGridF (lonStrt[1]:numeric, lonLast[1]:numeric, nlon, "lon", "longitude", "degrees_east")
+;
+undef ("lonGridF")
+function lonGridF(lonStrt[1]:numeric, lonLast[1]:numeric, nlon[1]:integer \
+                 ,dimName[1]:string,longName[1]:string,units[1]:string)
+local lon
+begin
+  lon           = fspan(lonStrt, lonLast, nlon)
+  lon!0         = dimName
+  lon@long_name = longName
+  lon@units     = units
+  lon&$dimName$ = lon
+  return (lon)
+end
+; *****************************************************************
+; Generate index values that can be used for sampling
+;
+undef("generate_sample_indices")
+function generate_sample_indices(N[1], method[1]:integer)
+;
+; simple function to generate indices
+;           N = sample size
+;      method = 0   ==> sample *without* replacement; reshuffle the order 
+;                       mean/std/... unchanged
+;                       use when the order of sampling may be important
+;
+;      method = 1   ==> sample *with* replacement
+;                       mean/std/... will change
+local k
+begin
+    if (method.lt.0 .or. method.gt.1) then
+        print("generate_resample_indices: method="+method+": only 0 or 1 allowed")
+        exit
+    end if
+
+    if (method.eq.0) then                  
+        k = generate_unique_indices( N )  
+    else
+        k = round(random_uniform(-0.499999,N-0.500001,N), 3)
+    end if
+
+    return(k)
+end
+
+

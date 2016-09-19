@@ -1,6 +1,12 @@
+#ifdef NIO_LIB_ONLY
+#include "niohlu.h"
+#include "nioNresDB.h"
+#include "nioCallbacks.h"
+#else
 #include <ncarg/hlu/hlu.h>
 #include <ncarg/hlu/NresDB.h>
 #include <ncarg/hlu/Callbacks.h>
+#endif
 #include "defs.h"
 #include "NclDataDefs.h"
 #include "Symbol.h"
@@ -285,7 +291,7 @@ NclObj theobj;
 #endif
 {
 	NclList thelist = (NclList)list;
-	NclListObjList *tmp = (NclListObjList*)NclMalloc(sizeof(NclListObjList));
+	NclListObjList *tmp = (NclListObjList*)NclCalloc(1, sizeof(NclListObjList));
 	NhlErrorTypes  ret = NhlNOERROR;
 	NclObj tmp_obj;
 	if((thelist!=NULL)&&(theobj != NULL)) {
@@ -306,6 +312,7 @@ NclObj theobj;
 		}
 		else
 		{
+			short need_created_var = 1;
 			NclObj tmp_parent_obj;
 			NclRefList *p;
 			if (theobj->obj.parents) {  
@@ -317,11 +324,13 @@ NclObj theobj;
 									       NULL,-1,NULL,ATTVALLINK,NULL,PERMANENT);
 						((NclVar)tmp_obj)->var.att_cb = _NclAddCallback((NclObj)theobj,(NclObj)tmp_obj,
 												ListAttDestroyNotify,DESTROYED,NULL);
+						need_created_var = 0;
 						break;
 					}
 				}
 			}
-			else {
+
+			if (need_created_var) {
 				tmp_obj= (NclObj)_NclVarCreate(NULL,NULL,Ncl_Var,0,NULL,
 							       (NclMultiDValData)theobj, NULL,-1,NULL,NORMAL,NULL,PERMANENT);
 			}
@@ -465,6 +474,17 @@ NclObj theobj;
 			tmp_obj= (NclObj)_NclHLUVarCreate(NULL,NULL,Ncl_HLUVar,0,NULL,
 							  (NclMultiDValData)theobj,NULL,-1,NULL,NORMAL,NULL,PERMANENT);
 		}
+#if 0
+                else if (theobj->obj.obj_type_mask & Ncl_MultiDVallistData)
+                {
+                        tmp_obj = theobj;
+                }
+                else if (theobj->obj.obj_type_mask & Ncl_MultiDValData)
+                {
+                        tmp_obj = (NclObj)_NclVarCreate(NULL,NULL,Ncl_Var,0,NULL,(NclMultiDValData)theobj,
+                                                         NULL,-1,NULL,NORMAL,NULL,PERMANENT);
+                }
+#endif
 		else
 		{
 			NclObj tmp_parent_obj;

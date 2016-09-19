@@ -1,5 +1,5 @@
 /*
- *      $Id: BuiltInFuncs.c 15353 2014-07-25 21:09:49Z haley $
+ *      $Id: BuiltInFuncs.c 16049 2015-03-06 18:48:20Z huangwei $
  */
 /************************************************************************
 *                                                                       *
@@ -77,8 +77,6 @@ extern "C" {
 extern int cmd_line;
 extern short NCLnoSysPager;
 extern char *nclf;
-
-long long local_strtoll(const char *nptr, char **endptr, int base);
 
 /* 
  * Function to coerce dimension sizes to int or long
@@ -2435,6 +2433,9 @@ NhlErrorTypes _NclIDelete
 							var->kind = NclStk_NOVAL;
 						}
 					}
+					else if (!sub_sel) {
+						_NclDestroyObj((NclObj)tmp);
+					}
 				}
 				else if (tmp->obj.obj_type == Ncl_MultiDValData) {
 					_NclDestroyObj((NclObj)tmp);
@@ -3353,6 +3354,9 @@ NhlErrorTypes _NclIfbinrecwrite
 ()
 #endif
 {
+	static int fd = -1;
+	static off_t cur_off = 0;
+	static int cur_recnum = 0;
 	NclQuark *fpath;
 	int	*recnum;
 	ng_size_t	dimsizes[NCL_MAX_DIMENSIONS];
@@ -3363,10 +3367,8 @@ NhlErrorTypes _NclIfbinrecwrite
 	void *value;
 	ng_size_t i;
 	long long ind1,ind2;
-	int fd = -1;
 	ssize_t n;
 	int n_dims;
-	off_t cur_off = 0;
 	NhlErrorTypes ret = NhlNOERROR;
 	int rsize = 0;
 	NclBasicDataTypes datai_type;
@@ -3375,6 +3377,7 @@ NhlErrorTypes _NclIfbinrecwrite
 	NclFileClassPart *fcp = &(nclFileClassRec.file_class);
 	int swap_bytes = 0;
 	int marker_size = 4;
+	NhlBoolean keep_open = False;
 
 #ifdef ByteSwapped
 	if (NrmStringToQuark("bigendian") == *(NclQuark *)(fcp->options[Ncl_WRITE_BYTE_ORDER].value->multidval.val)) {
@@ -3388,6 +3391,8 @@ NhlErrorTypes _NclIfbinrecwrite
 	if (8 == *(int *)(fcp->options[Ncl_RECORD_MARKER_SIZE].value->multidval.val)) {
 		marker_size = 8;
 	}
+	if ( *(NhlBoolean *)(fcp->options[Ncl_KEEP_OPEN].value->multidval.val) == True)
+		keep_open = True;
 
 	memset((void*) control_word,0,marker_size);
 
@@ -3445,14 +3450,22 @@ NhlErrorTypes _NclIfbinrecwrite
 #endif
 	itotal = (int)total;
 
-	fd = open(_NGResolvePath(NrmQuarkToString(*fpath)),(O_CREAT | O_RDWR),0644);
-	if(fd == -1) {
-		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecwrite: could not open (%s) check path and permissions, can't continue",NrmQuarkToString(*fpath));
-		return(NhlFATAL);
+	if (fd < 0) {
+		fd = open(_NGResolvePath(NrmQuarkToString(*fpath)),(O_CREAT | O_RDWR),0644);
+		if(fd == -1) {
+			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecwrite: could not open (%s) check path and permissions, can't continue",NrmQuarkToString(*fpath));
+			return(NhlFATAL);
+		}
+		cur_off = 0;
 	}
 
-	i = 0;
-	cur_off = 0;
+	if (*recnum > -1 && *recnum < cur_recnum) {
+		i = 0;
+		cur_off = 0;
+	}
+	else {
+		i = cur_recnum;
+	}
 	if(*recnum != -1) {
 		while(i != *recnum + 1) {	
 			lseek(fd,cur_off,SEEK_SET);
@@ -3462,7 +3475,7 @@ NhlErrorTypes _NclIfbinrecwrite
 * end of file reached
 */	
 				rsize = -1;
-				NhlPError(NhlWARNING,NhlEUNKNOWN,"fbinrecwrite: end of file reached before record number, writing record as last record in file");
+				NhlPError(NhlINFO,NhlEUNKNOWN,"fbinrecwrite: end of file reached before record number, writing record as last record in file");
 				break;
 			}
 			if (! swap_bytes)
@@ -3493,7 +3506,7 @@ NhlErrorTypes _NclIfbinrecwrite
 				_NclSwapBytes(&ind2,control_word,1,marker_size);
 			if(ind1 == ind2) {
 					i++;
-					cur_off += (off_t)(ind1 + 8);
+					cur_off += (off_t)(ind1 + 2 * marker_size);
 					rsize = ind1;
 			} else {
 				NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecwrite: an error occurred reading the record control words. Something is wrong with the FORTRAN binary file.");
@@ -3503,14 +3516,14 @@ NhlErrorTypes _NclIfbinrecwrite
 		}
 	} else {
 		rsize = -1;
-		lseek(fd,cur_off,SEEK_END);
+		lseek(fd,0,SEEK_END);
 	}
 	if((rsize == -1)||(rsize== total)){
 		long long ll_total;
 		ll_total = itotal;
 		if (rsize != -1) {
 			/* seek to the beginning of current record */
-			cur_off -= (off_t)(rsize + 8);
+			cur_off -= (off_t)(rsize + 2 * marker_size);
 			lseek(fd,cur_off,SEEK_SET);
 		}
 		if (swap_bytes) {
@@ -3531,24 +3544,29 @@ NhlErrorTypes _NclIfbinrecwrite
 				n = write(fd,outdata,itotal);
 				n = write(fd,&ll_total,8);
 			}
-			close(fd);
 			NclFree(outdata);
-			return(NhlNOERROR);
 		}
 		else if (marker_size == 4) {
 			n = write(fd,&itotal,4);
 			n = write(fd,value,itotal);
 			n = write(fd,&itotal,4);
-			close(fd);
-			return(NhlNOERROR);
 		}
 		else {
 			n = write(fd,&ll_total,8);
 			n = write(fd,value,itotal);
 			n = write(fd,&ll_total,8);
-			close(fd);
-			return(NhlNOERROR);
 		}
+		if (! keep_open) {
+			close(fd);
+			fd = -1;
+			cur_off = 0;
+			cur_recnum = 0;
+		} 
+		else {
+			cur_recnum = cur_recnum + 1;
+			cur_off = lseek(fd,0,SEEK_CUR);
+		}
+		return(NhlNOERROR);
 	} else {
 		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecwrite: data variable size does not match record size");
 		close(fd);
@@ -3564,6 +3582,9 @@ NhlErrorTypes _NclIfbinrecread
 ()
 #endif
 {
+	static int fd = -1;
+	static off_t cur_off = 0;
+	static int cur_recnum = 0;
 	NclQuark *fpath;
 	int	*recnum;
 	ng_size_t	*dimensions;
@@ -3580,14 +3601,13 @@ NhlErrorTypes _NclIfbinrecread
 	void *value;
 	ng_size_t i;
 	long long ind1,ind2;
-	int fd = -1;
 	ng_size_t size = 1, tmp_size = 1;
 	ssize_t n;
-	off_t cur_off = 0;
 	NhlErrorTypes ret = NhlNOERROR;
 	NclFileClassPart *fcp = &(nclFileClassRec.file_class);
 	int swap_bytes = 0;
 	int marker_size = 4;
+	NhlBoolean keep_open = False;
 
 #ifdef ByteSwapped
 	if (NrmStringToQuark("bigendian") == *(NclQuark *)(fcp->options[Ncl_READ_BYTE_ORDER].value->multidval.val)) {
@@ -3598,12 +3618,53 @@ NhlErrorTypes _NclIfbinrecread
 		swap_bytes = 1;
 	}
 #endif
+	if ( *(NhlBoolean *)(fcp->options[Ncl_KEEP_OPEN].value->multidval.val) == True)
+		keep_open = True;
+
 	if (8 == *(int *)(fcp->options[Ncl_RECORD_MARKER_SIZE].value->multidval.val)) {
 		marker_size = 8;
 	}
 
 	memset((void*) control_word,0,8);
 
+	data = _NclGetArg(0,4,DONT_CARE);
+	switch(data.kind) {
+	case NclStk_VAL:
+		tmp_md = data.u.data_obj;
+		break;
+	case NclStk_VAR:
+		tmp_md = _NclVarValueRead(data.u.data_var,NULL,NULL);
+		if(data.u.data_var->var.att_id != -1) {
+			NclAtt attobj;
+			NclAttList *attlist;
+                        attobj =  (NclAtt)_NclGetObj(data.u.data_var->var.att_id);
+                        if (attobj && attobj->att.n_atts > 0) {
+				attlist = attobj->att.att_list;
+				while (attlist != NULL) {
+					if (!strcmp(attlist->attname,"keep_open")) {
+						keep_open = *(NhlBoolean *) attlist->attvalue->multidval.val;
+						break;
+					}
+					attlist = attlist->next;
+				}
+			}
+		}
+		break;
+	default:
+		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: path cannot be decoded, can't continue");
+		return(NhlFATAL);
+	}
+	if(tmp_md->multidval.missing_value.has_missing) {
+		has_missing = 1;
+		missing = tmp_md->multidval.missing_value.value;
+	}
+	else {
+		has_missing = 0;
+		missing = tmp_md->multidval.missing_value.value;
+	}
+	fpath = (NclQuark *) tmp_md->multidval.val;
+
+/*
 	fpath = (NclQuark*)NclGetArgValue(
 		0,
 		4,
@@ -3613,6 +3674,7 @@ NhlErrorTypes _NclIfbinrecread
 		&has_missing,
 		NULL,
 		0);
+*/
 	if(has_missing &&(missing.stringval == *fpath)) {
 		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: path is a missing value, can't continue");
 		return(NhlFATAL);
@@ -3676,15 +3738,24 @@ NhlErrorTypes _NclIfbinrecread
 		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: invalid type specified, can't continue");
 		return(NhlFATAL);	
 	}
-	fd = open(_NGResolvePath(NrmQuarkToString(*fpath)),O_RDONLY);
+	if (fd < 0) {
+		fd = open(_NGResolvePath(NrmQuarkToString(*fpath)),O_RDONLY);
 
-	if(fd == -1) {
-		NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: could not open (%s) check path and permissions, can't continue",NrmQuarkToString(*fpath));
-		return(NhlFATAL);
+		if(fd == -1) {
+			NhlPError(NhlFATAL,NhlEUNKNOWN,"fbinrecread: could not open (%s) check path and permissions, can't continue",NrmQuarkToString(*fpath));
+			return(NhlFATAL);
+		}
+		cur_off = 0;
 	}
 
-	cur_off = 0;
-	i = 0;
+	if (*recnum < cur_recnum) {
+		i = 0;
+		cur_off = 0;
+	}
+	else {
+		i = cur_recnum;
+	}
+
 	while(i != *recnum) {	
 		lseek(fd,cur_off,SEEK_SET);
 		n = read(fd,(control_word),marker_size);
@@ -3822,7 +3893,17 @@ NhlErrorTypes _NclIfbinrecread
 		data.kind = NclStk_VAL;
 		data.u.data_obj = tmp_md;
 		_NclPlaceReturn(data);
-		close(fd);
+		if (! keep_open) {
+			close(fd);
+			fd = -1;
+			cur_off = 0;
+			cur_recnum = 0;
+		} 
+		else {
+			cur_recnum = *recnum + 1;
+			n = read(fd,(control_word),marker_size);
+			cur_off += (off_t)(ind1 + 2 * marker_size);
+		}
 		NclFree(dimensions);
 		return(ret);
 	} else {
@@ -6187,123 +6268,6 @@ NhlErrorTypes _NclIgetenv
 /* 
  * this version recognizes hexadecimal and decimal conventions, but not octal
  */
-
-static long _Nclstrtol 
-#if     NhlNeedProto
-(
-	const char *str, 
-	char **endptr
-)
-#else
-(str,endptr)
-const char *str;
-char **endptr;
-#endif
-{
-
-	long tval;
-	int i = 0;
-
-	while (isspace(str[i]))
-			i++;
-	if (strlen(&(str[i])) >= 2 && str[i] == '0' && (str[i+1] == 'x' || str[i+1] == 'X'))
-		tval = strtol(str,endptr,16);
-	else
-		tval = strtol(str,endptr,10);
-	return tval;
-}
-
-static unsigned long _Nclstrtoul
-#if     NhlNeedProto
-(
-        const char *str,
-        char **endptr
-)
-#else
-(str,endptr)
-const char *str;
-char **endptr;
-#endif
-{
-        unsigned long tval;
-        int i = 0;
-
-        while (isspace(str[i]))
-                        i++;
-        if (strlen(&(str[i])) >= 2 && str[i] == '0' && (str[i+1] == 'x' || str[i+1] == 'X'))
-        {
-                tval = strtoul(str,endptr,16);
-        }
-        else
-        {
-                tval = strtoul(str,endptr,10);
-        }
-
-        return tval;
-}
-
-
-static long long _Nclstrtoll
-#if     NhlNeedProto
-(
-        const char *str,
-        char **endptr
-)
-#else
-(str,endptr)
-const char *str;
-char **endptr;
-#endif
-{
-        long long tval;
-        int i = 0;
-
-        errno = ERANGE;
-
-        while (isspace(str[i]))
-                        i++;
-        if (strlen(&(str[i])) >= 2 && str[i] == '0' && (str[i+1] == 'x' || str[i+1] == 'X'))
-        {
-                errno = 0;
-                tval = local_strtoll(str,endptr,16);
-        }
-        else
-        {
-                errno = 0;
-                tval = local_strtoll(str,endptr,10);
-        }
-
-        return tval;
-}
-
-static unsigned long long _Nclstrtoull
-#if     NhlNeedProto
-(
-        const char *str,
-        char **endptr
-)
-#else
-(str,endptr)
-const char *str;
-char **endptr;
-#endif
-{
-        unsigned long long tval;
-        int i = 0;
-
-        while (isspace(str[i]))
-                        i++;
-        if (strlen(&(str[i])) >= 2 && str[i] == '0' && (str[i+1] == 'x' || str[i+1] == 'X'))
-        {
-                tval = strtoull(str,endptr,16);
-        }
-        else
-        {
-                tval = strtoull(str,endptr,10);
-        }
-
-        return tval;
-}
 
 NhlErrorTypes _NclIshorttoint
 #if	NhlNeedProto
@@ -11242,7 +11206,7 @@ NhlErrorTypes _Ncldim_cumsum
 	logical *tmp = NULL;
 	ng_size_t i,j;
 	ng_size_t m,n;
-    int sz;
+	int sz;
 	NclScalar *missing = NULL;
 	int opt;
 
@@ -19841,6 +19805,7 @@ NhlErrorTypes _NclINewList( void )
 		return(NhlFATAL);
 	}
 
+	strncpy(buffer, tmp, 5);
 	buffer[4] = '\0';
 	buffer[3] = '\0';
 	for(i = 0; i < strlen(tmp); i++) {
@@ -19896,6 +19861,44 @@ NhlErrorTypes _NclIprintFileVarSummary( void )
 	_NclPrintFileVarSummary(thefile,*var_string);
 	return(NhlNOERROR);
 
+}
+
+NhlErrorTypes _NclIgetfilepath( void )
+{
+	NclFile thefile;
+	obj *thefile_id;
+	ng_size_t dimsz[1];
+	int ndims = 1;
+	NclQuark* filepath = (NclQuark*) NclMalloc(sizeof(NclQuark));
+
+	if(NULL == filepath)
+	{
+		NHLPERROR((NhlFATAL,NhlEUNKNOWN,"problem to allocate memory for filepath.\n"));
+		return(NhlFATAL);
+	}
+
+        thefile_id = (obj*)NclGetArgValue(
+                        0,
+                        1,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        NULL,
+                        0);
+	thefile = (NclFile)_NclGetObj((int)*thefile_id);
+
+        *filepath = thefile->file.fpath;
+
+	dimsz[0] = 1;
+
+	/*
+        *NclScalar missing;
+        *missing.stringval = NrmStringToQuark("missing");
+        **filepath = NrmStringToQuark("missing");
+        *return NclReturnValue((void *) filepath, ndims, dimsz, &missing, NCL_string, 0);
+	*/
+	return NclReturnValue((void *) filepath, ndims, dimsz, NULL, NCL_string, 0);
 }
 
 NhlErrorTypes _NclIGetFileGroups( void )
@@ -20322,6 +20325,7 @@ NhlErrorTypes _NclIListIndex(void)
 	int nm = 0;
 	int i;
 
+	NrmQuark symbol_name;
 	NclObj the_obj;
 	NclVar cur_var;
 	NclMultiDValData the_value;
@@ -20351,6 +20355,12 @@ NhlErrorTypes _NclIListIndex(void)
 	{
 		comp_val = 1;
 		the_value = (NclMultiDValData)data.u.data_obj;
+
+		if(NCL_string == the_value->multidval.data_type)
+		{
+			comp_val = -1;
+			symbol_name = *(NrmQuark *)the_value->multidval.val;
+		}
 	}
 	else
 	{
@@ -20366,11 +20376,11 @@ NhlErrorTypes _NclIListIndex(void)
 	}
 
 	ret_val[0] = -1;
-
 	step = thelist->list.first;
-	for(i = 0; i < thelist->list.nelem; i++)
+
+	if(0 < comp_val)
 	{
-		if(comp_val)
+		for(i = 0; i < thelist->list.nelem; i++)
 		{
 			cur_var = (NclVar)_NclGetObj(step->obj_id);
 
@@ -20388,16 +20398,35 @@ NhlErrorTypes _NclIListIndex(void)
 						ret_val[nm++] = i;
 				}
 			}
+
+			step = step->next;
 		}
-		else
+	}
+	else if(0 > comp_val)
+	{
+		for(i = 0; i < thelist->list.nelem; i++)
+		{
+			cur_var = (NclVar)_NclGetObj(step->obj_id);
+
+			if(symbol_name == cur_var->var.var_quark)
+			{
+				ret_val[nm++] = i;
+			}
+
+			step = step->next;
+		}
+	}
+	else
+	{
+		for(i = 0; i < thelist->list.nelem; i++)
 		{
 			if(the_obj->obj.id == step->obj_id)
 			{
 				ret_val[nm++] = i;
 			}
-		}
 
-		step = step->next;
+			step = step->next;
+		}
 	}
 
 	if(nm < 1)
@@ -20422,6 +20451,156 @@ NhlErrorTypes _NclIListIndex(void)
 		NCL_int,
 		0
 	));
+}
+
+NhlErrorTypes _NclIListIndexFromName(void)
+{
+	obj *list_id;
+	NclList thelist = NULL;
+	ng_size_t dimsize = 1;
+	int *ret_val;
+	int nm = 0;
+	int i;
+
+	NclQuark *var_name;
+	NclVar cur_var;
+
+	NclListObjList *step;
+
+	int comp_val = 0;
+
+   	list_id = (obj*)NclGetArgValue(
+           0,
+           2,
+           NULL, 
+           NULL,
+	   NULL,
+	   NULL,
+           NULL,
+           DONT_CARE);
+
+	thelist = (NclList)_NclGetObj(*list_id);
+
+        var_name = (NclQuark*)NclGetArgValue(
+	           1,
+	           2,
+		   NULL,
+		   NULL,
+		   NULL,
+		   NULL,
+		   NULL,
+		   DONT_CARE);
+
+	ret_val = (int*)NclMalloc(thelist->list.nelem * sizeof(int));
+	if(ret_val == NULL)
+	{
+		NhlPError(NhlFATAL,NhlEUNKNOWN,"ListIndexFromName: problem to allocate memory.");
+		return(NhlFATAL);
+	}
+
+	ret_val[0] = -1;
+	step = thelist->list.first;
+
+	for(i = 0; i < thelist->list.nelem; i++)
+	{
+		cur_var = (NclVar)_NclGetObj(step->obj_id);
+
+		if((*var_name) == cur_var->var.var_quark)
+			ret_val[nm++] = i;
+
+		step = step->next;
+	}
+
+	if(nm < 1)
+            nm = 1;
+
+	dimsize = nm;
+	if(nm < thelist->list.nelem)
+	{
+		ret_val = (int *)NclRealloc(ret_val, nm*sizeof(int));
+		if(ret_val == NULL)
+		{
+			NhlPError(NhlFATAL,NhlEUNKNOWN,"ListIndex: problem to reallocate memory.");
+			return(NhlFATAL);
+		}
+	}
+
+	return(NclReturnValue(
+		ret_val,
+		1,
+		&dimsize,
+		NULL,
+		NCL_int,
+		0));
+}
+
+NhlErrorTypes _NclIListVarNameFromIndex(void)
+{
+	obj *list_id;
+	NclList thelist = NULL;
+	ng_size_t dimsize = 1;
+	NclQuark *ret_val;
+	int nm = 1;
+	int i;
+
+	int *idx;
+	NclQuark var_name = -1;
+	NclVar cur_var;
+
+	NclListObjList *step;
+
+	int comp_val = 0;
+
+   	list_id = (obj*)NclGetArgValue(
+           0,
+           2,
+           NULL, 
+           NULL,
+	   NULL,
+	   NULL,
+           NULL,
+           DONT_CARE);
+
+	thelist = (NclList)_NclGetObj(*list_id);
+
+        idx = (int*)NclGetArgValue(
+	           1,
+	           2,
+		   NULL,
+		   NULL,
+		   NULL,
+		   NULL,
+		   NULL,
+		   DONT_CARE);
+
+	ret_val = (NclQuark*)NclMalloc(sizeof(NclQuark));
+	if(ret_val == NULL)
+	{
+		NhlPError(NhlFATAL,NhlEUNKNOWN,"ListIndexFromName: problem to allocate memory.");
+		return(NhlFATAL);
+	}
+
+	ret_val[0] = -1;
+
+        if((idx[0] >= 0) && (idx[0] < thelist->list.nelem))
+	{
+		step = thelist->list.first;
+
+		for(i = 0; i < idx[0]; i++)
+			step = step->next;
+
+		cur_var = (NclVar)_NclGetObj(step->obj_id);
+
+		ret_val[0] = cur_var->var.var_quark;
+	}
+
+	return(NclReturnValue(
+		ret_val,
+		1,
+		&dimsize,
+		NULL,
+		NCL_string,
+		0));
 }
 
 static nc_type _MapType (NclBasicDataTypes data_type) {
@@ -21492,6 +21671,7 @@ NhlErrorTypes   _NclIFileIsPresent
     int ndims;
     ng_size_t dimsz[NCL_MAX_DIMENSIONS];
     int sz = 1;
+    int retcode = 0;
 
     logical *filemanuable;        /* file manuable? */
     int i = 0;
@@ -21514,7 +21694,7 @@ NhlErrorTypes   _NclIFileIsPresent
         sz *= dimsz[i];
 
     /* logical array to return */
-    filemanuable = (logical *) NclMalloc((unsigned int) sizeof(logical) * sz);
+    filemanuable = (logical *) NclCalloc(sz, (unsigned int) sizeof(logical));
     if (filemanuable == (logical *) NULL)
     {
         NhlPError(NhlFATAL, errno, "isfilepresent: memory allocation error");
@@ -21523,7 +21703,6 @@ NhlErrorTypes   _NclIFileIsPresent
 
     for(i = 0; i < sz; i++)
     {
-	filemanuable[i] = 0;
 	fpath = (char *) NrmQuarkToString(files[i]);
         if(0 == strncmp(fpath, "http", 4))
 	{
@@ -21533,7 +21712,15 @@ NhlErrorTypes   _NclIFileIsPresent
         }
         else
 	{
-            if(stat(_NGResolvePath(fpath),&st))
+            retcode = stat(_NGResolvePath(fpath),&st);
+	  /*
+	   *fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+	   *fprintf(stderr, "File retcode: \t\t%d\n", retcode);
+	   *fprintf(stderr, "File Size: \t\t%d bytes\n", st.st_size);
+	   *fprintf(stderr, "Number of Links: \t%d\n", st.st_nlink);
+	   *fprintf(stderr, "File inode: \t\t%d\n", st.st_ino);
+	   */
+            if(retcode)
             {
                 char tmp_path[NCL_MAX_STRING];
                 char *ext_name;
@@ -21556,11 +21743,34 @@ NhlErrorTypes   _NclIFileIsPresent
             }
             else
             {
-	        file = _NclCreateFile(NULL,NULL,Ncl_File,0,TEMPORARY,files[i],rw_v);
-	        if(NULL != file)
-                {
-                    filemanuable[i] = 1;     /* true */
-                    _NclDestroyObj((NclObj)file);
+	      /*
+	       *fprintf(stderr, "File: %s, line: %d\n", __FILE__, __LINE__);
+	       *fprintf(stderr, "File retcode: \t\t%d\n", retcode);
+	       *fprintf(stderr, "File Size: \t\t%d bytes\n", st.st_size);
+	       *fprintf(stderr, "Number of Links: \t%d\n", st.st_nlink);
+	       *fprintf(stderr, "File inode: \t\t%d\n", st.st_ino);
+	       *fprintf(stderr, "\nFile Permissions: \t");
+	       *fprintf(stderr,  (S_ISDIR(st.st_mode)) ? "d" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IRUSR) ? "r" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IWUSR) ? "w" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IXUSR) ? "x" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IRGRP) ? "r" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IWGRP) ? "w" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IXGRP) ? "x" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IROTH) ? "r" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IWOTH) ? "w" : "-");
+	       *fprintf(stderr,  (st.st_mode & S_IXOTH) ? "x" : "-");
+	       *fprintf(stderr, "\n");
+	       */
+
+		if((! S_ISDIR(st.st_mode)) && st.st_size)
+	        {
+	            file = _NclCreateFile(NULL,NULL,Ncl_File,0,TEMPORARY,files[i],rw_v);
+	            if(NULL != file)
+                    {
+                        filemanuable[i] = 1;     /* true */
+                        _NclDestroyObj((NclObj)file);
+                    }
                 }
             }
         }
@@ -30909,6 +31119,73 @@ NhlErrorTypes _Nclget_cpu_time(void)
         ));
 
 }
+
+NhlErrorTypes _NclIGetFileVarChunkDimsizes(void)
+{
+	NclQuark *name;
+	NclQuark fname;
+	NclScalar name_missing;
+	int name_has_missing;
+	ng_size_t nchunkdims = 1;
+	NclStackEntry val;
+	NclVar tmp_var;
+	NclMultiDValData tmp_md = NULL;
+	NclFile thefile = NULL;
+	long chunkdim_sizes[NCL_MAX_DIMENSIONS];
+	int i;
+
+	chunkdim_sizes[0] = -4294967296;
+
+        val = _NclGetArg(0,2,DONT_CARE);
+        switch(val.kind) {
+	case NclStk_VAR:
+		tmp_var = val.u.data_var;
+		if(tmp_var->var.var_quark > 0) {
+			fname = tmp_var->var.var_quark;
+		} else {
+			fname = -1;
+		}
+		break;
+	case NclStk_VAL:
+	default:
+		return(NclReturnValue(&chunkdim_sizes[0], 1, &nchunkdims,
+			&((NclTypeClass)nclTypelongClass)->type_class.default_mis, NCL_long, 1));
+	}
+
+        name = (NclQuark*)NclGetArgValue(
+                        1,
+                        2,
+                        NULL,
+                        NULL,
+                        &name_missing,
+                        &name_has_missing,
+                        NULL,
+                        0);
+
+	if(name_has_missing) {
+		if(*name == name_missing.stringval) {
+		        return(NclReturnValue(
+               			&chunkdim_sizes[0],
+                		1,
+                		&nchunkdims,
+                		&name_missing,
+                		NCL_long,
+                		1
+        		));
+		}
+	}
+
+	tmp_md = _NclVarValueRead(tmp_var,NULL,NULL);
+	if(tmp_md != NULL)
+	{
+		thefile = (NclFile)_NclGetObj(*(obj*)tmp_md->multidval.val);
+		if(thefile != NULL )
+			nchunkdims = _NclGetFileVarChunkInfo(thefile, *name, chunkdim_sizes);
+	}
+
+	return(NclReturnValue(chunkdim_sizes, 1, &nchunkdims, NULL, NCL_long, 1));
+}
+
 #ifdef __cplusplus
 }
 #endif

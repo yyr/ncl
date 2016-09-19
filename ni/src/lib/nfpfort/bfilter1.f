@@ -1,4 +1,71 @@
+C NCLFORTSTART
+      subroutine buttfilt(xr,yr,er,fca,fcb,dt,m,n,mzer,ier)
+      implicit none
+c                                                  INPUT
+      integer m, n, mzer, ier
+      double precision xr(n), dt, fca,fcb
+c
+c                                                  OUTPUT
+      double precision yr(n), er(n)
+C NCLEND
+c
+c NCL: y  = bfband(x,m,fca,fcb,dt,iflag)            ; y(2,:)
+C NCL: y  = dim_bfband_n(x,m,fca,fcb,dt,iflag,dims) ; y(...,:)
+c
+c ***Missing values not allowed***
+c
+c local
+      integer k
+      double precision ermx, f0, fc, fnyq
+c
+c initialize
+c
+      ier  = 0
+      ermx = 1.0d0
+
+      do k=1,n
+         yr(k) = 1.0d20
+         er(k) = 1.0d20
+      end do
+
+      f0   = (fca+fcb)*0.5d0
+      fc   = abs(fca-f0) 
+      fnyq = 1.0d0/(2.0d0*dt)
+
+c.......error check on frequencies
+      ier = 0
+ccccc if ((f0-fc).le.0.0d0) then
+      if (fca.le.0.0d0) then
+          ier = 1
+ccccc     write(6,*)'low corner frequency [fca=(f0-fc)] <= 0.0'
+      endif
+ccccc if ((f0+fc).ge.fnyq) then
+      if (fcb.ge.fnyq) then
+          ier = 2
+ccccc     write(6,*)'high corner frequency [fcb=(f0+fc)] >= nyquist'
+      endif
+      if (ier.ne.0) return
+
+      call bfilter(xr,yr,er,ermx,f0,fc,dt,m,n,mzer,ier)
+
+      return
+      end
+       
+c****************************
+c Butterworth Filter
+c****************************
+      subroutine bfilter(xr,yr,er,ermx,f0,fc,dt,m,n,mzer,ier)
+      implicit none
+      integer m,n,mzer,ier
+      double precision xr(n),yr(n),er(n),dt,ermx,f0,fc
+c
 c.......subroutine bfilter
+c     Electronic Supplement to Development of a Time-Domain, Variable-Period 
+c     Surface Wave Magnitude Procedure for Application at Regional and 
+c     Teleseismic Distances, Part I: Theory; David R. Russell
+c     Bulletin of the Seismological Society of America
+c
+c     http://www.seismosoc.org/publications/BSSA_html/bssa_96-2/05055-esupp/
 c
 c	Written by:  David R. Russell, AFTAC/TT 10 December 2004
 c
@@ -31,39 +98,29 @@ c
 c       yr(n):  Output filtered (real) time series
 c	er(n):  Output envelope function for filtered time series
 c       ermx:   Maximum value of envelope function er.
+c       ier:    error code (DJS added)
 c
-c****************************     
-      subroutine bfilter(xr,yr,er,ermx,f0,fc,dt,m,n,mzer)
-c****************************
-c
-c.......nmax = total possible number of time series points
+c       LOCAL:
+
 c       mmax = highest possible order of butterworth filter
 c
-      parameter (nmax=65000,mmax=10)
+c local 
+      integer mmax,j,k
+      double complex z1(n),z2(n)
+
+      parameter (mmax=10)
+      double complex a1(mmax),a2(mmax),a1c(mmax),a2c(mmax),p,s,ctemp
+      double precision pi,w0,wc,w1,w2,dtemp,dtt,fnyq,xmean
 c
-      double complex z1(nmax),z2(nmax),a1(mmax),a2(mmax),
-     &               a1c(mmax),a2c(mmax),p,s,ctemp
-      double precision pi,w0,wc,w1,w2,dtemp,dtt
-      dimension xr(n),yr(n),er(n)
 c
-c.......error check on frequencies
-c
-      fnyq=1.0/(2.0*dt)
-      if ((f0-fc).le.0.0) then
-        write(6,*)'low corner frequency (f0-fc) <= 0.0'
-        stop
-      endif
-      if ((f0+fc).ge.fnyq) then
-        write(6,*)'high corner frequency (f0+fc) >= nyquist'
-        stop
-      endif
+      fnyq=1.0d0/(2.0d0*dt)
 c
 c.......initialize double precision pi, dtt, angular frequencies w0,wc
 c
       pi=3.14159265358979d0
-      w0=2.0d0*pi*dble(f0)
-      wc=2.0d0*pi*dble(fc)
-      dtt=dble(dt)
+      w0=2.0d0*pi*f0
+      wc=2.0d0*pi*fc
+      dtt=dt
 c
 c.......prewarp frequencies for bilinear z-transform
 c
@@ -92,12 +149,12 @@ c
 c.......put real time series xr into complex series z1 and remove mean
 c       if mzer set to 1
 c
-      xmean=0.0
+      xmean=0.0d0
       if(mzer.eq.1) then
         do k=1,n
           xmean=xmean+xr(k)
         enddo
-        xmean=xmean/float(n)
+        xmean=xmean/n
       endif
       do k=1,n
         z1(k)=xr(k)-xmean
@@ -144,10 +201,10 @@ c
 c.......calculate real output time series (yr), envelope (er),
 c       envelope maximum (ermx)
 c
-      ermx=0.0
+      ermx=0.0d0
       do k=1,n
-        yr(k)=2.0*dreal(z1(k))
-        er(k)=2.0*cdabs(z1(k))
+        yr(k)=2.0d0*dreal(z1(k))
+        er(k)=2.0d0*cdabs(z1(k))
         ermx=amax1(er(k),ermx)
       enddo
       return

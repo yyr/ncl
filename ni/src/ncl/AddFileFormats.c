@@ -24,6 +24,7 @@ extern NclFormatFunctionRec Grib2Rec;
 
 #endif   /* BuildGRIB2 */
 
+#ifdef BuildHDF4
 #ifdef BuildHDFEOS
 extern NclFormatFunctionRecPtr HDFEOSAddFileFormat(
 #if	NhlNeedProto
@@ -32,7 +33,6 @@ void
 );
 #endif
 
-#ifdef BuildHDF4
 extern NclFormatFunctionRecPtr HDFAddFileFormat(
 #if	NhlNeedProto
 void
@@ -40,12 +40,12 @@ void
 );
 #endif
 
+#ifdef BuildHDF5
 #ifdef BuildHDFEOS5
 extern NclFormatFunctionRecPtr HDFEOS5AddFileFormat(void);
 extern NclFormatFunctionRecPtr NewHE5AddFileFormat(void);
 #endif
 
-#ifdef BuildHDF5
 extern NclFormatFunctionRecPtr H5AddFileFormat(void);
 extern NclFormatFunctionRecPtr HDF5AddFileFormat(void);
 #endif
@@ -76,9 +76,7 @@ extern NclFormatFunctionRecPtr OGRAddFileFormat(
 void
 #endif
 );
-#ifndef NIO_LIB_ONLY
 extern NclFormatFunctionRecPtr AdvancedOGRAddFileFormat(void);
-#endif
 #endif
 
 void _NclAddFileFormats
@@ -97,24 +95,23 @@ void _NclAddFileFormats
 	_NclRegisterFormat(HDFAddFileFormat,"hdf");
 	_NclRegisterFormat(HDFAddFileFormat,"hd");
 	_NclRegisterFormat(HDFAddFileFormat,"h4");
-#endif
 #ifdef BuildHDFEOS
 	_NclRegisterFormat(HDFEOSAddFileFormat,"hdfeos");
 	_NclRegisterFormat(HDFEOSAddFileFormat,"he2");
 	_NclRegisterFormat(HDFEOSAddFileFormat,"he4");
 #endif
+#endif
+#ifdef BuildHDF5
 #ifdef BuildHDFEOS5
 	_NclRegisterFormat(HDFEOS5AddFileFormat,"hdfeos5");
 	_NclRegisterFormat(HDFEOS5AddFileFormat,"he5");
 #endif
-#ifdef BuildHDF5
         _NclRegisterFormat(H5AddFileFormat,"h5");
         _NclRegisterFormat(H5AddFileFormat,"hdf5");
-
-#ifndef NIO_LIB_ONLY
+	/*
         _NclRegisterFormat(HDF5AddFileFormat,"h5");
         _NclRegisterFormat(HDF5AddFileFormat,"hdf5");
-#endif
+	*/
 #endif
 	_NclRegisterFormat(GribAddFileFormat,"gr");
 	_NclRegisterFormat(GribAddFileFormat,"gr1");
@@ -165,7 +162,6 @@ void _NclAddFileFormats
         /* TIGER: see http://www.census.gov/geo/www/tiger/tiger2006se/tgr2006se.html */
 #endif
 
-#ifndef NIO_LIB_ONLY
 #ifdef  USE_NETCDF4_FEATURES
 	/*
 	 *where this file will be scanned to find the second match.
@@ -181,10 +177,10 @@ void _NclAddFileFormats
 #ifdef BuildHDF5
 	_NclRegisterFormat(HDF5AddFileFormat,"h5");
 	_NclRegisterFormat(HDF5AddFileFormat,"hdf5");
-#endif
 #ifdef BuildHDFEOS5
 	_NclRegisterFormat(NewHE5AddFileFormat,"he5");
 	_NclRegisterFormat(NewHE5AddFileFormat,"hdfeos5");
+#endif
 #endif
 #ifdef  BuildGDAL
 #ifdef  USE_NETCDF4_FEATURES
@@ -192,7 +188,6 @@ void _NclAddFileFormats
         _NclRegisterFormat(AdvancedOGRAddFileFormat, "shp");  /* shapefile */
         _NclRegisterFormat(AdvancedOGRAddFileFormat, "mif");  /* mapinfo */
         _NclRegisterFormat(AdvancedOGRAddFileFormat, "gmt");  /* GMT   */
-#endif
 #endif
 #endif
 	return;

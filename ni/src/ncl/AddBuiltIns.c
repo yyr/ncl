@@ -1,5 +1,5 @@
 /*
- *      $Id: AddBuiltIns.c 15249 2014-04-21 16:03:44Z huangwei $
+ *      $Id: AddBuiltIns.c 16014 2015-03-02 17:29:52Z huangwei $
  */
 /************************************************************************
 *                                                                       *
@@ -100,7 +100,6 @@ extern NhlErrorTypes    _NclIGetFileVarTypes(
 void
 # endif /* NhlNeedProto */
 );
-
 
 extern NhlErrorTypes _NclIprintFileVarSummary(
 #if NhlNeedProto
@@ -957,6 +956,8 @@ void
 #endif
 );
 
+extern NhlErrorTypes _NclIGetFileVarChunkDimsizes(void);
+
 extern NhlErrorTypes _NclIFileVarDimsizes(
 #if     NhlNeedProto
 void
@@ -1029,6 +1030,8 @@ extern NhlErrorTypes _NclIListIndex(
 void
 #endif
 );
+extern NhlErrorTypes _NclIListIndexFromName(void);
+extern NhlErrorTypes _NclIListVarNameFromIndex(void);
 
 extern NhlErrorTypes _NclINhlGetErrorObjectId(
 #if NhlNeedProto
@@ -1079,6 +1082,8 @@ NhlErrorTypes _NclCreateGraphic(
 void
 #endif
 );
+
+NhlErrorTypes _NclIgetfilepath(void);
 
 void _NclAddBuiltIns
 #if     NhlNeedProto
@@ -2329,6 +2334,13 @@ void _NclAddBuiltIns
 	nargs = 0;
 	args = NewArgs(2);
 	dimsizes[0] = 1;
+	SetArgTemplate(args,0,"file",0,NclANY);nargs++;
+	SetArgTemplate(args,1,"string",1,dimsizes);nargs++;
+	NclRegisterFunc(_NclIGetFileVarChunkDimsizes,args,"getfilevarchunkdimsizes",nargs);
+
+	nargs = 0;
+	args = NewArgs(2);
+	dimsizes[0] = 1;
 	SetArgTemplate(args,0,"file",1,dimsizes);nargs++;
 	SetArgTemplate(args,1,"string",1,dimsizes);nargs++;
 	NclRegisterFunc(_NclIFileVarDimsizes,args,"filevardimsizes",nargs);
@@ -2545,6 +2557,20 @@ void _NclAddBuiltIns
     NclRegisterFunc(_NclIListIndex,args,"ListIndex",nargs);
 
     nargs = 0;
+    args = NewArgs(2);
+    dimsizes[0] = 1;
+    SetArgTemplate(args,nargs,"list",1,dimsizes);nargs++;
+    SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
+    NclRegisterFunc(_NclIListIndexFromName,args,"ListIndexFromName",nargs);
+
+    nargs = 0;
+    args = NewArgs(2);
+    dimsizes[0] = 1;
+    SetArgTemplate(args,nargs,"list",1,dimsizes);nargs++;
+    SetArgTemplate(args,nargs,"integer",1,dimsizes);nargs++;
+    NclRegisterFunc(_NclIListVarNameFromIndex,args,"ListVarNameFromIndex",nargs);
+
+    nargs = 0;
     args = NewArgs(1);
     dimsizes[0] = 1;
     SetArgTemplate(args,nargs,"string",1,dimsizes);nargs++;
@@ -2561,7 +2587,6 @@ void _NclAddBuiltIns
     SetArgTemplate(args,nargs,"file",0,NclANY); nargs++;
     SetArgTemplate(args,nargs,"string",1,dimsizes); nargs++;
     NclRegisterProc(_NclIprintFileVarSummary,args,"printFileVarSummary",nargs);
-
 
     nargs = 0;
     args = NewArgs(3);
@@ -2654,6 +2679,11 @@ void _NclAddBuiltIns
     dimsizes[0] = 1;
     SetArgTemplate(args, nargs, "string", 1, dimsizes);  nargs++;
     NclRegisterFunc(_Ncldefault_fillvalue, args, "default_fillvalue", nargs);
+
+    nargs = 0;
+    args = NewArgs(1);
+    SetArgTemplate(args,nargs,"file",0,NclANY); nargs++;
+    NclRegisterFunc(_NclIgetfilepath,args,"getfilepath",nargs);
 
     nargs = 0;
     args = NewArgs(2);

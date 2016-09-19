@@ -5,6 +5,9 @@
 ;                            loc_param:numeric, angle:numeric, opts:logical )
 ; function wrf_user_intrp2d( var2d:numeric, \
 ;                            loc_param:numeric, angle:numeric, opts:logical )
+; function wrf_user_vert_interp(file_handle,field:float,\
+;                               vert_coordinate[1]:string, \
+        ;                       interp_levels[*]:numeric,opts[1]:logical)
 ; function wrf_user_getvar( file_handle, variable:string, time:integer )
 ; function wrf_user_list_times( file_handle )
 ; function wrf_user_ll_to_ij( nc_file:file, longitude:numeric, latitude:numeric, \
@@ -2010,6 +2013,143 @@ begin
        return(tv)
   end if
 
+  if( variable .eq. "ctt") then
+      if ( time .eq. -1 ) then
+         explicit_time = 0
+         if(ISFILE) then
+            P     = nc_file->P
+            PB    = nc_file->PB
+            T     = nc_file->T
+
+;geopotential height
+            PHB   = nc_file->PHB
+            PH    = nc_file->PH
+
+            if(isfilevar(nc_file,"QVAPOR")) then
+               qvp =  nc_file->QVAPOR * 1000.  ; kg/kg -> g/kg
+            else
+               print("wrf_user_getvar: QVAPOR is needed to calculate the cloud top temperature.")
+               print("It has not been found in the data set.")
+               exit
+            end if
+
+
+            haveqci = 1
+            if(isfilevar(nc_file,"QICE")) then
+               qci = nc_file->QICE * 1000.  ; kg/kg -> g/kg
+            else
+               qci = new( (/Pdims(0),Pdims(1),Pdims(2),Pdims(3)/),float)
+               haveqci = 0
+            end if
+
+
+            if(isfilevar(nc_file,"QCLOUD")) then
+               qcw = nc_file->QCLOUD * 1000.  ; kg/kg -> g/kg
+            else
+               print("wrf_user_getvar: QCLOUD is needed to calculate the cloud top temperature.")
+               print("It has not been found in the data set.")
+               exit
+            end if
+
+            ter = nc_file->HGT(0,:,:)
+
+         else ; the else for ISFILE
+            P      = file_handle[:]->P
+            PB     = file_handle[:]->PB
+            T      = file_handle[:]->T
+            PHB    = file_handle[:]->PHB
+            PH     = file_handle[:]->PH
+            nc_file =  file_handle[0]
+            ter    = nc_file->HGT(0,:,:)
+            if(isfilevar(nc_file,"QVAPOR")) then
+               qvp = file_handle[:]->QVAPOR * 1000.  ; kg/kg -> g/kg
+            else
+               print("wrf_user_getvar: QVAPOR is needed to calculate the cloud top temperature.")
+               print("It has not been found in the data set.")
+               exit
+            end if 
+ 
+            haveqci = 1
+            if(isfilevar(nc_file,"QICE")) then
+               qci = file_handle[:]->QICE * 1000.  ; kg/kg -> g/kg
+            else
+               qci = new( (/Pdims(0),Pdims(1),Pdims(2),Pdims(3)/),float)
+               haveqci = 0
+            end if
+
+
+            if(isfilevar(nc_file,"QCLOUD")) then
+               qcw = file_handle[:]->QCLOUD * 1000.  ; kg/kg -> g/kg
+            else
+               print("wrf_user_getvar: QCLOUD is needed to calculate the cloud top temperature.")
+               print("It has not been found in the data set.")
+               exit
+            end if
+
+         end if ;if ISFILE
+       else     ;the else for time = -1
+          if(ISFILE) then
+            explicit_time = 1
+            P     = nc_file->P(time_in,:,:,:)
+            PB    = nc_file->PB(time_in,:,:,:)
+            T     = nc_file->T(time_in,:,:,:)
+
+;geopotential height
+            PHB   = nc_file->PHB(time_in,:,:,:)
+            PH    = nc_file->PH(time_in,:,:,:)
+
+            if(isfilevar(nc_file,"QVAPOR")) then
+               qvp =  nc_file->QVAPOR(time_in,:,:,:) * 1000.  ; kg/kg -> g/kg
+            else
+               print("wrf_user_getvar: QVAPOR is needed to calculate the cloud top temperature.")
+               print("It has not been found in the data set")
+               exit
+            end if
+
+
+            haveqci = 1
+            if(isfilevar(nc_file,"QICE")) then
+               qci = nc_file->QICE(time_in,:,:,:) * 1000.  ; kg/kg -> g/kg
+            else
+               qci = new( (/Pdims(0),Pdims(1),Pdims(2),Pdims(3)/),float)
+               haveqci = 0
+            end if
+
+
+            if(isfilevar(nc_file,"QCLOUD")) then
+               qcw = nc_file->QCLOUD(time_in,:,:,:) * 1000.  ; kg/kg -> g/kg
+            else
+               print("wrf_user_getvar: QCLOUD is needed to calculate the cloud top temperature.")
+               print("It has not been found in the data set.")
+               exit
+            end if
+
+            ter = nc_file->HGT(0,:,:)
+          end if ;end if for ISFILE
+       end if   ;time = -1
+
+
+;Get total pressure
+         Pdims = dimsizes(P)
+         pres  = P + PB
+         pres  = pres * 0.01
+
+;Get temperature in degrees K
+         T     = T +300.
+         tk    = wrf_tk( pres , T )
+
+;Get geopotential height on mass points
+         stag_ght   = PH
+         stag_ght   = (PHB + PH)/9.81
+         ght        =  wrf_user_unstagger(stag_ght,PHB@stagger)
+
+         fctt = wrf_ctt(pres,tk,qci,qcw,qvp,ght,ter,haveqci)
+; fctt will have description, units, and dimension names attached
+       delete_VarAtts(T,(/"description","units"/))
+       copy_VarAtts(T,fctt)
+       return(fctt)
+  end if         ;variable is ctt
+ 
 
   if( any( variable .eq. (/"ter","HGT","HGT_M"/) ) ) then
     variable = "HGT" 
@@ -2503,6 +2643,258 @@ begin
   return(loc)
 
 
+end
+
+;--------------------------------------------------------------------------------
+undef("wrf_user_vert_interp")
+function wrf_user_vert_interp(file_handle,field:numeric, \
+                              vert_coordinate[1]:string, \
+                              interp_levels[*]:numeric,opts[1]:logical)
+local valid_vert_coords, nc_file, valid_field_types
+begin
+
+  valid_vert_coords = (/"pressure","pres","ght_msl","ght_agl","theta","theta-e"/)
+  if(.not.any(vert_coordinate.eq.valid_vert_coords)) then
+    print("wrf_user_vert_interp: Unrecognized vertical coordinate.")
+    print("   Accepted vertical coordinates are:")
+    print(     "pressure, pres   hPa")
+    print(     "ght_msl          km")
+    print(     "ght_agl          km")
+    print(     "theta            K")
+    print(     "theta-e          K")
+    exit
+  end if
+
+  if(typeof(file_handle).eq."file") then
+    ISFILE = True
+    nc_file = file_handle
+  else if(typeof(file_handle).eq."list") then
+    ISFILE = False
+    nc_file = file_handle[0]
+  else
+    print("wrf_user_vert_interp: error: the first argument must be a file or a list of files opened with addfile or addfiles")
+    return
+  end if
+  end if
+
+  rgas    = 287.04     ;J/K/kg
+  ussalr  = .0065      ; deg C per m
+  sclht   = rgas*256./9.81
+  
+;read grid sizes from the nc_file.  Check to make
+;sure that we don't have a staggered field.
+  dNames      = getvardims(nc_file)
+  dSizes      = getfiledimsizes(nc_file)
+  thedims     = dimsizes(dSizes)
+  number_dims = thedims(0)
+
+  ew = dSizes(ind(dNames .eq. "west_east"))
+  ns = dSizes(ind(dNames .eq. "south_north"))
+  nz = dSizes(ind(dNames .eq. "bottom_top"))
+
+  field_dims     = dimsizes(field)
+  num_field_dims = dimsizes(field_dims)
+
+ if(num_field_dims .lt. 3 .or. num_field_dims .gt. 4) then
+    print("wrf_user_vert_interp: We can only interpolate a 3D or 4D field")
+    exit
+ end if
+
+; Check to see if the field comes in unstaggered.
+  if(field_dims(num_field_dims-3) .ne. nz) then
+     print("wrf_user_vert_interp: Please unstagger the field in the vertical")
+     exit
+  end if
+
+  if(field_dims(num_field_dims-2) .ne. ns .or. \
+     field_dims(num_field_dims-1) .ne. ew) then
+     print("wrf_user_vert_interp: Please unstagger the field")
+     exit
+  end if
+
+; See what options we have
+  extrap_field    = get_res_value_keep(opts,"extrapolate",False)
+  field_type      = str_lower(get_res_value_keep(opts,"field_type","none"))
+  log_of_Pressure = get_res_value_keep(opts,"logP",False)
+  debug           = get_res_value_keep(opts,"debug",False)
+  
+  valid_field_types = (/"none","pressure","pres","p","z","t","ght"/)
+  if(.not.any(field_type.eq.valid_field_types)) then
+    print("wrf_user_vert_interp: Unrecognized field type.")
+    print("Valid field types are: " + str_join(valid_field_types,", "))
+    exit
+  end if
+
+  if(log_of_Pressure) then
+     logP = 1      ; this is for passing into Fortran
+  else
+     logP = 0
+  end if
+
+  icase  = 0
+  extrap = 0   ; This is for passing into Fortran
+  if(extrap_field) then
+     extrap = 1
+     if(any(field_type .eq. (/"p","pres","pressure"/))) then
+        icase = 1
+     end if
+
+     if(field_type .eq. "z") then
+        icase = 2
+     end if
+
+     if(field_type .eq. "ght") then
+        icase = 2
+     end if
+;
+; For temperature we may have just temperature, potential temperature
+; or equivalent potential temperature.  Check the field description attribute 
+; to see which one we have.
+;
+     if(field_type .eq. "t") then
+        if(isatt(field,"description")) then
+
+           if(field@description .eq. "Temperature") then
+              if(field@units .eq. "C") then
+                 icase = 3
+              else
+                 icase = 4
+              end if
+           end if
+
+           if(field@description .eq. "Potential Temperature (theta) ") then
+              icase = 5
+           end if
+
+           if(field@description .eq. "Equivalent Potential Temperature") then
+              icase = 6
+           end if
+        end if ;the endif for checking for the field description attribute
+
+     end if;end if for the field_type being T or t
+
+
+  end if; the endif for extrap_field .eq. True
+
+
+  numlevels = dimsizes(interp_levels)
+
+;We will need some basic fields for the interpolation
+;regardless of the field requested. Get all time periods
+;of the fields.
+  if(ISFILE) then
+      P     = nc_file->P + nc_file->PB
+      Pdims = dimsizes(P)
+      ght   = wrf_user_getvar(nc_file,"height",-1)
+      tk    = wrf_user_getvar(nc_file,"tk",-1)
+      qvp   = nc_file->QVAPOR
+      terht = nc_file->HGT
+      sfp   = nc_file->PSFC * 0.01
+    else
+      P     = file_handle[:]->P + file_handle[:]->PB
+      Pdims = dimsizes(P)
+      tmpz  = file_handle[:]->PH
+      PHB   = file_handle[:]->PHB
+      tmpz  = (tmpz + PHB)/9.81
+      ght   = wrf_user_unstagger(tmpz,"Z")
+      T     = file_handle[:]->T
+      T     = T + 300.
+      tk    = wrf_tk( P , T )
+      qvp   = file_handle[:]->QVAPOR
+      terht = file_handle[:] ->HGT
+      sfp   = file_handle[:] ->PSFC * 0.01
+    end if
+    smsfp = sfp
+    wrf_smooth_2d(smsfp,3)  
+
+      
+;Initialize an array for the vertical coordinate
+ ntimes  = Pdims(0)
+
+;Get the vertical coordinate type
+  vcor  = 0
+  logp  = 0
+  if(any(vert_coordinate .eq. (/"pressure","pres"/))) then
+     vcor = 1
+     vcord_array = P * 0.01
+  end if
+
+  if(vert_coordinate .eq. "ght_msl") then
+    vcor = 2
+    vcord_array = exp(-ght/sclht)
+  end if
+
+  if(vert_coordinate .eq. "ght_agl") then
+    vcor = 3
+    rtemp       = new( (/nz,ns,ew/),float)
+    vcord_array = new((/ntimes,nz,ns,ew/),float)
+    do it = 0, ntimes - 1
+       do ilev = 0,nz-1
+          rtemp(ilev,:,:) = ght(it,ilev,:,:) - terht(0,:,:)
+       end do
+       vcord_array(it,:,:,:) = exp(-rtemp/sclht)
+    end do
+    delete(rtemp)
+  end if
+
+  if(vert_coordinate .eq. "theta")   then
+     vcor = 4
+     idir   = 1       
+     icorsw = 0       
+     delta  = 0.01    
+     if(ISFILE) then        
+        coriolis   = nc_file->F(0,:,:)   
+        theta      = wrf_user_getvar(nc_file,"theta",-1)
+     else
+        coriolis   =  file_handle[0]->F(0,:,:)   
+        theta      = T
+     end if        
+     preshPa    = P * 0.01
+     vcord_array = wrf_monotonic(theta,preshPa,coriolis,idir,delta,icorsw)      
+;
+;  We only extrapolate temperature fields below ground if we are interpolating
+;  to pressure or height vertical surfaces.
+;
+     icase = 0       
+  end if
+
+  if(vert_coordinate .eq. "theta-e") then
+     vcor   = 5
+     icorsw = 0
+     idir   = 1 
+     delta  = 0.01 
+     if(ISFILE) then  
+        coriolis = nc_file->F(0,:,:) 
+        eqpot    = wrf_user_getvar(nc_file,"eth",-1)
+     else 
+        coriolis =  file_handle[0]->F(0,:,:)
+        eqpot    = wrf_eth ( qvp, tk, P )
+     end if
+     preshPa    = P * 0.01
+
+     vcord_array = wrf_monotonic(eqpot,preshPa,coriolis,idir,delta,icorsw)
+;  We only extrapolate temperature fields below ground if we are interpolating
+;  to pressure or height vertical surfaces.
+     icase = 0
+  end if
+
+  if(debug) then
+    print("icase = " + icase + " extrap = " + extrap + " vcor = " + vcor + " logP = " + logP)
+  end if
+
+  field_out = wrf_vintrp(field,P,tk,qvp,ght,terht(0,:,:),sfp,smsfp,\
+                         vcord_array,interp_levels,icase,extrap,vcor,logP)
+
+; Add metadata to return array
+  copy_VarMeta(field,field_out)
+
+; Add new levels as a coordinate array
+  lev_field           = num_field_dims-3
+  field_out!lev_field = "interp_levels"
+  field_out&$field_out!lev_field$ = interp_levels(::-1)   
+  field_out@vert_interp_type = vert_coordinate
+
+  return(field_out)
 end
 
 ;--------------------------------------------------------------------------------

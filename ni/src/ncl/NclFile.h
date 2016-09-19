@@ -35,11 +35,7 @@
 
 extern int grib_version;
 
-#ifdef NIO_LIB_ONLY
-short NCLadvancedFileStructure[_NclNumberOfFileFormats];
-#else
 extern short NCLadvancedFileStructure[_NclNumberOfFileFormats];
-#endif
 
 typedef struct _NclFileRec NclFileRec;
 typedef struct _NclFileClassRec NclFileClassRec;
@@ -345,6 +341,7 @@ typedef enum {
 	Ncl_ADVANCED_FILE_STRUCTURE,
 	Ncl_RECORD_MARKER_SIZE,
 	Ncl_GRIB_CACHE_SIZE,
+	Ncl_KEEP_OPEN,
 	Ncl_NUMBER_OF_FILE_OPTIONS
 } NclFileOptionValues;
 

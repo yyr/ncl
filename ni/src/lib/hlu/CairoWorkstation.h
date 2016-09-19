@@ -1,5 +1,5 @@
 /*
- *      $Id: CairoWorkstation.h 15364 2014-07-28 21:16:31Z huangwei $
+ *      $Id: CairoWorkstation.h 15910 2015-01-12 19:03:40Z brownrig $
  */
 
 #ifndef    _NCarioWorkstation_h
@@ -13,9 +13,6 @@
 
 #define    NhlNwkFileName   "wkFileName"
 #define    NhlCwkFileName   "WkFileName"
-
-#define    NhlNwkPDFResolution   "wkPDFResolution"
-#define    NhlCwkPDFResolution   "WkPDFResolution"
 
 #define    _NhlNwkPixConf   "_wkPixConf"
 #define    _NhlCwkPixConf   "_WkPixConf"

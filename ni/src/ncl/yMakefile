@@ -1,5 +1,5 @@
 #
-#      $Id: yMakefile 15728 2014-08-27 18:57:16Z haley $
+#      $Id: yMakefile 15998 2015-02-26 00:07:12Z dbrown $
 #
 ###########################################################################
 #			   Copyright (C)  1993			 	  #
@@ -14,7 +14,7 @@
 #				National Center for Atmospheric Research
 #				POB 3000, Boulder, Colorado
 #
-#	Date:		$Date: 2014-08-27 12:57:16 -0600 (Wed, 27 Aug 2014) $
+#	Date:		$Date: 2015-02-25 17:07:12 -0700 (Wed, 25 Feb 2015) $
 #
 #	Description:	
 #
@@ -244,7 +244,7 @@ STATIC_HDRS	=	AttSupport.h DataSupport.h FileSupport.h Keywords.h \
 			NclCallBacksI.h date.h NclCCM.h NclGRIB.h NclGRIB2.h date.h tables.h \
 			ccmhdr.h editline.h editline_unix.h ListSupport.h NclList.h \
 			NclMultiDVallistData.h NclTypelist.h \
-			NclProf.h \
+			NclProf.h NclGlobalParams.h \
 			cptec_254_gtb.h dwd_002_gtb.h dwd_201_gtb.h dwd_202_gtb.h \
 			dwd_203_gtb.h dwd_204_gtb.h dwd_205_gtb.h dwd_206_gtb.h dwd_207_gtb.h \
 			ecmwf_128_gtb.h ecmwf_129_gtb.h ecmwf_130_gtb.h ecmwf_131_gtb.h \
@@ -252,8 +252,9 @@ STATIC_HDRS	=	AttSupport.h DataSupport.h FileSupport.h Keywords.h \
 			ecmwf_160_gtb.h ecmwf_162_gtb.h ecmwf_170_gtb.h ecmwf_171_gtb.h ecmwf_172_gtb.h \
 			ecmwf_173_gtb.h ecmwf_174_gtb.h ecmwf_175_gtb.h ecmwf_180_gtb.h ecmwf_190_gtb.h \
 			ecmwf_200_gtb.h ecmwf_201_gtb.h ecmwf_210_gtb.h ecmwf_211_gtb.h ecmwf_228_gtb.h \
-			ecmwf_230_gtb.h ecmwf_234_gtb.h fnmoc_gtb.h \
-			fsl0_gtb.h fsl1_gtb.h fsl2_gtb.h ncep_opn_gtb.h \
+			ecmwf_230_gtb.h ecmwf_234_gtb.h ecmwf_213_gtb.h ecmwf_214_gtb.h ecmwf_215_gtb.h \
+			ecmwf_217_gtb.h ecmwf_218_gtb.h ecmwf_219_gtb.h ecmwf_220_gtb.h ecmwf_221_gtb.h \
+			fnmoc_gtb.h fsl0_gtb.h fsl1_gtb.h fsl2_gtb.h ncep_opn_gtb.h \
 			ncep_reanal_gtb.h ncep_128_gtb.h ncep_129_gtb.h  ncep_130_gtb.h \
 			ncep_131_gtb.h  ncep_133_gtb.h  ncep_140_gtb.h  ncep_141_gtb.h 	jma_3_gtb.h \
 			jra55_gtb.h mpi_128_gtb.h mpi_180_gtb.h mpi_199_gtb.h mpi_181_gtb.h 
@@ -272,8 +273,6 @@ INSTALL_HDRS	= 	ApiRecords.h AttSupport.h DataSupport.h FileSupport.h HluClasses
 			NclTypeuint64.h NclTypeulong.h NclTypeushort.h NclVar.h Symbol.h \
 			TypeSupport.h VarSupport.h defs.h
 
-NIO_HDRS        =       nio.h 
-NIO_EXTRA_HDRS  =       nio_path.h
 
 NIO_NCL_HDR_FILES = ApiRecords.h AttSupport.h DataSupport.h		\
 		FileSupport.h HLUSupport.h ListSupport.h NclAtt.h NclCCM.h		\
@@ -301,7 +300,9 @@ NIO_NCL_HDR_FILES = ApiRecords.h AttSupport.h DataSupport.h		\
 		ecmwf_170_gtb.h ecmwf_171_gtb.h ecmwf_172_gtb.h ecmwf_173_gtb.h \
 		ecmwf_174_gtb.h ecmwf_175_gtb.h ecmwf_180_gtb.h ecmwf_190_gtb.h \
 		ecmwf_200_gtb.h ecmwf_201_gtb.h ecmwf_210_gtb.h ecmwf_211_gtb.h \
-		ecmwf_228_gtb.h ecmwf_230_gtb.h ecmwf_234_gtb.h  \
+		ecmwf_228_gtb.h ecmwf_230_gtb.h ecmwf_234_gtb.h ecmwf_213_gtb.h \
+		ecmwf_214_gtb.h ecmwf_215_gtb.h ecmwf_217_gtb.h ecmwf_218_gtb.h \
+		ecmwf_219_gtb.h ecmwf_220_gtb.h ecmwf_221_gtb.h        \
 		fnmoc_gtb.h fsl0_gtb.h fsl1_gtb.h fsl2_gtb.h		\
 		jma_3_gtb.h jra55_gtb.h mpi_128_gtb.h mpi_180_gtb.h \
 		mpi_199_gtb.h mpi_181_gtb.h ncep_128_gtb.h ncep_129_gtb.h \
@@ -311,13 +312,16 @@ NIO_NCL_HDR_FILES = ApiRecords.h AttSupport.h DataSupport.h		\
 
 NIO_NCL_OTHER_FILES = AddFileFormats.c AttSupport.c DataSupport.c	\
 		FileSupport.c Formats.c GetGrids.c InitData.c		\
-		AdvancedFileSupport.c \
+		ListSupport.c NclList.c \
+		AdvancedFileSupport.c  NclAdvancedOGR.c \
+		NclNetCDF4.c NclNewHDF5.c NclNewHDFEOS5.c \
 		MatMulDValOp.c.sed Memory.c MultiDValOp.c.sed NclAtt.c	\
 		NclCCM.c NclCoordVar.c NclData.c NclGroup.c NclFile.c	\
 		NclAdvancedFile.c NclAdvancedGroup.c			\
 		NclFileVar.c NclGRIB.c NclGRIB2.c NclHDF.c		\
 		NclHDFEOS.c NclHDFEOS5.c NclHDF5.c	\
 		NclMultiDValData.c.sed NclMultiDValnclfileData.c	\
+                NclMultiDVallistData.c                                  \
 		NclNetCdf.c NclOneDValCoordData.c NclType.c NclOGR.c	\
 		NclType.c.sed NclTypebyte.c.specific			\
 		NclTypechar.c.specific NclTypedouble.c.specific		\
@@ -410,7 +414,7 @@ STATIC_SRCS	=	AddBuiltIns.c AddHLUObjs.c \
 			complete.c editline.c sysunix.c ListSupport.c \
 			NclList.c NclMultiDVallistData.c \
 			NclProf.c NclTime.c \
-			NclDriver.c
+			NclDriver.c PrintToken.c
 
 
 FSRCS		=	qu2reg3.f rowina3.f scm0.f ncepcode.f
@@ -444,7 +448,6 @@ STATIC_IO_OBJS  =       AddFileFormats.o AttSupport.o DataSupport.o \
 			NclTypelist.o NclVar.o VarSupport.o \
 			ctoiee.o date.o 
 
-#Printtoken.o
 STATIC_OBJS	=	AddBuiltIns.o AddHLUObjs.o \
 			AddIntrinsics.o Execute.o \
 			Machine.o OpsFuncs.o SrcTree.o \
@@ -457,7 +460,7 @@ STATIC_OBJS	=	AddBuiltIns.o AddHLUObjs.o \
 			HLUFunctions.o yywrap.o craybin.o \
 			complete.o editline.o sysunix.o ListSupport.o \
 			NclList.o NclMultiDVallistData.o \
-			NclProf.o NclTime.o
+			NclProf.o NclTime.o PrintToken.o
 
 
 FOBJS		=	qu2reg3.o rowina3.o scm0.o ncepcode.o
@@ -653,16 +656,6 @@ NclHDFEOS.o: NclHDFEOS.c
 	  @echo These can safely be ignored.
       $(CC) -c $(HDFDEFINES) $(HDF4_NETCDF) $(CFLAGS) NclHDFEOS.c
 	  @echo 
-
-#
-# NIO dependencies
-#
-nio_path.c: nio_path.c.sed Makefile
-        @sed    -e 's+SED_ENV_DEFS+$(NGENV_DESCRIPT)+'  <nio_path.c.sed >nio_path.c
-
-nio_path.o: nio_path.h nio_path.c
-	$(CC) -c -DNCARGURL='$(NCARGURL)' $(CFLAGS) nio_path.c
-
 
 
 MakeNcl: MakeNcl.csh Makefile

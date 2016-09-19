@@ -1,4 +1,4 @@
-;
+; 
 ;      $Id: contributed.ncl,v 1.273 2010-05-07 17:38:12 haley Exp $
 ;
 ;
@@ -1475,6 +1475,20 @@ begin
   return( get1Dindex_Exclude(cv, cvWant) )
 end
 
+;*************************************************************
+; From: Dave Allured 
+; Date: Thu, 15 Mar 2007 14:00:43 -0600
+; "The following is much simpler and more robust" ... than 'closest_val' 
+; DA's original name was 'closest_val_AnyOrder'
+undef("closest_val")
+function closest_val(xVal[1]:snumeric, x:snumeric)
+local xAbsDif, xMinVal, iClose
+begin
+   xAbsDif = abs(xVal-x)
+   iClose = minind(xAbsDif)
+   return(iClose) ; original doc says "first occurence"
+end 
+
 ;****************************************************************
 ; S. Murphy
 ; Finds the index of the array point closest to the desired value
@@ -1482,8 +1496,8 @@ end
 ; values in array2ck = 17.0 17.5 18.0 18.5
 ; this function would return 3.
 
-undef("closest_val")
-function closest_val(var2ck:numeric,array2ck[*])
+undef("closest_val_original")
+function closest_val_original(var2ck:numeric,array2ck[*])
 local size, narray,loc, test1,test2
 begin
   size = dimsizes(array2ck)            ; get size of original array
@@ -1812,8 +1826,9 @@ begin
           ; names to check
  oNames = (/"add_offset", "offset", "OFFSET", "Offset", "_offset" \
            ,"Intercept", "intercept", "add_off", "ADD_OFF"/)
- sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor", "factor" \
-           ,"Scale_factor", "Slope" , "slope", "ScaleFactor", "Scale_Factor" /)
+ sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor", "factor"    \
+           ,"Scale_factor", "Slope" , "slope", "ScaleFactor", "Scale_Factor" \
+           ,"SCALING_FACTOR" /)
 
  offset = 0.0   ; establish as type float
  scale  = 1.0
@@ -1899,8 +1914,9 @@ begin
           ; names to check
  oNames = (/"add_offset", "offset", "OFFSET", "Offset", "_offset" \
            ,"Intercept", "intercept", "add_off", "ADD_OFF"/)
- sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor" , "factor" \
-           ,"Scale_factor", "Slope" , "slope", "ScaleFactor", "Scale_Factor" /)
+ sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor" , "factor"   \
+           ,"Scale_factor", "Slope" , "slope", "ScaleFactor", "Scale_Factor" \
+           ,"SCALING_FACTOR" /)
 
 
  offset = 0.0   ; establish as type float
@@ -1998,7 +2014,7 @@ begin
            ,"Intercept", "intercept", "scalingIntercept" /)
  sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor" \
            ,"Scale_factor", "Slope" , "slope", "ScaleFactor"      \
-           ,"Scale_Factor", "scalingSlope" /)
+           ,"Scale_Factor", "scalingSlope", "SCALING_FACTOR" /)
 
 
  offset = 0.0   ; establish as type float
@@ -2088,7 +2104,8 @@ begin
  oNames = (/"add_offset", "offset", "OFFSET", "Offset", "_offset" \
            ,"Intercept", "intercept"/)
  sNames = (/"scale", "SCALE", "Scale", "_scale", "scale_factor" \
-           ,"Scale_factor", "Slope" , "slope", "ScaleFactor", "Scale_Factor" /)
+           ,"Scale_factor", "Slope" , "slope", "ScaleFactor"    \
+           ,"Scale_Factor", "SCALING_FACTOR" /)
 
 
  offset = 0.0   ; establish as type float
@@ -4644,8 +4661,17 @@ begin
  
 undef("yyyymmdd_to_yyyyddd")
 function yyyymmdd_to_yyyyddd (yyyymmdd[*]:integer)
-local yyyy, mmdd, mm, dd, yyyyddd
+local ntim, yyyy, mmdd, mm, dd, yyyyddd
 begin
+  ntim = dimsizes(yyyymmdd)
+
+;;if (isatt(yyyymmdd,"calendar") .and. yyyymmdd@calendar.eq."proleptic_gregorian") then  
+;;    print("yyyymmdd_to_yyyyddd:  proleptic_gregorian calendar not supported")
+;;    yyyyddd = new(ntim, "integer", -9999)
+;;    yyyyddd@long_name = "yyyymmdd_to_yyyyddd:  proleptic_gregorian calendar not supported"
+;;    return(yyyyddd)
+;;end if
+
   yyyy = yyyymmdd/10000
   mmdd = yyyymmdd - (yyyy*10000)
   mm   = mmdd/100
@@ -4675,6 +4701,14 @@ local nTime, yyyy, ddd, days, yyyymmdd, nt, iyr \
     , ndyr, skip, nmo, ndy, ndymo, foo
 begin
   nTime    = dimsizes( yyyyddd )
+
+;;if (isatt(yyyyddd,"calendar") .and. yyyyddd@calendar.eq."proleptic_gregorian") then  
+;;    print("yyyyddd_to_yyyymmdd:  proleptic_gregorian calendar not supported")
+;;    yyyymmdd = new(nTime, "integer", -9999)
+;;    yyyymmdd@long_name = "yyyyddd_to_yyyymmdd:  proleptic_gregorian calendar not supported"
+;;    return(yyyymmdd)
+;;end if
+
   yyyy     = yyyyddd/1000
   ddd      = yyyyddd - yyyy*1000
            ; non leap and leap [greorian, standard, or no 'calendar' attribute
@@ -7792,7 +7826,7 @@ end
 ; 
 undef("yyyymm2yyyyFrac")
 function yyyymm2yyyyFrac (yyyymm:integer)
-local year, mon
+local year, mon, yrFrac
 begin
   year = yyyymm/100 
   mon  = yyyymm-year*100  
@@ -7816,7 +7850,7 @@ end
 ;                                                                  
 undef("yyyymm_to_yyyyfrac")
 function yyyymm_to_yyyyfrac (yyyymm[*]:numeric, mmOffset[1]:numeric)
-local YYYYMM, year, mm, xmos, one      
+local YYYYMM, year, mm, xmos, one, yrFrac      
 begin                                                                                               
   if (typeof(yyyymm).eq."double" .or. typeof(mmOffset).eq."double") then 
       xmos = 12.d0                         
@@ -7855,8 +7889,17 @@ end
 ;
 undef ("yyyymmdd2yyyyFrac") 
 function yyyymmdd2yyyyFrac (yyyymmdd:numeric, ddOffset[1]:numeric)
-local year, mmdd, mon, day, dayYear, nDay, yrFrac, n, con, varType, YYYYMMDD
+local ntim, year, mmdd, mon, day, dayYear, nDay, yrFrac, n, con, varType, YYYYMMDD
 begin
+     ntim = dimsizes(yyyymmdd)
+
+     if (isatt(yyyymmdd,"calendar") .and. yyyymmdd@calendar.eq."proleptic_gregorian") then  
+         print("yyyymmdd_to_yyyyfrac: yyyymmdd2yyyyFrac:  proleptic_gregorian calendar not supported")
+         yrFrac = new( ntim, typeof(yyyymmdd))
+         yrFrac@long_name = "yyyymmdd_to_yyyyfrac: yyyymmdd2yyyyFrac:  proleptic_gregorian calendar not supported"
+         return(yrFrac)
+     end if
+
      varType = typeof(yyyymmdd)
 
      if (varType.eq."integer") then
@@ -9059,7 +9102,15 @@ begin
         tmpdir = "./"
       end if
 
-      tmpfile = systemfunc("echo tmp$$")
+    ;;tmpfile = systemfunc("echo tmp$$")   ; See JIRA: NCL-2174
+      tmpnum = systemfunc("date +%N")      ; introduced 6.3.0
+      if(tmpnum.eq."N")then
+        delete(tmpnum)
+        srand(toint(systemfunc("date +%s")))
+        tmpnum = rand()
+      end if
+      tmpfile = "tmp"+tmpnum
+
       if (ismissing(tmpfile)) then
           tmpfile = "BoGuS_file"
       end if
@@ -9305,11 +9356,17 @@ begin
       print("omega_ccm_driver: got      ranku="+ranku+"  and rankps="+rankps)
       exit
   end if
-
-  ntim   = dimu(0)
-  klev   = dimu(1)
-  nlat   = dimu(2)
-  mlon   = dimu(3)
+                          ; only klev is used below: ntim, nlat, mlon  are FYI only
+  if (ranku.eq.3) then
+      klev   = dimu(0)
+      nlat   = dimu(1)
+      mlon   = dimu(2)
+  else
+      ntim   = dimu(0)
+      klev   = dimu(1)
+      nlat   = dimu(2)
+      mlon   = dimu(3)
+  end if
 
   omega = u                                 ; create space
   omega@long_name = "Vertical pressure velocity"
@@ -9905,7 +9962,6 @@ begin
   end if
 
   if (isatt(yyyymm,"calendar")) then    ; retrofit to existing code
-      yrFrac@calendar = yyyymm@calendar
 
       if (yyyymm@calendar.eq."360_day" .or. yyyymm@calendar.eq."360") then
           con = (/ 360, 360 /)*one
@@ -12501,7 +12557,8 @@ begin
       ;statx(1) = stddev(x)             ; std. deviation
        moment   = dim_stat4( work ) 
        statx(0) = moment(0)             ; mean
-       statx(1) = moment(1)             ; std. deviation
+       statx(1) = sqrt(moment(1))       ; sample std. deviation
+                                        ; fixed 15 Oct 2014; had returned variance
        
        qsort( work )                    ; sort into ascending order
        statx(2) = work(0)               ; min ( work )
@@ -12790,7 +12847,9 @@ function calculate_monthly_values (x:numeric, arith:string, nDim[1]:integer, opt
 ;    if 5D [case,time,lev,lat,lon]
 ; arith: "avg" [also, "ave"], "sum","min","max"     others may be added later
 ; nDim : scalar integer that specifies the 'time' dimension [generally, 0]
-; opt  : option ... not used here 
+; opt  : only used to eliminate a warning message 
+;        opt= 0 ... default ... print Warning
+;        opt=-1 ... do not print Warning
 ;
 ; Sample usage:  x(time,lat,lon) where time are n-hrly or daily values.
 ;        xMonthAvg = calculate_monthly_values(x, "avg", 0, False)
@@ -12849,7 +12908,12 @@ begin
         dAvg(1)= NTIM
     end if
 
-    xReturn= new ( dAvg , typeof(x), getFillValue(x))
+    if (typeof(x).eq."float" .or. typeof(x).eq."double") then
+        xReturn= new ( dAvg , typeof(x), getFillValue(x))
+    else
+        xReturn= new ( dAvg , "float", tofloat(getFillValue(x)))
+    end if
+
     xMonth = new ( NTIM , typeof(x&time), "No_FillValue")
   ;;printVarSummary(xMonth)
 
@@ -12875,86 +12939,89 @@ begin
          if (.not.ismissing(ii(0))) then
 
              dimii = dimsizes(ii)     ; should be > 1
-             if (dimii.eq.1) then
-                 print("calculate_monthly_values: there should be more than one element")
-                 print("This is unsupported code.                                      ")
-                 exit
+             if (dimii.eq.1 .and. opt.ne.-1 ) then
+                 print("calculate_monthly_values: Warning: there should be more than one element")
+            ;    print("This is unsupported code.                                      ")
+            ;    exit
              end if
+
+             iStrt = ii(0)            
+             iLast = ii(dimii-1)
 
              xMonth(NT) = (/ x&time(ii(0)) /)
 
              if (rankx.eq.1) then
                  if (arith.eq."avg" .or. arith.eq."ave") then
-                     xReturn(NT) = dim_avg_n(x(ii) , nDim)
+                     xReturn(NT) = dim_avg_n(x(iStrt:iLast) , nDim)
                  end if
                  if (arith.eq."sum") then
-                     xReturn(NT) = dim_sum_n(x(ii) , nDim)
+                     xReturn(NT) = dim_sum_n(x(iStrt:iLast) , nDim)
                  end if
                  if (arith.eq."min") then
-                     xReturn(NT) = dim_min_n(x(ii) , nDim)
+                     xReturn(NT) = dim_min_n(x(iStrt:iLast) , nDim)
                  end if
                  if (arith.eq."max") then
-                     xReturn(NT) = dim_max_n(x(ii) , nDim)
+                     xReturn(NT) = dim_max_n(x(iStrt:iLast) , nDim)
                  end if
              end if
 
              if (rankx.eq.2) then
                  if (arith.eq."avg" .or. arith.eq."ave") then
-                     xReturn(NT,:) = dim_avg_n(x(ii,:) , nDim)
+                     xReturn(NT,:) = dim_avg_n(x(iStrt:iLast,:) , nDim)
                  end if
                  if (arith.eq."sum") then
-                     xReturn(NT,:) = dim_sum_n(x(ii,:) , nDim)
+                     xReturn(NT,:) = dim_sum_n(x(iStrt:iLast,:) , nDim)
                  end if
                  if (arith.eq."min") then
-                     xReturn(NT,:) = dim_min_n(x(ii,:) , nDim)
+                     xReturn(NT,:) = dim_min_n(x(iStrt:iLast,:) , nDim)
                  end if
                  if (arith.eq."max") then
-                     xReturn(NT,:) = dim_max_n(x(ii,:) , nDim)
+                     xReturn(NT,:) = dim_max_n(x(iStrt:iLast,:) , nDim)
                  end if
              end if
 
              if (rankx.eq.3) then
                  if (arith.eq."avg" .or. arith.eq."ave") then
-                     xReturn(NT,:,:) = dim_avg_n(x(ii,:,:) , nDim)
+                     xReturn(NT,:,:) = dim_avg_n(x(iStrt:iLast,:,:) , nDim)
                  end if
                  if (arith.eq."sum") then
-                     xReturn(NT,:,:) = dim_sum_n(x(ii,:,:) , nDim)
+                     xReturn(NT,:,:) = dim_sum_n(x(iStrt:iLast,:,:) , nDim)
                  end if
                  if (arith.eq."min") then
-                     xReturn(NT,:,:) = dim_min_n(x(ii,:,:) , nDim)
+                     xReturn(NT,:,:) = dim_min_n(x(iStrt:iLast,:,:) , nDim)
                  end if
                  if (arith.eq."max") then
-                     xReturn(NT,:,:) = dim_max_n(x(ii,:,:) , nDim)
+                     xReturn(NT,:,:) = dim_max_n(x(iStrt:iLast,:,:) , nDim)
                  end if
              end if
 
              if (rankx.eq.4) then
                  if (arith.eq."avg" .or. arith.eq."ave") then
-                     xReturn(NT,:,:,:) = dim_avg_n(x(ii,:,:,:) , nDim)
+                     xReturn(NT,:,:,:) = dim_avg_n(x(iStrt:iLast,:,:,:) , nDim)
                  end if
                  if (arith.eq."sum") then
-                     xReturn(NT,:,:,:) = dim_sum_n(x(ii,:,:,:) , nDim)
+                     xReturn(NT,:,:,:) = dim_sum_n(x(iStrt:iLast,:,:,:) , nDim)
                  end if
                  if (arith.eq."min") then
-                     xReturn(NT,:,:,:) = dim_min_n(x(ii,:,:,:) , nDim)
+                     xReturn(NT,:,:,:) = dim_min_n(x(iStrt:iLast,:,:,:) , nDim)
                  end if
                  if (arith.eq."max") then
-                     xReturn(NT,:,:,:) = dim_max_n(x(ii,:,:,:) , nDim)
+                     xReturn(NT,:,:,:) = dim_max_n(x(iStrt:iLast,:,:,:) , nDim)
                  end if
              end if
 
              if (rankx.eq.5) then        ; note the location of time
                  if (arith.eq."avg" .or. arith.eq."ave") then
-                     xReturn(:,NT,:,:,:) = dim_avg_n(x(:,ii,:,:,:) , nDim)
+                     xReturn(:,NT,:,:,:) = dim_avg_n(x(:,iStrt:iLast,:,:,:) , nDim)
                  end if
                  if (arith.eq."sum") then
-                     xReturn(:,NT,:,:,:) = dim_sum_n(x(:,ii,:,:,:) , nDim)
+                     xReturn(:,NT,:,:,:) = dim_sum_n(x(:,iStrt:iLast,:,:,:) , nDim)
                  end if
                  if (arith.eq."min") then
-                     xReturn(:,NT,:,:,:) = dim_min_n(x(:,ii,:,:,:) , nDim)
+                     xReturn(:,NT,:,:,:) = dim_min_n(x(:,iStrt:iLast,:,:,:) , nDim)
                  end if
                  if (arith.eq."max") then
-                     xReturn(:,NT,:,:,:) = dim_max_n(x(:,ii,:,:,:) , nDim)
+                     xReturn(:,NT,:,:,:) = dim_max_n(x(:,iStrt:iLast,:,:,:) , nDim)
                  end if
              end if
          end if
@@ -14534,5 +14601,756 @@ begin
 
     return(k)
 end
+;==========================
+undef("getTimeFromBnds")
+function getTimeFromBnds(f, opt[1]:logical)   ; f is of type 'list' or 'file'
+local ftype, TIME, DATE, YEAR, nt
+begin
+  ftype = typeof(f)
 
+  if (.not.(ftype.eq."file" .or. ftype.eq."list")) then 
+      print("getTimeFromBnds: argument f must be type file or list: ftype="+ftype)
+      exit
+  end if
 
+  if (ftype.eq."file" .and. isfilevar(f,"time_bnds")) then
+      TIME          = f->time_bnds(:, 0)     ; address 'off-by-one' time    
+      TIME@units    = f->time@units          ; appropriate for CESM
+      TIME@calendar = f->time@calendar
+  else if (isfilevar(f[0],"time_bnds")) then ; must be type 'list'
+           TIME          = f[:]->time_bnds(:, 0)  ; address 'off-by-one' time    
+           TIME@units    = f->time@units     ; appropriate for CESM
+           TIME@calendar = f->time@calendar
+       end if
+  end if
+
+  DATE   = cd_calendar(TIME, -2)             ; YYYYMMDD
+  DATE@long_name = "current date (YYYYMMDD)"
+  DATE!0 = "time"
+ 
+  if (opt) then
+      if (isatt(opt,"yrStrtEnd")) then
+          YEAR = DATE
+          YEAR = DATE/10000
+          YEAR@long_name = "YYYY"
+          nt   = ind(YEAR.ge.yrStrtEnd(0) .and. YEAR.le.yrStrtEnd(1))
+          nt@long_name = "indices for Start/End period: "+yrStrtEnd(0)+"-"+yrStrtEnd(1)
+          return( [/TIME(nt), DATE(nt), nt/] )
+      end if
+  else
+      return([/TIME, DATE/])
+  end if
+    
+end
+;==========================
+undef("pot_temp")
+function pot_temp (p:numeric, t:numeric, npr[*]:integer, opt[1]:logical)
+;
+; Compute potential temperature
+; Nomenclature
+;     p       - pressure levels (default: Pa) 
+;               if a 'units' attribute is present this may be altered
+;     t       - temperature (K)   
+;               Also: equivalent temperature (teqv) could be input
+;                     teqv =  temperature of an air parcel from which all the water vapor 
+;                             has been extracted by an adiabatic process.
+;                     teqv = t + (Lv/cpd)*r  ; 
+;                     cpd  = 1004. or 1005.7 ; specific heat dry air [J/kg/K]
+;                     Lv   = 2.5104e6        ; [J/kg]=[m2/s2]  Latent Heat of Vaporization of Water
+;                     r    = mixing ratio 
+;     npr     - dimension number(s) of 'p' corresponding to temperature 
+;               npr=-1 means that p and t have the same ranks and sizes
+;                      In this case this argument is ignored.
+;     opt     - options: Currently, not use, Set to False
+;
+local dimp, dimt, rankp, rankt, theta, p0
+begin
+  dimp   = dimsizes(p) 
+  dimt   = dimsizes(t) 
+  rankp  = dimsizes(dimp) 
+  rankt  = dimsizes(dimt) 
+
+  p0     = 100000.           ; default [units = Pa]
+  if (isatt(p,"units") .and. (p@units.eq."mb"   .or. \
+                              p@units.eq."MB"   .or. \
+                              p@units.eq."millibar"    .or. \
+                              p@units.eq."millibars"   .or. \
+                              p@units.eq."hPa"  .or. \
+                              p@units.eq."HPA"  .or. \
+                              p@units.eq."hPA"  .or. \
+                              p@units.eq."hpa"  )    ) then
+      p0 = 1000.
+ ;else
+    ;print("pot_temp: WARNING:  units of pressure not recognized: p0="+p0+" Pa used")
+  end if
+
+  if (isatt(t,"units") .and. \
+     .not.(t@units.eq."K" .or. t@units.eq."degK")) then
+     print("pot_temp: WARNING:  units of temperature not recognized")
+  end if
+
+  if (rankp.eq.rankt) then
+      if (all(dimp.eq.dimt)) then
+          theta = t*(p0/p)^0.286  
+      else
+          print("pot_temp: FATAL error: dimension sizes do not match")
+          print("          dimp="+dimp+"   dimt="+dimt) 
+          exit
+      end if
+  else
+      theta = t*(p0/conform(t,p,npr))^0.286  
+  end if
+
+  theta@long_name = "potential temperature"
+  theta@units     = "K"
+  copy_VarCoords(t, theta)
+
+  return( theta )
+end
+;=========================
+undef("static_stability") 
+function static_stability (p:numeric, t:numeric, npr[1]:integer, sopt[1]:integer)
+;
+; Compute Static Stability
+; Bluestein: Synoptic-Dynamic Meteorology in Midlatitudes
+;            pg 197
+;            s = -T*d[log(theta)]/dp = -(T/theta)*d(theta)/dp
+;
+; Nomenclature
+;     p       - pressure levels (Pa is default)  
+;
+;     t       - temperature (K)    
+;               Also: equivalent temperature (teqv) could be input
+;                     teqv = temperature of an air parcel from which all the water vapor 
+;                            has been extracted by an adiabatic process.
+;                     teqv = t + (Lv/cpd)*r  ; 
+;                     cpd  = 1004. or 1005.7 ; specific heat dry air [J/kg/K]
+;                     Lv   = 2.5104e6        ; [J/kg]=[m2/s2]  Latent Heat of Vaporization of Water
+;                     r    = mixing ratio    ; (kg/kg) 
+;
+;     npr     - dimension number for pressure
+;
+;     sopt    - =0, Return static stability only
+;             - =1, Return static stability, theta, dthdp as type list
+;
+; Note: In a statically stable atmosphere: d(theta)/dp < 0, hence s > 0       
+;
+local dimp, dimt, theta, rankt, rankp, dthdp, s
+begin
+
+  dimp   = dimsizes(p) 
+  dimt   = dimsizes(t) 
+
+  rankp  = dimsizes(dimp)
+  rankt  = dimsizes(dimt)  
+
+  theta  = pot_temp(p, t, npr, False)   ; rankp=rankt then npr is ignored
+
+; dthdp = -T*d[log(theta)]/dp = -(T/theta)*d(theta)/dp
+
+  if (rankp.eq.rankt) then
+      dthdp  = center_finite_diff_n (theta,p,False,0, npr)
+  else
+      if (rankp.eq.1) then
+          dthdp  = center_finite_diff_n (theta,conform(t,p,npr), False,0, npr)
+      else
+          print("static_stability: rank problem:  rankp="+rankp+"; rankt="+rankt)
+          exit
+      end if
+  end if
+
+  s = -(t/theta)*dthdp
+  copy_VarCoords(t,s)
+
+  s@long_name = "static stability"
+  if (isatt(p,"units") .and. (p@units.eq."mb"   .or. \
+                              p@units.eq."MB"   .or. \
+                              p@units.eq."millibar"    .or. \
+                              p@units.eq."millibars"   .or. \
+                              p@units.eq."hPa"  .or. \
+                              p@units.eq."HPA"  .or. \
+                              p@units.eq."hPA"  .or. \
+                              p@units.eq."hpa"  )    ) then
+      s@units     = "K/hPa"   
+  else
+      s@units     = "K/Pa"       ; or "K-m-s2/kg"
+  end if
+
+  if (sopt.eq.0) then
+      return(s)
+  else
+      dthdp@long_name = "vertical derivative of theta with pressure"
+      dthdp@units     = s@units
+      copy_VarCoords(t,dthdp)
+      return( [/ s, theta, dthdp /] )
+  end if
+end
+;=========================
+undef("pot_vort_hybrid")
+function pot_vort_hybrid\
+            (p:numeric, u:numeric, v:numeric, t:numeric
+            ,lat[*]:numeric, gridType[1]:integer, opt[1]:integer)
+;
+; Compute Isentropic Potential Vorticity on hybrid levels
+; CCM Processor User's Guide: May 1994: page B-19
+; Original source P Rasch and B Boville
+;
+; Nomenclature
+;     p       - pressure levels (Pa)  [3D or 4D]
+;     u       - zonal wind  (m/s)     [3D or 4D]          
+;     v       - meridional wind (m/s) [3D or 4D]          
+;     t       - temperature (K)       [3D or 4D]          
+;     gridType- grid type
+;               =0 means gaussian grid
+;               =1 means regular or fixed grid
+;     lat     - latitudes
+;     opt     - options: not used. Set to 0
+;
+; Note: u,v,t,p MUST:
+;    [1] be SOUTH-TO-NORTH 
+;    [2] be GLOBAL because spherical harmonics are used
+;    [3] have named dimensions because data are reordered
+;   
+; Usage:
+;   f    = addfile ("foo.nc", "r")
+;   U    = f->U    ; (time,lev,lat,lon) or (lev,lat,lon)
+;   V    = f->V
+;   T    = f->T
+;   lat  = f->lat
+;   hyam = f->hyam
+;   hybm = f->hybm
+;   p0   = f->P0  ; p0=100000
+;   ps   = f->PS  ; Pa
+;   p    = pres_hybrid_ccm (ps,p0,hyam,hybm)  ; Pa [kg/(m s2)]
+;   copy_VarCoords(U,p)
+;
+;               ; Potential Vorticity
+;   PV = pot_vort_hybrid(p,u,v,t,lat, 0,  0)
+;
+; Note: A nice basic discussion of PV may be found at:
+; Mid-Latitude Atmospheric Dynamics: A First Course
+; Jonathan E. Martin, Wiley 2006,   QC880.M36   , pp276-onward
+; 
+local ranku, rankv, rankt, rankp, npr, nlt, dthdp  \
+    , dudp, dvdp ,theta, W, f, vr, dthdx, dthdy, G, W, rad, pv
+begin
+                                   ; ERROR CHECK
+  ranku  = dimsizes(dimsizes(u)) 
+  if (.not.(ranku.eq.3 .or. ranku.eq.4)) then
+      print("pot_vort_hybrid: only 3D and 4D arrays allowed: rank="+ranku)
+      exit
+  end if
+  rankv  = dimsizes(dimsizes(v)) 
+  rankt  = dimsizes(dimsizes(t)) 
+  rankp  = dimsizes(dimsizes(p)) 
+  if (.not.(ranku.eq.rankv .and. ranku.eq.rankt .and. ranku.eq.rankp)) then
+      print("pot_vort_hybrid: u, v, t, p must be the same rank: ranku=" \
+            +ranku+"  rankv="+rankv+"  rankt="+rankt+"  rankp="+rankp)
+      exit
+  end if
+
+  if (.not.(gridType.eq.0 .or. gridType.eq.1)) then
+      print("pot_vort_hybrid: unrecognized gridType: only 0 and 1 allowed")
+      print("               gridType="+gridType)
+      ier = 1
+  end if
+
+  if ((lat(1)-lat(0)).le.0) then
+      print("pot_vort_hybrid: data must be in S-N order")
+      exit
+  end if
+
+  if (ranku.eq.3) then       ; (lev,lat,lon)  => (0,1,2) => (npr,nlt,2)
+      npr = 0
+      nlt = 1                 
+  end if
+  if (ranku.eq.4) then       ; (time,lev,lat,lon)  => (0,1,2,3) > (0,npr,nlt,2)
+      npr = 1
+      nlt = 2                  
+  end if
+
+  S           = static_stability(p,t,npr,1)   ; variable of type list
+
+  s           = S[0]    ; [...] is list syntax    
+  theta       = S[1]    ; theta = pot_tmp(p, t, npr, 0)
+  dthdp       = S[2]    ; dthdp = center_finite_diff_n (theta,p,False,0,npr)
+  s@_FillValue= 1e20
+  delete(S)
+
+ ;printVarSummary( s )  ; s not used for this formulation
+ ;printMinMax( s, True )
+ ;printVarSummary( theta )
+ ;printMinMax( theta, True )
+ ;printVarSummary( dthdp )
+ ;printMinMax( dth2p, True )
+                              ; compute VERTICAL (pressure) derivatives
+  dudp  = center_finite_diff_n (    u,p,False,0,npr)
+  dvdp  = center_finite_diff_n (    v,p,False,0,npr)
+                              ; compute 
+                              ; (1) lat/lon temperature gradients [K/m]
+                              ; (2) relative vorticity            [1/s]
+  dthdx   = theta             ; create E-W gradient array
+  dthdy   = theta             ;        S-N        
+  dthdx@long_name = "longitudinal gradient (derivative)"
+  dthdy@long_name = "latitudinal gradient (derivative)"
+  dthdx@units     = "K/m"
+  dthdy@units     = "K/m"
+
+  if (gridType.eq.0) then
+      gradsg (theta, dthdx, dthdy) 
+      vr = uv2vrG(u,v)
+  end if
+  if (gridType.eq.1) then
+      gradsf (theta, dthdx, dthdy) 
+      vr = uv2vrF(u,v)
+  end if
+
+  G   = 9.80665                    ; m/s2 ; gravity at 45 deg lat used by the WMO
+  W   = 7.292e-5                   ; (1/s)     ; earth ang rotation
+  rad = 4.*atan(1.)/180.
+  if (typeof(lat).eq.typeof(vr)) then
+      f = 2.*W*sin(lat*rad)          ; (1/s)     ; coriolis parameter
+  else 
+      f = 2.*W*sin(tofloat(lat)*rad)
+  end if
+
+  vr  = vr + conform(vr,f,nlt)     ; absolute vorticity   
+                                   ; G used for commonly used units
+  pv    = -G*(vr*dthdp - (dthdx*dvdp-dthdy*dudp) )  
+  pv@long_name  = "potential vorticity"
+  pv@short_name = "PV"
+  pv@units      = "K m2/kg/s"      ; common units
+  copy_VarCoords(t,pv)
+
+  if (opt.eq.0) then
+      return( pv )
+  else
+      return( [/pv, s, theta, dthdp, dudp, dvdp, dtdx, dtdy/] )
+  end if
+end
+
+;----------------------------------------------------------------------------
+undef("pot_vort_isobaric")
+function pot_vort_isobaric\
+            (p[*]:numeric, u:numeric, v:numeric, t:numeric
+            ,lat[*]:numeric, gridType[1]:integer, opt:integer)
+;
+; Compute Potential Vorticity on constant pressure levels
+; Bluestein: Synoptic-Dynamic Meteorology in Midlatitudes
+;            pg 264  Eq 4.5.93
+;
+; Nomenclature
+;     p       - pressure levels (Pa)  [1D]
+;     u       - zonal wind  (m/s)     [3D or 4D]          
+;     v       - meridional wind (m/s) [3D or 4D]          
+;     t       - temperature (K)       [3D or 4D]          
+;     lat     - latitudes
+;     gridType- grid type
+;               =0 means gaussian grid
+;               =1 means regular or fixed grid
+;     opt     - options: not used
+;
+; Note: u,v,t MUST be SOUTH-TO-NORTH 
+;       and must be GLOBAL because spherical harmonics are used
+;   
+; Usage:
+;   f   = addfile ("foo.nc", "r")
+;   U   = f->U    ; (time,lev,lat,lon) or (lev,lat,lon)
+;   V   = f->V
+;   T   = f->T    ; K
+;   lat = f->lat
+;   lev = f->lev  
+;   lev = lev*100
+;   lev@units = "Pa"
+;               ; Potential Vorticity
+;   PV = pot_vort_isobaric(lev,u,v,t,lat, 0, 0)
+;
+; Note: A nice basic discussion of PV may be found at:
+; Mid-Latitude Atmospheric Dynamics: A First Course
+; Jonathan E. Martin, Wiley 2006,   QC880.M36   , pp276-onward
+;
+local ranku, rankv, rankt, npr, nlt, dthdp, dudp, dvdp \
+     ,theta, S, s, con, R, W, f, vr, dtdx, dtdy, rad, pv
+begin
+                                   ; ERROR CHECK
+  ranku  = dimsizes(dimsizes(u)) 
+  if (.not.(ranku.eq.3 .or. ranku.eq.4)) then
+      print("StaticStabilityP: only 3D and 4D arrays allowed: rank="+ranku)
+      exit
+  end if
+  rankv  = dimsizes(dimsizes(v)) 
+  rankt  = dimsizes(dimsizes(t)) 
+  if (.not.(ranku.eq.rankv .and. ranku.eq.rankt)) then
+      print("pot_vort_isobaric: u, v, t must be the same rank: ranku=" \
+            +ranku+"  rankv="+rankv+"  rankt="+rankt)
+      exit
+  end if
+
+  if (.not.(gridType.eq.0 .or. gridType.eq.1)) then
+      print("pot_vort_isobaric: unrecognized gridType: only 0 and 1 allowed")
+      print("           gridType="+gridType)
+      ier = 1
+  end if
+
+  if ((lat(1)-lat(0)).le.0) then
+      print("pot_vort_isobaric: data must be in S-N order")
+      exit
+  end if
+
+  if (ranku.eq.3) then       ; (lev,lat,lon)  => (0,1,2) > (0,npr,nlt)
+      npr = 0
+      nlt = 1
+  end if
+  if (ranku.eq.4) then       ; (time,lev,lat,lon)  => (0,1,2,3) > (0,npr,nlt,2)
+      npr = 1
+      nlt = 2
+  end if
+
+  S           = static_stability(p,t,npr,1)   ; variable of type list
+
+  s           = S[0]    ; [...] is list syntax    
+  theta       = S[1]
+  dthdp       = S[2]
+  s@_FillValue= 1e20
+  delete(S)
+
+ ;printVarSummary( s )
+ ;printMinMax( s, True )
+ ;printVarSummary( theta )
+ ;printMinMax( theta, True )
+ ;printVarSummary( dthdp )
+ ;printMinMax( dthdp, True )
+                              ; compute VERTICAL (pressure) derivatives ; shear
+  dudp        = center_finite_diff_n (    u,p,False,0,npr)
+  dvdp        = center_finite_diff_n (    v,p,False,0,npr)
+
+                              ; compute 
+                              ; (1) lat/lon temperature gradients [K/m]
+                              ; (2) relative vorticity            [1/s]
+
+  dtdx   = t                  ; create E-W gradient array with coordinate info
+  dtdy   = t                  ;        S-N        
+  dtdx@long_name = "longitudinal gradient (derivative)"
+  dtdy@long_name = "latitudinal gradient (derivative)"
+  dtdx@units     = "K/m"
+  dtdy@units     = "K/m"
+
+  if (gridType.eq.0) then
+      gradsg (t, dtdx, dtdy) 
+      vr = uv2vrG(u,v)
+  end if
+  if (gridType.eq.1) then
+      gradsf (t, dtdx, dtdy) 
+      vr = uv2vrF(u,v)
+  end if
+
+  G   = 9.80665                    ; m/s2 ; gravity at 45 deg lat used by the WMO
+  R   = 287.04                     ; m2/(s2-K) ; gas constant dry air
+  W   = 7.292e-5                   ; (1/s)     ; earth ang rotation
+  rad = 4.*atan(1.)/180.
+  if (typeof(lat).eq.typeof(vr)) then
+      f = 2.*W*sin(lat*rad)          ; (1/s)     ; coriolis parameter
+  else
+      f = 2.*W*sin(tofloat(lat)*rad)
+  end if
+
+  vr  = vr + conform(vr,f,nlt)     ; absolute vorticity   
+  s   = where(s.eq.0, s@_FillValue, s)    ; safety
+  con = R/(s*conform(t,p,npr))  
+                                   ; G* added to get common pv units 
+  pv  = -G*(vr + con*(dvdp*dtdx-dudp*dtdy))*dthdp  
+  pv@long_name  = "potential vorticity"
+  pv@short_name = "PV"
+  pv@units      = "K m2/kg/s"      ; common units
+  copy_VarCoords(t,pv)
+
+  if (opt.eq.0) then
+      return( pv )
+  else
+      return( [/pv, s, theta, dthdp, dudp, dvdp, dtdx, dtdy/] )
+  end if
+end
+;====================
+undef("advect_var")
+function advect_var (u:numeric, v:numeric, x:numeric,gridType[1]:integer 
+                    ,long_name:string, units:string, iopt[1]:integer)
+;
+; compute advection of a variable: UV.GRADIENT(X) ; U*(dX/dlon) + V*(dX/dlat)
+;
+; Requires:
+;    (1) grid be global cuz spherical harmonics are used
+;    (2) required dimension order ([time,[lev,]lat,lon)
+;    (3) the input grids *must* be ordered South==>North
+; 
+; Nomenclature:
+;   u, v      - zonal and meridional wind components [m/s]
+;               rightmost dimensions must be ([...,]lat,lon)
+;   x         - scalar quantity to be advected 
+;               rightmost dimensions must be ([...,]lat,lon)
+;               eg: T, Z, divergence, vorticity, latent energy,..., whatever
+;   gridType  - type of grid: 0=gaussian, 1=fixed
+;   long_name - descriptive name (eg: "Temperature Advection" )
+;   units     - units of result  (eg: "m-K/s" )
+;   iopt      - flag: =0 means return only the advect result          
+;                     =1 means return the advect, longitidinal and latitudinal gradient
+;                        as part of a list
+; Usage:
+;   f = addfile ("foo.nc", "r")
+;   u = f->U    ; (time,lev,lat,lon)
+;   v = f->V
+;   T = f->T
+;               ; linear advection of temperature
+;   Tadv = advect_var(u,v,T,0,"linear advection of temperature","m-K/s",0)
+;
+local dimu, dimv, dimx, ranku, rankv, rankx, ier \
+    , x_grad_lon, x_grad_lat, advect
+begin
+                             ; ERROR CHECKING
+  dimu  = dimsizes(u)
+  dimv  = dimsizes(v)
+  dimx  = dimsizes(x)
+  ranku = dimsizes(dimu)
+  rankv = dimsizes(dimv)
+  rankx = dimsizes(dimx)
+
+  ier   = 0
+  if (.not.(gridType.eq.0 .or. gridType.eq.1)) then
+      print("advect_var: unrecognized gridType: only 0 and 1 allowed")
+      print("            gridType="+gridType)
+      ier = 1
+  end if
+  if (.not.(ranku.eq.rankv .and. ranku.eq.rankx)) then
+      print("advect_var: all input arguments must have the same rank")
+      print("            ranku="+ranku)
+      print("            rankv="+rankv)
+      print("            rankx="+rankx)
+      ier = ier + 10
+  end if
+  if (.not.(all(dimu.eq.dimv) .and. all(dimu.eq.dimx))) then
+      print("advect_var: all input arguments must have the same dimension sizes")
+      print("            ranku="+ranku)
+      print("            rankv="+rankv)
+      print("            rankx="+rankx)
+      ier = ier + 100
+  end if
+  if (rankx.lt.2) then
+      print("advect_var: variable rank must be at least 2D: ([time,[lev,]lat,plon)")
+      print("advect_var: rank="+rankx+"D")
+      ier = ier + 1000
+  end if
+
+  dnam  = getvardims(x)             ; dimension names
+  ynam  = dnam(rankx-2)             ; latitude dimension name
+  if (.not.ismissing(ynam) .and. iscoord(x,ynam)) then
+      yord  = isMonotonic(x&$ynam$)
+      if (yord.le.0) then
+          print("advect_var: grid is not in South-to-North order.")
+          ier = ier + 10000
+      end if
+  else
+      print("advect_var: Warning: No named dimensions. Can not check grid order.")
+  end if
+
+  if (ier.ne.0) then
+      print("advect_var fatal error(s) encountered: ier="+ier)
+      exit
+  end if
+
+  x_grad_lon = new( dimx, typeof(x), getFillValue(x) )
+  x_grad_lat = new( dimx, typeof(x), getFillValue(x) )
+
+  if (gridType.eq.0) then
+      gradsg  (x, x_grad_lon, x_grad_lat)
+  end if
+  if (gridType.eq.1) then
+      gradsf  (x, x_grad_lon, x_grad_lat)
+  end if
+                                        ; advection
+  
+  uxgrad_lon = u*x_grad_lon 
+  vxgrad_lat = v*x_grad_lat
+  advect     = uxgrad_lon + vxgrad_lat
+                                        ; add meta data
+  copy_VarCoords(x, advect)
+  advect@long_name = long_name
+  advect@units     = units
+
+  if (iopt.eq.0) then
+      return(advect)
+  else
+      copy_VarCoords(x, x_grad_lon)
+      x_grad_lon@long_name = "longitudinal gradient"
+
+      copy_VarCoords(x, x_grad_lat)
+      x_grad_lat@long_name = "latitudinal gradient"
+
+      return([/ advect, x_grad_lon, x_grad_lat /] )
+
+     ;copy_VarCoords(x, ux_grad_lon)
+     ;x_grad_lon@long_name = "zonal advection"
+
+     ;copy_VarCoords(x, vx_grad_lat)
+     ;x_grad_lat@long_name = "meridional advevtion"
+
+     ;return([/ advect, x_grad_lon, x_grad_lat, uxgrad_lon, vxgrad_lat  /] )
+  end if
+
+end
+;---
+undef("log1px")
+function log1px(x:numeric)
+; Common function in other languages 
+local y, Fill
+begin
+  if (isatt(x,"_FillValue")) then
+      Fill = x@_FillValue
+  else
+      if (typeof(x).eq."double") then
+          Fill = 1d20
+      else
+          Fill = 1e20
+      end if
+  end if
+
+  y = where((1+x).gt.0, log(1+x), Fill)   
+
+  if (any(y.eq.Fill)) then
+      y@_FillValue = Fill
+  end if
+  return (y)
+end
+;================
+undef("dpres_hybrid_ccm_se")
+function dpres_hybrid_ccm_se(ps:numeric,p0[1]:numeric,hya[*]:numeric,hyb[*]:numeric)
+local dimNames, dim_ps, ntim, ncol, ps_dumy, dpres_dumy, dpres
+begin
+
+  dimNames = getvardims(ps) ; (time,ncol)
+  if (dimNames(1).ne."ncol") then
+      print("dpres_hybrid_ccm_se: You are a MORON! This is not an SE grid!")
+      exit
+  end if
+
+  dim_ps = dimsizes(ps)
+  ntim = dim_ps(0)
+  ncol = dim_ps(1)
+
+  ps_dumy = conform_dims( (/ntim,1,ncol/), ps, (/0,2/))
+
+  dpres_dumy = dpres_hybrid_ccm (ps_dumy,p0,hya,hyb) ; (ntim,klev,1,ncol)
+  dpres = dpres_dumy(:,:,0,:) ; (ntim,klev,ncol)
+
+; the following is not needed for builtin function
+
+  dpres@long_name = "layer thickness"
+  dpres@units = "Pa" ; [kg/(m s2)]
+
+  copy_VarCoords(ps, dpres(:,0,:))
+  dpres!1 = "lev"
+
+  return(dpres)
+end 
+;===================
+undef ("eofunc_north")
+function eofunc_north(eval[*]:numeric, N[1]:integer, prinfo[1]:logical)
+;
+; North, G.R. et al (1982): Sampling Errors in the Estimation of Empirical Orthogonal Functions.
+; Mon. Wea. Rev., 110, 699–706.
+; doi: http://dx.doi.org/10.1175/1520-0493(1982)110<0699:SEITEO>2.0.CO;2
+;
+; Usage after 'eofunc'. Here ntim was used,  
+;             prinfo = True
+;             sig    = eval_north(eof@eval, ntim, prinfo)
+;
+local neval, dlam, low, high, sig, n
+begin
+  neval   = dimsizes(eval)
+  if (neval.eq.1)
+      print("eofunc_north: neval=1, no testing can be performed")
+      sig = True 
+      sig@long_name = "EOF separation is not testable N=1"
+      sig@N         =  N
+      return(sig)
+  end if
+
+  dlam    = eval * sqrt(2.0/N)   ; eq 24
+  low     = eval-dlam
+  high    = eval+dlam
+
+  sig     = new(dimsizes(eval), logical)
+  sig = False  ; default is not significantly separated
+
+; first and last eigenvalues are special cales
+
+  if (eval(0).gt.high(1)) then
+      sig(0) = True
+  end if
+  if (eval(neval-1).lt.low(neval-2)) then
+      sig(neval-1) = True
+  end if
+
+; loop over other eignvalues
+
+  if (N.gt.2) then
+      do n=1,neval-2
+         if (eval(n).lt.low(n-1) .and. eval(n).gt.high(n+1)) then
+             sig(n) = True
+         end if
+      end do
+  end if
+
+  if (prinfo) then
+      print(dlam+"   "+low+"   "+eval+"   "+high+"  "+sig)
+  end if
+
+  sig@long_name = "EOF separation"
+  sig@N         =  N
+  return(sig)
+end
+;-----
+undef("getfilevaratts_hdf5")
+function getfilevaratts_hdf5( f, attName[1]:string )
+
+; Do this *ONCE* for each global attribute
+
+local header, cr, delim, strs, nstrs, n, info, hinfo
+begin
+ header= f@$attName$                      ; long string[1]
+
+ cr    = str_get_nl()                     ; carriage return (new line)
+ delim = cr + " ;"
+ strs  = str_split(header, delim)
+ nstrs = dimsizes(strs)
+ 
+ hinfo = new( (/nstrs,2/), "string")
+ do n=0,nstrs-1
+    info := str_split(strs(n), "=")
+    hinfo(n,0) = info(0)
+    if (dimsizes(info) .eq. 2 ) then	
+	hinfo(n,1) = info(1) 
+    else
+	hinfo(n,1) = ""
+    end if
+ end do 
+ hinfo@hdf5_global_attribute_name = attName
+
+ return(hinfo)
+end
+;---
+undef("extract_filevaratts_hdf5")
+function extract_filevaratts_hdf5( hinfo[*][2]:string, name_to_extract[1]:string)
+; extract the value associated with the attribute which created 'hinfo'
+; info is output from function getfilevaratts_hdf5
+begin
+  
+  if (.not.isatt(hinfo,"hdf5_global_attribute_name")) then
+      print("Warning:  hdf5_global_attribute_name is missing")
+  end if
+    
+  idx = ind(hinfo(:,0) .eq. name_to_extract)
+  if (ismissing(idx(0))) then
+      return("extract_filevaratts_hdf5: "+name_to_extract+" is missing")
+  end if
+  
+  return(hinfo(idx(0),1))  ; to the right of = sign
+end

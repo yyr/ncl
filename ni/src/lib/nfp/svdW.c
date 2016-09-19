@@ -1982,6 +1982,8 @@ NhlErrorTypes svd_lapack_W( void )
  */
   NclFree(work);
 
+  if(type_a != NCL_double)
+      NclFree(tmp_a);
 
 /*
  * Set up variable to return and assign values for "info" attribute.

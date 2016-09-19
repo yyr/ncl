@@ -496,7 +496,6 @@ NhlErrorTypes _NclInitMachine
 
 NhlErrorTypes _NclFinalizeMachine()
 {
-	_NclMachineRec* machrec;
 #if 0
 	int i;
 
@@ -687,7 +686,7 @@ int access_type;
 		while(i != the_sym->level) {
 			i--;
 			if(i < 0) {
-				NhlPError(NhlWARNING,NhlEUNKNOWN,"_NclRetrieveRec: Stack underflow\n");
+				NhlPError(NhlINFO,NhlEUNKNOWN,"_NclRetrieveRec: Stack underflow\n");
 				return(NULL);
 			}
 			previous = (NclFrame*)((NclStackEntry*)thestack + previous->static_link.u.offset);
@@ -1685,6 +1684,7 @@ if(the_list != NULL) {
 					} else {
 						data_ptr = _NclRetrieveRec(the_list->the_elements[i].var_sym,DONT_CARE);
 					}
+					if(NULL != data_ptr) {
 					anst_var = data_ptr->u.data_var;
 					if(data.u.data_var != NULL ) {
 						var_rep_type = _NclGetVarRepValue(data.u.data_var);
@@ -1797,6 +1797,7 @@ CONVERT_TO_LOCAL just pushes vars for parameters
 						if((the_list->the_elements[i].var_ptr != NULL)&&(anst_var->obj.id != the_list->the_elements[i].var_ptr->obj.id)) {
 							_NclDestroyObj((NclObj)the_list->the_elements[i].var_ptr);
 						}
+					}
 					}
 				} else if((the_list->the_elements[i].var_sym != NULL)&&(data.u.data_obj->obj.obj_type & Ncl_Var)){
 					if(the_list->the_elements[i].is_modified) {
@@ -2617,7 +2618,7 @@ if(the_list != NULL) {
 						tmp_var1 = (NclVar)_NclGetObj(data.u.data_var->obj.id);
 						if(tmp_var1->var.att_id != -1) 
 							tmp_att = _NclCopyAtt((NclAtt)_NclGetObj(tmp_var1->var.att_id),NULL);
-						for(j = 0; i< tmp_var1->var.n_dims; i++) {
+						for(j = 0; j< tmp_var1->var.n_dims; j++) {
 							if(tmp_var1->var.coord_vars[j] != -1) {
 								tmp_coord_var = _NclCopyVar((NclVar)_NclGetObj(tmp_var1->var.coord_vars[j]),NULL,NULL);
 								coord_ids[j] = tmp_coord_var->obj.id;

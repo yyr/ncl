@@ -856,6 +856,7 @@ static NhlErrorTypes UpdateFillInfo
 	float *levels = (float *) cnp->levels->data;
 	int i;
 
+	*almost_const = False;
         _NhlSetFillOpacity(cl, cnp->fill_opacity);
 /*
  * Since the missing value fill resources are not supposed to be affected
@@ -871,7 +872,6 @@ static NhlErrorTypes UpdateFillInfo
 
 	*do_fill = True;
 
-	*almost_const = False;
 	for (i = 0; i< cnp->level_count -1 ; i++) { 
 		if (cnp->zmin >= levels[i] &&
 		    cnp->zmax <= levels[i + 1]) {
@@ -1614,7 +1614,7 @@ static NhlErrorTypes CnStdRender
 				NhlPError(NhlWARNING,NhlEUNKNOWN,e_text,entry_name,cnp->fill_mode == NhlAREAFILL ? "AreaFill" : "RasterFill");
 			}
 			else if (cnp->lines_on || cnp->line_lbls.on) {
-				e_text =  "%s: out of range coordinates encountered; standard %s rendering method may be unreliable;\n consider setting the resource trGridType to \"TriangularMesh\" if coordinates contain missing values";
+				e_text =  "%s: out of range coordinates encountered; standard line rendering method may be unreliable;\n consider setting the resource trGridType to \"TriangularMesh\" if coordinates contain missing values";
 				NhlPError(NhlWARNING,NhlEUNKNOWN,e_text,entry_name);
 			}
 		}
@@ -1697,6 +1697,15 @@ static NhlErrorTypes CnStdRender
 		return(ret);
 	}
 	/* Draw the contours */
+#if 0
+	{ /* for debugging */
+		float flx,frx,fby,fuy,wlx,wrx,wby,wuy; int ll;
+		c_getset(&flx,&frx,&fby,&fuy,&wlx,&wrx,&wby,&wuy,&ll);
+		printf("getset - %f,%f,%f,%f,%f,%f,%f,%f\n",
+		       flx,frx,fby,fuy,wlx,wrx,wby,wuy); 
+		/*c_set(flx,frx,fby,fuy,wlx,wrx,wuy,wby,ll);*/
+  	}
+#endif
 
 	subret = _NhlCprect(cnp->data,cnp->sfp->fast_dim,cnp->sfp->fast_len,
 			    cnp->sfp->slow_len,cnp->fws,cnp->iws,entry_name);

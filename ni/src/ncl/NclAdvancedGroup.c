@@ -16,7 +16,6 @@
 #include "NclVar.h"
 #include "NclFile.h"
 #include "NclAdvancedFile.h"
-#include "NclGroup.h"
 #include "NclAdvancedGroup.h"
 #include "NclFileInterfaces.h"
 #include "DataSupport.h"
@@ -274,9 +273,9 @@ static void UpdateAdvancedGroupDims(NclAdvancedFile group_out, NclFileGrpNode *g
 }
 #endif
 
-NclGroup *_NclAdvancedGroupCreate(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
-                             unsigned int obj_type_mask, NclStatus status,
-                             NclFile file_in, NclQuark group_name)
+NclAdvancedFile _NclAdvancedGroupCreate(NclObj inst, NclObjClass theclass, NclObjTypes obj_type,
+                                        unsigned int obj_type_mask, NclStatus status,
+                                        NclFile file_in, NclQuark group_name)
 {
     NclAdvancedFile thefile = (NclAdvancedFile) file_in;
     NclAdvancedFile group_out = NULL;
@@ -307,10 +306,12 @@ NclGroup *_NclAdvancedGroupCreate(NclObj inst, NclObjClass theclass, NclObjTypes
     grpnode = _getGrpNodeFromNclFileGrpNode(thefile->advancedfile.grpnode, group_name);
     if(NULL == grpnode)
     {
-        NHLPERROR((NhlWARNING,NhlEUNKNOWN,
-            "_NclAdvancedGroupCreate: Unable to find group <%s> from file <%s>.\n",
-             NrmQuarkToString(group_name),
-             NrmQuarkToString(thefile->advancedfile.fname)));
+      /*
+       *NHLPERROR((NhlWARNING,NhlEUNKNOWN,
+       *    "_NclAdvancedGroupCreate: Unable to find group <%s> from file <%s>.\n",
+       *     NrmQuarkToString(group_name),
+       *     NrmQuarkToString(thefile->advancedfile.fname)));
+       */
 
         return NULL;
     }
@@ -389,6 +390,6 @@ NclGroup *_NclAdvancedGroupCreate(NclObj inst, NclObjClass theclass, NclObjTypes
    *fprintf(stderr, "Leave _NclAdvancedGroupCreate, file: %s, line:%d\n\n", __FILE__, __LINE__);
    */
 
-    return ((NclGroup *)group_out);
+    return group_out;
 }
 

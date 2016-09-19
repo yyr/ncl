@@ -744,7 +744,6 @@ function is_valid_named_colors(colors[*]:string)
 local i, valid_named_colors, ncolors
 begin
   named_colors = str_lower(get_named_color_list())   ; list of valid colors
-
   ncolors            = dimsizes(colors)
   valid_named_colors = new(ncolors,logical)
   valid_named_colors = False    ; initialize to False
@@ -757,42 +756,102 @@ begin
 end
 
 ;***********************************************************************;
+; This function returns the list of colormap names.
+; This can be used to test for valid colormap names.
+;***********************************************************************;
+undef("get_colormap_names")
+function get_colormap_names()
+local cmap_dirs, nfiles, ndirs, cmaps, i, j, tmp_files, tmp_names
+begin
+;---Get the list of color map directories
+  cmap_dirs = str_split(ncargpath("colormaps"),":")
+  ndirs     = dimsizes(cmap_dirs)
+
+  max_files = 500
+  cmaps = new(max_files,string)
+  nfiles = 0
+  do i=0,ndirs-1
+    tmp_files := systemfunc("ls -1 " + cmap_dirs(i))
+    nt = dimsizes(tmp_files)
+    do j=0,nt-1
+      tmp_names     := str_split(tmp_files(j),".")
+      cmaps(nfiles) = str_join(tmp_names(0:dimsizes(tmp_names)-2),".")
+      nfiles = nfiles + 1
+      if(nfiles.ge.max_files) then
+        print("get_colormap_names: reached maximum limit of color maps")
+        print("Will only return " + max_files + " color map names.") 
+        break
+      end if
+    end do
+    if(nfiles.ge.max_files) then
+      break
+    end if 
+  end do
+  return(cmaps(0:nfiles-1))
+end
+
+;***********************************************************************;
+; This function checks the list of color map names to see if they are
+; all valid.  It will return a logical array of the same size as the 
+; input array.
+;***********************************************************************;
+undef("is_valid_colormap_names")
+function is_valid_colormap_names(colormap_names[*]:string)
+local i, valid_colormaps, ncmaps
+begin
+  cmaps  = get_colormap_names()
+  ncmaps = dimsizes(colormap_names)
+  valid_colormaps = new(ncmaps,logical)
+  valid_colormaps = False    ; initialize to False
+  do i=0,ncmaps-1
+    if(any(colormap_names(i).eq.cmaps)) then
+      valid_colormaps(i) = True
+    end if
+  end do
+  return(valid_colormaps)
+end
+
+;***********************************************************************;
 ; This function returns the type of color being used: 
+;
 ;    color index     - values 0 to 255    "index"
 ;    named color     - "blue"             "named"
 ;    RGB triplet     - (/1,0,0.5/)        "rgb"
 ;    RGBA quadruplet - (/1,0,0.5,0.5/)    "rgba"
+;    color map name  - "amwg"             "colormap"
 ;
 ; A missing string is returned if no valid type is detected.
 ;***********************************************************************;
 undef("get_color_type")
-function get_color_type(color)
+function get_color_type(colors)
 local dims_color, rank_color
 begin
-  dims_color = dimsizes(color)
+  dims_color = dimsizes(colors)
   rank_color = dimsizes(dims_color)
 
-  if(rank_color.eq.1.and.dims_color.eq.1.and.\
-     typeof(color).eq."string".and.is_valid_named_colors(color)) then
+  if(rank_color.eq.1.and.typeof(colors).eq."string".and.\
+     all(is_valid_colormap_names(colors))) then
+    return("colormap")
+  end if
+
+  if(rank_color.eq.1.and.typeof(colors).eq."string".and.\
+     all(is_valid_named_colors(colors))) then
     return("named")
   end if
 
-  if(rank_color.eq.1.and.dims_color.eq.1.and.\ 
-    any(typeof(color).eq.(/"short","integer","long"/)).and.\
-     color.ge.0.and.color.le.255) then
-    return("index")
-  end if
-
-  if((rank_color.eq.1.and.dims_color(0).eq.3.or.\ 
-      rank_color.eq.2.and.dims_color(1).eq.3).and.\
-     isnumeric(color).and.all(color.ge.0).and.all(color.le.1.0)) then
+  if(dims_color(rank_color-1).eq.3.and.isnumeric(colors).and.\
+     all(colors.ge.0.and.colors.le.1.0)) then
     return("rgb")
   end if
 
-  if((rank_color.eq.1.and.dims_color(0).eq.4.or.\ 
-      rank_color.eq.2.and.dims_color(1).eq.4).and.\
-     isnumeric(color).and.all(color.ge.0).and.all(color.le.1.0)) then
+  if(dims_color(rank_color-1).eq.4.and.isnumeric(colors).and.\
+     all(colors.ge.0.and.colors.le.1.0)) then
     return("rgba")
+  end if
+
+  if(any(typeof(colors).eq.(/"short","integer","long"/)).and.\
+     all(colors.ge.0.and.colors.le.255)) then
+    return("index")
   end if
 
   return(new(1,string))    ; otherwise return missing
@@ -819,9 +878,12 @@ begin
 ; Use str_sub_str to remove all tabs and spaces around
 ; and inside the color name.
 ;
+  lnames       = str_lower(names)
+  lnames       = str_sub_str(lnames," ","")
+  lnames       = str_sub_str(lnames,"	","")
   named_colors = str_sub_str(named_colors," ","")
   named_colors = str_sub_str(named_colors,"	","")
-  lnames       = str_lower(names)
+
   ncolors      = dimsizes(names)
   rgb_array    = new((/ncolors,3/),float)
 
@@ -939,8 +1001,8 @@ begin
 end
 
 ;***********************************************************************;
-; Given a list of color indexes, named colors, RGB, or RGBA colors,
-; convert them to RGBA colors.
+; Given a list of color maps, color indexes, named colors, RGB, or RGBA ;
+; colors, convert them to RGBA colors.                                  ;
 ;***********************************************************************;
 undef("convert_color_to_rgba")
 function convert_color_to_rgba(wks,colors)
@@ -953,15 +1015,18 @@ begin
 
   if(color_type.eq."rgba") then
     rgba_colors = colors
-  end if
-  if(color_type.eq."index") then
+  else if(color_type.eq."index") then
     rgba_colors = indexcolor2rgba(wks,colors)
-  end if
-  if(color_type.eq."named") then
+  else if(color_type.eq."colormap") then
+    rgba_colors = read_colormap_file(colors)
+  else if(color_type.eq."named") then
     rgba_colors = namedcolor2rgba(colors)
-  end if
-  if(color_type.eq."rgb") then
+  else if(color_type.eq."rgb") then
     rgba_colors = rgb2rgba(colors)
+  end if
+  end if
+  end if
+  end if
   end if
 
   if(all(dimsizes(rgba_colors).eq.(/1,4/))) then
@@ -1085,10 +1150,16 @@ begin
 
 ;---Get # of colors in color table.
   ncolt  = get_res_value_keep(opt2,"NumColorsInTable",256)
-  if(ncolt.le.0.or.ncolt.gt.256) then
-    print("Error:span_named_colors: Invalid number of colors requested.")
-    print("Defaulting to 256.")
-    ncolt = 256
+  if(ncolt.le.0) then
+    print("Error:span_named_colors: # of colors must be > 0")
+    return(new((/1,3/),float))
+  end if
+
+;---Background/foreground colors desired?
+  skip_bf = get_res_value_keep(opt2,"SkipBackgroundForeground",False)
+  if(ncolt.le.0) then
+    print("Error:span_named_colors: # of colors must be > 0")
+    return(new((/1,3/),float))
   end if
 
 ;---Check # of named colors.
@@ -1174,7 +1245,12 @@ begin
       nend = nbeg + ncols_per_rng(i+1) -1
     end if
   end do
-  return(rgb_array)
+  
+  if(skip_bf) then
+    return(rgb_array(2:,:))
+  else
+    return(rgb_array)
+  end if
 end
 
 ;***********************************************************************;
@@ -1899,8 +1975,8 @@ end
 ;                plot:graphic                                           ;
 ;                                                                       ;
 ; Determine what class type "plot" is. If it's a logLinPlotClass, then  ;
-; It should have an attribute "contour" or "vector" that is the         ;
-; corresponding contour or vector plot.                                 ;
+; It should have an attribute "contour", "vector", "xy", or             ;
+; "streamine" that is the corresponding contour or vector plot.         ;
 ;                                                                       ;
 ;***********************************************************************;
 undef("get_plot_not_loglin")
@@ -1913,61 +1989,71 @@ begin
   class = NhlClassName(plot)
 
   if(class(0).ne."contourPlotClass".and.class(0).ne."vectorPlotClass".and. \
-     class(0).ne."xyPlotClass") then
+     class(0).ne."xyPlotClass".and.class(0).ne."streamlinePlotClass") then
     if(isatt(plot,"contour")) then
       new_plot = plot@contour
       new_plot@plot_type = "contour"
+    else if(isatt(plot,"vector")) then
+      new_plot = plot@vector
+      new_plot@plot_type = "vector"
+    else if(isatt(plot,"streamline")) then
+      new_plot = plot@streamline
+      new_plot@plot_type = "streamline"
     else
-      if(isatt(plot,"vector")) then
-        new_plot = plot@vector
-        new_plot@plot_type = "vector"
-      else
-        found = False
-        getvalues plot
-          "pmOverlaySequenceIds" : base_ids
-        end getvalues
-        if(.not.any(ismissing(base_ids))) then
-	  nbase = dimsizes(base_ids)
-	  i = 0
-	  do while(.not.found.and.i.lt.nbase) 
-            bclass = NhlClassName(base_ids(i))
-            if(bclass.eq."contourPlotClass") then
-              new_plot = base_ids(i)
-              new_plot@plot_type = "contour"
-	      found = True
-            end if
-            if(bclass.eq."vectorPlotClass") then
-              new_plot = base_ids(i)
-              new_plot@plot_type = "vector"
-	      found = True
-            end if
-            if(bclass.eq."xyPlotClass") then
-              new_plot = base_ids(i)
-              new_plot@plot_type = "xy"
-	      found = True
-            end if
-	    i = i + 1
-	  end do
-	end if
-        if(.not.found) then
-          new_plot = plot(0)
-        end if
+      found = False
+      getvalues plot
+        "pmOverlaySequenceIds" : base_ids
+      end getvalues
+      if(.not.any(ismissing(base_ids))) then
+        nbase = dimsizes(base_ids)
+        i = 0
+        do while(.not.found.and.i.lt.nbase) 
+          bclass = NhlClassName(base_ids(i))
+          if(bclass.eq."contourPlotClass") then
+            new_plot = base_ids(i)
+            new_plot@plot_type = "contour"
+            found = True
+          else if(bclass.eq."vectorPlotClass") then
+            new_plot = base_ids(i)
+            new_plot@plot_type = "vector"
+            found = True
+          else if(bclass.eq."streamlinePlotClass") then
+            new_plot = base_ids(i)
+            new_plot@plot_type = "streamline"
+            found = True
+          else if(bclass.eq."xyPlotClass") then
+            new_plot = base_ids(i)
+            new_plot@plot_type = "xy"
+            found = True
+          end if
+          end if
+          end if
+          end if
+          i = i + 1
+        end do
       end if
+      if(.not.found) then
+        new_plot = plot(0)
+      end if
+    end if
+    end if
     end if
   else
     if(class(0).eq."contourPlotClass") then
       new_plot = plot(0)
       new_plot@plot_type = "contour"
-    else
-      if(class(0).eq."vectorPlotClass") then
-        new_plot = plot(0)
-        new_plot@plot_type = "vector"
-      else
-        if(class(0).eq."xyPlotClass") then
-          new_plot = plot(0)
-          new_plot@plot_type = "xy"
-        end if
-      end if
+    else if(class(0).eq."vectorPlotClass") then
+      new_plot = plot(0)
+      new_plot@plot_type = "vector"
+    else if(class(0).eq."streamlinePlotClass") then
+      new_plot = plot(0)
+      new_plot@plot_type = "streamline"
+    else if(class(0).eq."xyPlotClass") then
+      new_plot = plot(0)
+      new_plot@plot_type = "xy"
+    end if
+    end if
+    end if
     end if
   end if
   return(new_plot)
@@ -2324,15 +2410,19 @@ begin
                 "gsn_csm_streamline_contour_map_polar", \
                 "gsn_csm_streamline_map", "gsn_csm_streamline_map_ce", \
                 "gsn_csm_streamline_map_other", \
-                "gsn_csm_streamline_map_polar", "gsn_csm_time_lat", \
-                "gsn_csm_vector", "gsn_csm_vector_map", \
+                "gsn_csm_streamline_map_polar",  \
+                "gsn_csm_streamline_scalar_map", \
+                "gsn_csm_streamline_scalar_map_ce", \
+                "gsn_csm_streamline_scalar_map_other", \
+                "gsn_csm_streamline_scalar_map_polar", \
+                "gsn_csm_time_lat", "gsn_csm_vector", "gsn_csm_vector_map", \
                 "gsn_csm_vector_map_ce", "gsn_csm_vector_map_other", \
                 "gsn_csm_vector_map_polar", "gsn_csm_vector_scalar", \
                 "gsn_csm_vector_scalar_map", \
                 "gsn_csm_vector_scalar_map_ce", \
                 "gsn_csm_vector_scalar_map_other", \
-                "gsn_csm_vector_scalar_map_polar", "gsn_csm_xy", \
-                "gsn_csm_y", "gsn_histogram", "gsn_map", \
+                "gsn_csm_vector_scalar_map_polar", \
+                "gsn_csm_xy", "gsn_csm_y", "gsn_histogram", "gsn_map", \
                 "gsn_streamline", "gsn_streamline_contour", \
                 "gsn_streamline_map", "gsn_vector", \
                 "gsn_vector_contour", "gsn_vector_contour_map", \
@@ -3045,7 +3135,7 @@ begin
 ;
 ; Initialization
 ;
-  dpi        = 72                       ; Dots per inch.
+  dpi        = 72.                       ; Dots per inch.
   dpi_pw     = paper_width  * dpi
   dpi_ph     = paper_height * dpi
   dpi_margin = paper_margin * dpi
@@ -6855,28 +6945,33 @@ begin
       getvalues new_plot
         "cnInfoLabelFontHeightF" : font_height
       end getvalues
+    else if(new_plot@plot_type.eq."vector") then
+      getvalues new_plot
+        "vcRefAnnoFontHeightF"     : font_height
+      end getvalues
+    else if(new_plot@plot_type.eq."xy") then
+      getvalues new_plot
+        "tiXAxisFontHeightF" : font_height
+      end getvalues
+      font_height = 0.6*font_height
+    else if(new_plot@plot_type.eq."streamline") then
+;
+; There's no equivalent font height resource for streamline to 
+; retrieve, so just set it here.
+;
+      font_height = 0.01
     else
-      if(new_plot@plot_type.eq."vector") then
-        getvalues new_plot
-          "vcRefAnnoFontHeightF"     : font_height
-        end getvalues
-      else
-        if(new_plot@plot_type.eq."xy") then
-          getvalues new_plot
-            "tiXAxisFontHeightF" : font_height
-          end getvalues
-          font_height = 0.6*font_height
-        else
-          font_height = 0.01
-          if((is_figure_strings.and. \
-              .not.isatt(res,"gsnPanelFigureStringsFontHeightF"))) then
-            print("Warning: gsn_panel: unrecognized plot type.")
-            print("Unable to get information for various font heights.")
-            print("Make sure your font heights look okay.")
-            print("Set gsnPanelFigureStringsFontHeightF resource to control figure strings font height.")
-          end if
-        end if
+      font_height = 0.01
+      if((is_figure_strings.and. \
+          .not.isatt(res,"gsnPanelFigureStringsFontHeightF"))) then
+        print("Warning: gsn_panel: unrecognized plot type.")
+        print("Unable to get information for various font heights.")
+        print("Make sure your font heights look okay.")
+        print("Set gsnPanelFigureStringsFontHeightF resource to control figure strings font height.")
       end if
+    end if
+    end if
+    end if
     end if
 ;
 ; Use this font height for the panel strings, if any, unless the user
@@ -6914,41 +7009,55 @@ begin
       else
         panel_labelbar = False
       end if
-    else
-      if(new_plot_lab@plot_type.eq."vector") then
-        getvalues new_plot_lab
-          "vcGlyphStyle"             : gstyle
-          "vcFillArrowsOn"           : fill_arrows_on
-          "vcMonoLineArrowColor"     : mono_line_color
-          "vcMonoFillArrowFillColor" : mono_fill_arrow
-          "vcMonoWindBarbColor"      : mono_wind_barb
-        end getvalues
+    else if(new_plot_lab@plot_type.eq."vector") then
+      getvalues new_plot_lab
+        "vcGlyphStyle"             : gstyle
+        "vcFillArrowsOn"           : fill_arrows_on
+        "vcMonoLineArrowColor"     : mono_line_color
+        "vcMonoFillArrowFillColor" : mono_fill_arrow
+        "vcMonoWindBarbColor"      : mono_wind_barb
+      end getvalues
 ;
 ; 0 = linearrow, 1 = fillarrow, 2 = windbarb, 3 = curlyvector
 ;
-        if(    (fill_arrows_on .and. .not.mono_fill_arrow)     .or. \
-            (.not.fill_arrows_on .and. .not.mono_line_color)   .or. \
-            (gstyle.eq.1 .and. .not.mono_fill_arrow)  .or. \
-            (gstyle.eq.2 .and. .not.mono_wind_barb)  .or. \
-            (gstyle.eq.0 .or. gstyle.eq.3) .and. .not.mono_line_color) then
-;
-; There are no fill patterns in VectorPlot, only solids.
-;
-          mono_fill_pat = True
-          mono_fill_scl = True
-          mono_fill_col = False
-          getvalues new_plot_lab
-            "vcLevels"      : levels
-            "vcLevelColors" : colors
-          end getvalues
-        else
-          panel_labelbar = False
-        end if
+      if(    (fill_arrows_on .and. .not.mono_fill_arrow)     .or. \
+        (.not.fill_arrows_on .and. .not.mono_line_color)   .or. \
+        (gstyle.eq.1 .and. .not.mono_fill_arrow)  .or. \
+        (gstyle.eq.2 .and. .not.mono_wind_barb)  .or. \
+        (gstyle.eq.0 .or. gstyle.eq.3) .and. .not.mono_line_color) then
+;---There are no fill patterns in VectorPlot, only solids.
+        mono_fill_pat = True
+        mono_fill_scl = True
+        mono_fill_col = False
+        getvalues new_plot_lab
+          "vcLevels"      : levels
+          "vcLevelColors" : colors
+        end getvalues
       else
-        if(.not.isatt(res,"lbLabelFontHeightF")) then
-          print("Set lbLabelFontHeightF resource to control labelbar font heights.")
-        end if
+        panel_labelbar = False
       end if
+    else if(new_plot_lab@plot_type.eq."streamline") then
+      getvalues new_plot_lab
+        "stMonoLineColor" : mono_line_color
+      end getvalues
+      if(.not.mono_line_color) then
+;---There are no fill patterns in StreamlinePlot, only solids.
+        mono_fill_pat = True
+        mono_fill_scl = True
+        mono_fill_col = False
+        getvalues new_plot_lab
+          "stLevels"      : levels
+          "stLevelColors" : colors
+        end getvalues
+      else
+        panel_labelbar = False
+      end if
+    else
+      if(.not.isatt(res,"lbLabelFontHeightF")) then
+        print("Set lbLabelFontHeightF resource to control labelbar font heights.")
+      end if
+    end if
+    end if
     end if
   end if
 
@@ -8394,21 +8503,21 @@ begin
 ; colors and only append colors 2 and on.  If it is named colors, 
 ; then we'll append all of the named colors.
 ;
-    rgb_values = namedcolor2rgb(cmap2)
-    indices    = ind(.not.ismissing(rgb_values(:,0)))
-	if(all(ismissing(indices)))
-      gsn_define_colormap(wks,cmap2)    ; Must be a color map name.
-      tmp_cmap2 = gsn_retrieve_colormap(wks)
-      new_cmap2 = tmp_cmap2(2:,:)
-    else
+    if(all(is_valid_named_colors(cmap2))) then
+      rgb_values = namedcolor2rgb(cmap2)
+      indices    = ind(.not.ismissing(rgb_values(:,0)))
       new_cmap2 = new((/dimsizes(indices),3/),"float")
       new_cmap2(:,0) = rgb_values(indices,0)   ; Must be named colors.
       new_cmap2(:,1) = rgb_values(indices,1)
       new_cmap2(:,2) = rgb_values(indices,2)
+      delete([/indices,rgb_values/])
+    else
+      gsn_define_colormap(wks,cmap2)    ; Must be a color map name.
+      tmp_cmap2 = gsn_retrieve_colormap(wks)
+      new_cmap2 = tmp_cmap2(2:,:)
+      delete(tmp_cmap2)
     end if
     len_cmap2 = dimsizes(new_cmap2(:,0))
-    delete(indices)
-    delete(rgb_values)
   end if
 
 ;
@@ -11104,14 +11213,14 @@ begin
       end if
     end if
 
-    overlay(vector_object,contour_object)
+    overlay(contour_object,vector_object)
 
 ;
 ; If gsnScale was set to True, then make sure the X and Y axis labels
 ; and tick marks are the same size.
 ; 
     if(scale)
-      gsnp_scale_plot(vector_object,"vf",resources)
+      gsnp_scale_plot(contour_object,"vf",resources)
     end if
 
 ;
@@ -11119,17 +11228,17 @@ begin
 ; the scales are proportionally correct.
 ; 
     if(shape)
-      gsnp_shape_plot(vector_object)
+      gsnp_shape_plot(contour_object)
     end if
 
-    draw_and_frame(wks,vector_object,calldraw,callframe,0,maxbb)
+    draw_and_frame(wks,contour_object,calldraw,callframe,0,maxbb)
 
 ; Return plot object and data object (as attribute of plot object).
 
-    vector_object@vfdata = vfdata_object
-    vector_object@sfdata = sfdata_object
-    vector_object@contour = contour_object
-    return(vector_object)
+    contour_object@vfdata = vfdata_object
+    contour_object@sfdata = sfdata_object
+    contour_object@contour = contour_object
+    return(contour_object)
 end
 
 ;***********************************************************************;
@@ -11477,8 +11586,8 @@ begin
       end if
     end if
 
-    overlay(map_object,vector_object)
     overlay(map_object,contour_object)
+    overlay(map_object,vector_object)
 
 ;
 ; If gsnScale was set to True, then make sure the X and Y axis labels

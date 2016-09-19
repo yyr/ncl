@@ -1,5 +1,5 @@
 /*
- *  $Id: CairoWorkstationP.h 15364 2014-07-28 21:16:31Z huangwei $
+ *  $Id: CairoWorkstationP.h 15910 2015-01-12 19:03:40Z brownrig $
  */
 
 # ifndef    _NCairoWorkstationP_h
@@ -39,7 +39,6 @@ typedef struct _NhlCairoWorkstationLayerPart {
     /* fields for PS/PDF workstations */
     NhlString          paper_size;      /* standard paper name, e.g., "legal", "A2", etc. */
     NhlWorkOrientation orientation;     /* PORTRAIT or LANDSCAPE */
-    int                dpi;             /* dots/inch */
     float              page_width;      /* inches */
     float              page_height;
 
